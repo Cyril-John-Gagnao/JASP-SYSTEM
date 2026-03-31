@@ -1,7 +1,9 @@
 import sqlite3
 import tkinter as tk
 from tkinter import ttk, messagebox
+import os
 
+DB_NAME = os.path.join(os.path.dirname(__file__), "jasp.db")
 # Prevent multiple inventory windows
 inventory_window = None
 
@@ -12,7 +14,7 @@ def open_inventory():
         return
 
     # ---------- DB Setup ----------
-    conn = sqlite3.connect("jasp.db")
+    conn = sqlite3.connect(DB_NAME)
     cursor = conn.cursor()
 
     # Add raw_price column if not exists

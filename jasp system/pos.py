@@ -6,9 +6,11 @@ from fpdf import FPDF
 from datetime import datetime
 import os
 
+DB_NAME = os.path.join(os.path.dirname(__file__), "jasp.db")
+
 # ==================== POS WINDOW ====================
 def open_pos():
-    conn = sqlite3.connect("jasp.db")
+    conn = sqlite3.connect(DB_NAME)
     cursor = conn.cursor()
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS items (

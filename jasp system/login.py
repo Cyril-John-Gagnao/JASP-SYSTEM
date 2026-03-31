@@ -2,8 +2,11 @@ import sqlite3
 import tkinter as tk
 from tkinter import messagebox
 import hashlib
+import os
 
-DB_NAME = "jasp.db"
+DB_NAME = os.path.join(os.path.dirname(__file__), "jasp.db")
+
+#DB_NAME = "jasp.db"
 
 # ---------- PASSWORD HASH ----------
 def hash_password(password):
