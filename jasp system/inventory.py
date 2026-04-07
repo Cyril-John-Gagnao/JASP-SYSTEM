@@ -85,17 +85,41 @@ def open_inventory():
         raw_price_entry.delete(0, tk.END)
 
     def add_item():
-        name = name_entry.get()
-        quantity = quantity_entry.get()
-        price = price_entry.get()
-        raw = raw_price_entry.get()
+        name = name_entry.get().strip()
+        quantity = quantity_entry.get().strip()
+        price = price_entry.get().strip()
+        raw = raw_price_entry.get().strip()
+
         if not name or not quantity or not price or not raw:
             messagebox.showerror("Error", "All fields are required!", parent=inventory_window)
             return
-        cursor.execute("INSERT INTO items (name, quantity, price, raw_price) VALUES (?, ?, ?, ?)",
-                       (name, quantity, price, raw))
+
+        try:
+            quantity_val = int(quantity)
+            price_val = float(price)
+            raw_val = float(raw)
+        except ValueError:
+            messagebox.showerror("Error", "Quantity must be a whole number and prices must be numeric.", parent=inventory_window)
+            return
+
+        # If an item with the same name and price exists, stack quantities instead of creating a duplicate
+        cursor.execute("SELECT id, quantity FROM items WHERE name = ? AND price = ?", (name, price_val))
+        existing = cursor.fetchone()
+
+        if existing:
+            item_id, current_qty = existing
+            new_qty = int(current_qty) + quantity_val
+            cursor.execute("UPDATE items SET quantity = ?, raw_price = ? WHERE id = ?", (new_qty, raw_val, item_id))
+            success_msg = "Item quantity updated successfully!"
+        else:
+            cursor.execute(
+                "INSERT INTO items (name, quantity, price, raw_price) VALUES (?, ?, ?, ?)",
+                (name, quantity_val, price_val, raw_val),
+            )
+            success_msg = "Item added successfully!"
+
         conn.commit()
-        messagebox.showinfo("Success", "Item Added Successfully!", parent=inventory_window)
+        messagebox.showinfo("Success", success_msg, parent=inventory_window)
         inventory_window.lift()
         inventory_window.focus_force()
         clear_fields()
