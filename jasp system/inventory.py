@@ -51,8 +51,8 @@ def open_inventory():
     left_frame.pack(side="left", fill="y", padx=(0,10), pady=5)
 
     tk.Label(left_frame, text="Item Name", font=("Arial", 11, "bold"), bg="white").grid(row=0, column=0, padx=10, pady=5, sticky="w")
-    name_entry = tk.Entry(left_frame, width=25, font=("Arial", 11))
-    name_entry.grid(row=0, column=1, pady=5)
+    name_entry = ttk.Combobox(left_frame, width=23, font=("Arial", 11), state="normal")
+    name_entry.grid(row=0, column=1, pady=5, sticky="w")
 
     tk.Label(left_frame, text="Quantity", font=("Arial", 11, "bold"), bg="white").grid(row=1, column=0, padx=10, pady=5, sticky="w")
     quantity_entry = tk.Entry(left_frame, width=25, font=("Arial", 11))
@@ -67,6 +67,11 @@ def open_inventory():
     raw_price_entry.grid(row=3, column=1, pady=5)
 
     # ---------- CRUD Functions ----------
+    def load_item_names():
+        cursor.execute("SELECT DISTINCT name FROM items ORDER BY name")
+        names = [row[0] for row in cursor.fetchall()]
+        name_entry["values"] = names
+
     def view_items(filter_text=""):
         for row in tree.get_children():
             tree.delete(row)
@@ -77,6 +82,7 @@ def open_inventory():
         rows = cursor.fetchall()
         for row in rows:
             tree.insert("", tk.END, values=row)
+        load_item_names()
 
     def clear_fields():
         name_entry.delete(0, tk.END)
@@ -159,14 +165,30 @@ def open_inventory():
         selected = tree.focus()
         if selected:
             values = tree.item(selected, "values")
-            name_entry.delete(0, tk.END)
-            quantity_entry.delete(0, tk.END)
-            price_entry.delete(0, tk.END)
-            raw_price_entry.delete(0, tk.END)
-            name_entry.insert(0, values[1])
-            quantity_entry.insert(0, values[2])
-            price_entry.insert(0, values[3])
-            raw_price_entry.insert(0, values[4])
+        name_entry.delete(0, tk.END)
+        quantity_entry.delete(0, tk.END)
+        price_entry.delete(0, tk.END)
+        raw_price_entry.delete(0, tk.END)
+        name_entry.insert(0, values[1])
+        quantity_entry.insert(0, values[2])
+        price_entry.insert(0, values[3])
+        raw_price_entry.insert(0, values[4])
+
+    def fill_from_dropdown(event):
+        selected_name = name_entry.get().strip()
+        if not selected_name:
+            return
+        cursor.execute("SELECT name, price, raw_price FROM items WHERE name = ? LIMIT 1", (selected_name,))
+        row = cursor.fetchone()
+        if not row:
+            return
+        _, price_val, raw_val = row
+        # Keep quantity blank so user can enter desired amount
+        price_entry.delete(0, tk.END)
+        raw_price_entry.delete(0, tk.END)
+        price_entry.insert(0, price_val)
+        raw_price_entry.insert(0, raw_val)
+        quantity_entry.delete(0, tk.END)
 
     def search_items(event):
         view_items(search_entry.get())
@@ -213,5 +235,8 @@ def open_inventory():
     tree.column("Raw Price", width=120, anchor="center")
 
     tree.bind("<ButtonRelease-1>", select_item)
+    name_entry.bind("<<ComboboxSelected>>", fill_from_dropdown)
+    # Refresh dropdown choices whenever the list is opened
+    name_entry.configure(postcommand=load_item_names)
 
     view_items()
