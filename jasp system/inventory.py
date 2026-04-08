@@ -46,31 +46,12 @@ def open_inventory():
     main_frame = tk.Frame(inventory_window, bg="#f4f6f9")
     main_frame.pack(fill="both", expand=True, padx=20, pady=10)
 
-    # -------- Left Frame: CRUD Form ----------
+    # -------- Left Frame: Actions ----------
     left_frame = tk.Frame(main_frame, bg="white", padx=20, pady=20, bd=2, relief="groove")
     left_frame.pack(side="left", fill="y", padx=(0,10), pady=5)
 
-    tk.Label(left_frame, text="Item Name", font=("Arial", 11, "bold"), bg="white").grid(row=0, column=0, padx=10, pady=5, sticky="w")
-    name_entry = ttk.Combobox(left_frame, width=23, font=("Arial", 11), state="normal")
-    name_entry.grid(row=0, column=1, pady=5, sticky="w")
-
-    tk.Label(left_frame, text="Quantity", font=("Arial", 11, "bold"), bg="white").grid(row=1, column=0, padx=10, pady=5, sticky="w")
-    quantity_entry = tk.Entry(left_frame, width=25, font=("Arial", 11))
-    quantity_entry.grid(row=1, column=1, pady=5)
-
-    tk.Label(left_frame, text="Selling Price", font=("Arial", 11, "bold"), bg="white").grid(row=2, column=0, padx=10, pady=5, sticky="w")
-    price_entry = tk.Entry(left_frame, width=25, font=("Arial", 11))
-    price_entry.grid(row=2, column=1, pady=5)
-
-    tk.Label(left_frame, text="Raw Price", font=("Arial", 11, "bold"), bg="white").grid(row=3, column=0, padx=10, pady=5, sticky="w")
-    raw_price_entry = tk.Entry(left_frame, width=25, font=("Arial", 11))
-    raw_price_entry.grid(row=3, column=1, pady=5)
-
     # ---------- CRUD Functions ----------
-    def load_item_names():
-        cursor.execute("SELECT DISTINCT name FROM items ORDER BY name")
-        names = [row[0] for row in cursor.fetchall()]
-        name_entry["values"] = names
+    sort_state = {"column": None, "ascending": True}
 
     def view_items(filter_text=""):
         for row in tree.get_children():
@@ -82,54 +63,104 @@ def open_inventory():
         rows = cursor.fetchall()
         for row in rows:
             tree.insert("", tk.END, values=row)
-        load_item_names()
 
-    def clear_fields():
-        name_entry.delete(0, tk.END)
-        quantity_entry.delete(0, tk.END)
-        price_entry.delete(0, tk.END)
-        raw_price_entry.delete(0, tk.END)
+    def sort_tree(column, numeric=False):
+        # Grab current rows
+        data = [(tree.set(k, column), k) for k in tree.get_children("")]
+        # Coerce numerics when needed
+        if numeric:
+            def to_num(val):
+                try:
+                    return float(val)
+                except ValueError:
+                    return 0
+            data = [(to_num(val), k) for val, k in data]
+        ascending = not (sort_state["column"] == column and sort_state["ascending"])
+        data.sort(reverse=not ascending)
+        for index, (_, k) in enumerate(data):
+            tree.move(k, "", index)
+        sort_state["column"] = column
+        sort_state["ascending"] = ascending
+
+    def open_item_form(mode, item_values=None):
+        form = tk.Toplevel(inventory_window)
+        form.title("Add Item" if mode == "add" else "Edit Item")
+        form.transient(inventory_window)
+        form.grab_set()
+        form.configure(bg="white")
+
+        tk.Label(form, text="Item Name", font=("Arial", 11, "bold"), bg="white").grid(row=0, column=0, padx=10, pady=5, sticky="w")
+        name_entry = tk.Entry(form, width=25, font=("Arial", 11))
+        name_entry.grid(row=0, column=1, pady=5)
+
+        tk.Label(form, text="Quantity", font=("Arial", 11, "bold"), bg="white").grid(row=1, column=0, padx=10, pady=5, sticky="w")
+        quantity_entry = tk.Entry(form, width=25, font=("Arial", 11))
+        quantity_entry.grid(row=1, column=1, pady=5)
+
+        tk.Label(form, text="Selling Price", font=("Arial", 11, "bold"), bg="white").grid(row=2, column=0, padx=10, pady=5, sticky="w")
+        price_entry = tk.Entry(form, width=25, font=("Arial", 11))
+        price_entry.grid(row=2, column=1, pady=5)
+
+        tk.Label(form, text="Raw Price", font=("Arial", 11, "bold"), bg="white").grid(row=3, column=0, padx=10, pady=5, sticky="w")
+        raw_price_entry = tk.Entry(form, width=25, font=("Arial", 11))
+        raw_price_entry.grid(row=3, column=1, pady=5)
+
+        if mode == "edit" and item_values:
+            name_entry.insert(0, item_values[1])
+            quantity_entry.insert(0, item_values[2])
+            price_entry.insert(0, item_values[3])
+            raw_price_entry.insert(0, item_values[4])
+
+        def submit():
+            name = name_entry.get().strip()
+            quantity = quantity_entry.get().strip()
+            price = price_entry.get().strip()
+            raw = raw_price_entry.get().strip()
+
+            if not name or not quantity or not price or not raw:
+                messagebox.showerror("Error", "All fields are required!", parent=form)
+                return
+
+            try:
+                quantity_val = int(quantity)
+                price_val = float(price)
+                raw_val = float(raw)
+            except ValueError:
+                messagebox.showerror("Error", "Quantity must be a whole number and prices must be numeric.", parent=form)
+                return
+
+            if mode == "add":
+                # If an item with the same name and price exists, stack quantities instead of creating a duplicate
+                cursor.execute("SELECT id, quantity FROM items WHERE name = ? AND price = ?", (name, price_val))
+                existing = cursor.fetchone()
+
+                if existing:
+                    item_id, current_qty = existing
+                    new_qty = int(current_qty) + quantity_val
+                    cursor.execute("UPDATE items SET quantity = ?, raw_price = ? WHERE id = ?", (new_qty, raw_val, item_id))
+                    success_msg = "Item quantity updated successfully!"
+                else:
+                    cursor.execute(
+                        "INSERT INTO items (name, quantity, price, raw_price) VALUES (?, ?, ?, ?)",
+                        (name, quantity_val, price_val, raw_val),
+                    )
+                    success_msg = "Item added successfully!"
+            else:
+                item_id = item_values[0]
+                cursor.execute("UPDATE items SET name=?, quantity=?, price=?, raw_price=? WHERE id=?",
+                               (name, quantity_val, price_val, raw_val, item_id))
+                success_msg = "Item updated successfully!"
+
+            conn.commit()
+            messagebox.showinfo("Success", success_msg, parent=form)
+            form.destroy()
+            view_items()
+
+        tk.Button(form, text="Save", width=15, bg="#28a745", fg="white", font=("Arial", 11, "bold"), command=submit).grid(row=4, column=0, pady=15)
+        tk.Button(form, text="Cancel", width=15, bg="#6c757d", fg="white", font=("Arial", 11, "bold"), command=form.destroy).grid(row=4, column=1, pady=15)
 
     def add_item():
-        name = name_entry.get().strip()
-        quantity = quantity_entry.get().strip()
-        price = price_entry.get().strip()
-        raw = raw_price_entry.get().strip()
-
-        if not name or not quantity or not price or not raw:
-            messagebox.showerror("Error", "All fields are required!", parent=inventory_window)
-            return
-
-        try:
-            quantity_val = int(quantity)
-            price_val = float(price)
-            raw_val = float(raw)
-        except ValueError:
-            messagebox.showerror("Error", "Quantity must be a whole number and prices must be numeric.", parent=inventory_window)
-            return
-
-        # If an item with the same name and price exists, stack quantities instead of creating a duplicate
-        cursor.execute("SELECT id, quantity FROM items WHERE name = ? AND price = ?", (name, price_val))
-        existing = cursor.fetchone()
-
-        if existing:
-            item_id, current_qty = existing
-            new_qty = int(current_qty) + quantity_val
-            cursor.execute("UPDATE items SET quantity = ?, raw_price = ? WHERE id = ?", (new_qty, raw_val, item_id))
-            success_msg = "Item quantity updated successfully!"
-        else:
-            cursor.execute(
-                "INSERT INTO items (name, quantity, price, raw_price) VALUES (?, ?, ?, ?)",
-                (name, quantity_val, price_val, raw_val),
-            )
-            success_msg = "Item added successfully!"
-
-        conn.commit()
-        messagebox.showinfo("Success", success_msg, parent=inventory_window)
-        inventory_window.lift()
-        inventory_window.focus_force()
-        clear_fields()
-        view_items()
+        open_item_form("add")
 
     def update_item():
         selected = tree.focus()
@@ -137,15 +168,7 @@ def open_inventory():
             messagebox.showerror("Error", "Select an item to update", parent=inventory_window)
             return
         values = tree.item(selected, "values")
-        item_id = values[0]
-        cursor.execute("UPDATE items SET name=?, quantity=?, price=?, raw_price=? WHERE id=?",
-                       (name_entry.get(), quantity_entry.get(), price_entry.get(), raw_price_entry.get(), item_id))
-        conn.commit()
-        messagebox.showinfo("Success", "Item Updated Successfully!", parent=inventory_window)
-        inventory_window.lift()
-        inventory_window.focus_force()
-        clear_fields()
-        view_items()
+        open_item_form("edit", values)
 
     def delete_item():
         selected = tree.focus()
@@ -161,47 +184,18 @@ def open_inventory():
         inventory_window.focus_force()
         view_items()
 
-    def select_item(event):
-        selected = tree.focus()
-        if selected:
-            values = tree.item(selected, "values")
-        name_entry.delete(0, tk.END)
-        quantity_entry.delete(0, tk.END)
-        price_entry.delete(0, tk.END)
-        raw_price_entry.delete(0, tk.END)
-        name_entry.insert(0, values[1])
-        quantity_entry.insert(0, values[2])
-        price_entry.insert(0, values[3])
-        raw_price_entry.insert(0, values[4])
-
-    def fill_from_dropdown(event):
-        selected_name = name_entry.get().strip()
-        if not selected_name:
-            return
-        cursor.execute("SELECT name, price, raw_price FROM items WHERE name = ? LIMIT 1", (selected_name,))
-        row = cursor.fetchone()
-        if not row:
-            return
-        _, price_val, raw_val = row
-        # Keep quantity blank so user can enter desired amount
-        price_entry.delete(0, tk.END)
-        raw_price_entry.delete(0, tk.END)
-        price_entry.insert(0, price_val)
-        raw_price_entry.insert(0, raw_val)
-        quantity_entry.delete(0, tk.END)
-
     def search_items(event):
+        # Live filter while typing (desktop equivalent of ajax search)
         view_items(search_entry.get())
 
     def back_to_main():
         inventory_window.destroy()
 
     # ---------- Buttons ----------
-    tk.Button(left_frame, text="Add Item", width=15, bg="#28a745", fg="white", font=("Arial", 11, "bold"), command=add_item).grid(row=4, column=0, pady=10)
-    tk.Button(left_frame, text="Update Item", width=15, bg="#007bff", fg="white", font=("Arial", 11, "bold"), command=update_item).grid(row=4, column=1, pady=10)
-    tk.Button(left_frame, text="Delete Item", width=15, bg="#dc3545", fg="white", font=("Arial", 11, "bold"), command=delete_item).grid(row=5, column=0, pady=10)
-    tk.Button(left_frame, text="Clear", width=15, bg="#6c757d", fg="white", font=("Arial", 11, "bold"), command=clear_fields).grid(row=5, column=1, pady=10)
-    tk.Button(left_frame, text="Back", width=32, bg="#ffc107", fg="black", font=("Arial", 11, "bold"), command=back_to_main).grid(row=6, column=0, columnspan=2, pady=20)
+    tk.Button(left_frame, text="Add Item", width=20, bg="#28a745", fg="white", font=("Arial", 11, "bold"), command=add_item).grid(row=0, column=0, pady=10, padx=5)
+    tk.Button(left_frame, text="Edit Item", width=20, bg="#007bff", fg="white", font=("Arial", 11, "bold"), command=update_item).grid(row=1, column=0, pady=10, padx=5)
+    tk.Button(left_frame, text="Delete Item", width=20, bg="#dc3545", fg="white", font=("Arial", 11, "bold"), command=delete_item).grid(row=2, column=0, pady=10, padx=5)
+    tk.Button(left_frame, text="Back", width=20, bg="#ffc107", fg="black", font=("Arial", 11, "bold"), command=back_to_main).grid(row=3, column=0, pady=20, padx=5)
 
     # -------- Right Frame: Table + Search ----------
     right_frame = tk.Frame(main_frame, bg="#f4f6f9", padx=10, pady=10)
@@ -223,20 +217,15 @@ def open_inventory():
     tree.configure(yscrollcommand=v_scroll.set, xscrollcommand=h_scroll.set)
     tree.pack(fill="both", expand=True)
 
-    tree.heading("ID", text="ID")
+    tree.heading("ID", text="ID", command=lambda: sort_tree("ID", numeric=True))
     tree.column("ID", width=70, anchor="center")
-    tree.heading("Name", text="Name")
+    tree.heading("Name", text="Name", command=lambda: sort_tree("Name", numeric=False))
     tree.column("Name", width=250, anchor="w")
-    tree.heading("Quantity", text="Quantity")
+    tree.heading("Quantity", text="Quantity", command=lambda: sort_tree("Quantity", numeric=True))
     tree.column("Quantity", width=120, anchor="center")
-    tree.heading("Price", text="Selling Price")
+    tree.heading("Price", text="Selling Price", command=lambda: sort_tree("Price", numeric=True))
     tree.column("Price", width=120, anchor="center")
-    tree.heading("Raw Price", text="Raw Price")
+    tree.heading("Raw Price", text="Raw Price", command=lambda: sort_tree("Raw Price", numeric=True))
     tree.column("Raw Price", width=120, anchor="center")
-
-    tree.bind("<ButtonRelease-1>", select_item)
-    name_entry.bind("<<ComboboxSelected>>", fill_from_dropdown)
-    # Refresh dropdown choices whenever the list is opened
-    name_entry.configure(postcommand=load_item_names)
 
     view_items()
