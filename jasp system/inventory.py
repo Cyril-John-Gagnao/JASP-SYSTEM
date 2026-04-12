@@ -82,6 +82,26 @@ def open_inventory():
         sort_state["column"] = column
         sort_state["ascending"] = ascending
 
+    def log_restock(name, qty_added, price, raw_price):
+        ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        total_cost = raw_price * qty_added
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS restocks (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                item_name TEXT NOT NULL,
+                qty INTEGER NOT NULL,
+                price REAL NOT NULL,
+                raw_price REAL DEFAULT 0,
+                total_cost REAL NOT NULL,
+                ts TEXT NOT NULL
+            )
+        """)
+        cursor.execute(
+            "INSERT INTO restocks (item_name, qty, price, raw_price, total_cost, ts) VALUES (?, ?, ?, ?, ?, ?)",
+            (name, qty_added, price, raw_price, total_cost, ts)
+        )
+        conn.commit()
+
     def open_item_form(mode, item_values=None):
         form = tk.Toplevel(inventory_window)
         form.title("Add Item" if mode == "add" else "Edit Item")
@@ -139,17 +159,22 @@ def open_inventory():
                     new_qty = int(current_qty) + quantity_val
                     cursor.execute("UPDATE items SET quantity = ?, raw_price = ? WHERE id = ?", (new_qty, raw_val, item_id))
                     success_msg = "Item quantity updated successfully!"
+                    log_restock(name, quantity_val, price_val, raw_val)
                 else:
                     cursor.execute(
                         "INSERT INTO items (name, quantity, price, raw_price) VALUES (?, ?, ?, ?)",
                         (name, quantity_val, price_val, raw_val),
                     )
                     success_msg = "Item added successfully!"
+                    log_restock(name, quantity_val, price_val, raw_val)
             else:
                 item_id = item_values[0]
+                previous_qty = int(item_values[2])
                 cursor.execute("UPDATE items SET name=?, quantity=?, price=?, raw_price=? WHERE id=?",
                                (name, quantity_val, price_val, raw_val, item_id))
                 success_msg = "Item updated successfully!"
+                if quantity_val > previous_qty:
+                    log_restock(name, quantity_val - previous_qty, price_val, raw_val)
 
             conn.commit()
             messagebox.showinfo("Success", success_msg, parent=form)

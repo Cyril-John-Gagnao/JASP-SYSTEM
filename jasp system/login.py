@@ -39,9 +39,9 @@ def setup_database():
     conn.close()
 
 # ---------- OPEN MAIN DASHBOARD ----------
-def open_main():
+def open_main_in_place():
     import main_dashboard
-    main_dashboard.open_main()
+    main_dashboard.open_main(root)
 
 # ---------- LOGIN FUNCTION ----------
 def login():
@@ -67,8 +67,7 @@ def login():
 
     if user:
         messagebox.showinfo("Success", "Login Successful!")
-        root.destroy()
-        open_main()
+        open_main_in_place()
     else:
         messagebox.showerror("Error", "Invalid Username or Password")
 
