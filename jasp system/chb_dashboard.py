@@ -5,6 +5,7 @@ from datetime import datetime
 import os
 
 DB_NAME = os.path.join(os.path.dirname(__file__), "jasp.db")
+CHB_ITEM_NAME = "CHB Blocks"
 
 # 🎨 COLORS
 BG_MAIN = "#eef6ff"
@@ -19,7 +20,6 @@ BORDER = "#dbeafe"
 def init_db():
     conn = sqlite3.connect(DB_NAME)
     cursor = conn.cursor()
-
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS chb_production (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -29,6 +29,7 @@ def init_db():
             fine_sand REAL,
             total_blocks INTEGER,
             pay REAL,
+            pay_rate REAL DEFAULT 200,
             ts TEXT
         )
     """)
@@ -43,8 +44,48 @@ def init_db():
         )
     """)
 
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS sales (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            item_name TEXT NOT NULL,
+            qty INTEGER NOT NULL,
+            price REAL NOT NULL,
+            raw_price REAL DEFAULT 0,
+            total REAL NOT NULL,
+            ts TEXT NOT NULL
+        )
+    """)
+
+    # Backfill pay_rate for older databases
+    cursor.execute("PRAGMA table_info(chb_production)")
+    existing_cols = [col[1] for col in cursor.fetchall()]
+    if "pay_rate" not in existing_cols:
+        cursor.execute("ALTER TABLE chb_production ADD COLUMN pay_rate REAL DEFAULT 200")
+
     conn.commit()
     conn.close()
+
+
+def sync_chb_inventory(conn, cursor):
+    """Mirror CHB stock in the inventory table (production minus sales)."""
+    cursor.execute("SELECT COALESCE(SUM(total_blocks),0) FROM chb_production")
+    produced = cursor.fetchone()[0] or 0
+
+    cursor.execute("SELECT COALESCE(SUM(qty),0) FROM sales WHERE item_name=?", (CHB_ITEM_NAME,))
+    sold = cursor.fetchone()[0] or 0
+
+    stock = max(produced - sold, 0)
+
+    cursor.execute("SELECT id FROM items WHERE name=?", (CHB_ITEM_NAME,))
+    row = cursor.fetchone()
+    if row:
+        cursor.execute("UPDATE items SET quantity=? WHERE id=?", (stock, row[0]))
+    else:
+        cursor.execute(
+            "INSERT INTO items (name, quantity, price, raw_price) VALUES (?, ?, ?, ?)",
+            (CHB_ITEM_NAME, stock, 0, 0)
+        )
+    conn.commit()
 
 
 # ================= MAIN =================
@@ -58,6 +99,17 @@ def open_chb_dashboard():
 
     conn = sqlite3.connect(DB_NAME)
     cursor = conn.cursor()
+    sync_chb_inventory(conn, cursor)
+
+    cursor.execute("SELECT pay_rate FROM chb_production ORDER BY ts DESC LIMIT 1")
+    last_rate = cursor.fetchone()
+    if last_rate and last_rate[0] is not None:
+        try:
+            pay_rate_default = float(last_rate[0])
+        except Exception:
+            pay_rate_default = 200
+    else:
+        pay_rate_default = 200
 
     selected_id = tk.StringVar()
 
@@ -145,6 +197,11 @@ def open_chb_dashboard():
     sand_entry = tk.Entry(form)
     sand_entry.grid(row=3, column=1)
 
+    tk.Label(form, text="Pay / 150 Blocks", bg=CARD_BG).grid(row=4, column=0)
+    pay_rate_var = tk.DoubleVar(value=pay_rate_default)
+    pay_rate_entry = tk.Entry(form, textvariable=pay_rate_var)
+    pay_rate_entry.grid(row=4, column=1)
+
     result_label = tk.Label(
         card,
         text="Blocks: 0 | Pay: ₱0",
@@ -164,7 +221,7 @@ def open_chb_dashboard():
             sand_entry.insert(0, str(sand))
 
             blocks = cement * 150
-            pay = cement * 200
+            pay = cement * float(pay_rate_var.get() or 0)
 
             result_label.config(text=f"Blocks: {blocks:,} | Pay: ₱{pay:,}")
 
@@ -173,6 +230,7 @@ def open_chb_dashboard():
             result_label.config(text="Blocks: 0 | Pay: ₱0")
 
     cement_entry.bind("<KeyRelease>", auto_sand)
+    pay_rate_entry.bind("<KeyRelease>", auto_sand)
 
     # ================= FUNCTIONS =================
     def clear_form():
@@ -187,7 +245,8 @@ def open_chb_dashboard():
             cement = int(cement_entry.get())
             sand = cement * 15
             blocks = cement * 150
-            pay = cement * 200
+            pay_rate = float(pay_rate_var.get())
+            pay = cement * pay_rate
         except:
             messagebox.showerror("Error", "Invalid input", parent=win)
             return
@@ -203,11 +262,12 @@ def open_chb_dashboard():
 
         cursor.execute("""
             INSERT INTO chb_production
-            (production_date, worker_name, cement_bags, fine_sand, total_blocks, pay, ts)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-        """, (date, worker, cement, sand, blocks, pay, ts))
+            (production_date, worker_name, cement_bags, fine_sand, total_blocks, pay, pay_rate, ts)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """, (date, worker, cement, sand, blocks, pay, pay_rate, ts))
 
         conn.commit()
+        sync_chb_inventory(conn, cursor)
         load_data()
         clear_form()
 
@@ -220,23 +280,25 @@ def open_chb_dashboard():
             cement = int(cement_entry.get())
             sand = cement * 15
             blocks = cement * 150
-            pay = cement * 200
+            pay_rate = float(pay_rate_var.get())
+            pay = cement * pay_rate
         except:
             messagebox.showerror("Error", "Invalid input", parent=win)
             return
 
         cursor.execute("""
             UPDATE chb_production
-            SET production_date=?, worker_name=?, cement_bags=?, fine_sand=?, total_blocks=?, pay=?
+            SET production_date=?, worker_name=?, cement_bags=?, fine_sand=?, total_blocks=?, pay=?, pay_rate=?
             WHERE id=?
         """, (
             date_var.get(),
             worker_entry.get(),
-            cement, sand, blocks, pay,
+            cement, sand, blocks, pay, pay_rate,
             selected_id.get()
         ))
 
         conn.commit()
+        sync_chb_inventory(conn, cursor)
         load_data()
         clear_form()
 
@@ -246,6 +308,7 @@ def open_chb_dashboard():
 
         cursor.execute("DELETE FROM chb_production WHERE id=?", (selected_id.get(),))
         conn.commit()
+        sync_chb_inventory(conn, cursor)
         load_data()
         clear_form()
 
@@ -278,6 +341,11 @@ def open_chb_dashboard():
 
             sand_entry.delete(0, tk.END)
             sand_entry.insert(0, values[4])
+
+            cursor.execute("SELECT pay_rate FROM chb_production WHERE id=?", (values[0],))
+            pr = cursor.fetchone()
+            pay_rate_var.set(pr[0] if pr and pr[0] is not None else 200)
+            auto_sand()
 
     tree.bind("<ButtonRelease-1>", on_select)
 

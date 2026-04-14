@@ -1,10 +1,12 @@
 import sqlite3
 import tkinter as tk
 from tkinter import ttk, messagebox
+from datetime import datetime
 import os
 
 
 DB_NAME = os.path.join(os.path.dirname(__file__), "jasp.db")
+CHB_ITEM_NAME = "CHB Blocks"
 # Prevent multiple inventory windows
 inventory_window = None
 
@@ -36,6 +38,54 @@ def open_inventory():
     """)
     conn.commit()
 
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS sales (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        item_name TEXT NOT NULL,
+        qty INTEGER NOT NULL,
+        price REAL NOT NULL,
+        raw_price REAL DEFAULT 0,
+        total REAL NOT NULL,
+        ts TEXT NOT NULL
+    )
+    """)
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS chb_production (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        production_date TEXT,
+        worker_name TEXT,
+        cement_bags INTEGER,
+        fine_sand REAL,
+        total_blocks INTEGER,
+        pay REAL,
+        pay_rate REAL DEFAULT 200,
+        ts TEXT
+    )
+    """)
+    conn.commit()
+
+    def compute_chb_stock():
+        cursor.execute("SELECT COALESCE(SUM(total_blocks),0) FROM chb_production")
+        produced = cursor.fetchone()[0] or 0
+        cursor.execute("SELECT COALESCE(SUM(qty),0) FROM sales WHERE item_name=?", (CHB_ITEM_NAME,))
+        sold = cursor.fetchone()[0] or 0
+        return max(produced - sold, 0)
+
+    def ensure_chb_item():
+        stock = compute_chb_stock()
+        cursor.execute("SELECT id FROM items WHERE name=?", (CHB_ITEM_NAME,))
+        row = cursor.fetchone()
+        if row:
+            cursor.execute("UPDATE items SET quantity=? WHERE id=?", (stock, row[0]))
+        else:
+            cursor.execute(
+                "INSERT INTO items (name, quantity, price, raw_price) VALUES (?, ?, ?, ?)",
+                (CHB_ITEM_NAME, stock, 0, 0)
+            )
+        conn.commit()
+
+    ensure_chb_item()
+
     # ---------- GUI ----------
     inventory_window = tk.Toplevel()
     inventory_window.title("Inventory Management")
@@ -55,6 +105,7 @@ def open_inventory():
     sort_state = {"column": None, "ascending": True}
 
     def view_items(filter_text=""):
+        ensure_chb_item()
         for row in tree.get_children():
             tree.delete(row)
         if filter_text:
@@ -132,6 +183,12 @@ def open_inventory():
             price_entry.insert(0, item_values[3])
             raw_price_entry.insert(0, item_values[4])
 
+            if item_values[1] == CHB_ITEM_NAME:
+                name_entry.config(state="disabled")
+                quantity_entry.config(state="disabled")
+                raw_price_entry.config(state="disabled")
+                tk.Label(form, text="Quantity is auto from CHB production. Only price can be updated.", fg="#dc2626", bg="white", font=("Arial", 9, "italic")).grid(row=5, column=0, columnspan=2, pady=(4, 0))
+
         def submit():
             name = name_entry.get().strip()
             quantity = quantity_entry.get().strip()
@@ -142,6 +199,10 @@ def open_inventory():
                 messagebox.showerror("Error", "All fields are required!", parent=form)
                 return
 
+            if mode == "add" and name == CHB_ITEM_NAME:
+                messagebox.showerror("Error", "CHB quantity is auto-generated. Edit price only via the existing CHB item.", parent=form)
+                return
+
             try:
                 quantity_val = int(quantity)
                 price_val = float(price)
@@ -149,6 +210,12 @@ def open_inventory():
             except ValueError:
                 messagebox.showerror("Error", "Quantity must be a whole number and prices must be numeric.", parent=form)
                 return
+
+            # Lock quantity/name for CHB on edit – only allow price change
+            if mode == "edit" and item_values and item_values[1] == CHB_ITEM_NAME:
+                name = CHB_ITEM_NAME
+                quantity_val = int(item_values[2])
+                raw_val = float(item_values[4])
 
             if mode == "add":
                 # If an item with the same name and price exists, stack quantities instead of creating a duplicate
@@ -202,6 +269,9 @@ def open_inventory():
             messagebox.showerror("Error", "Select an item to delete", parent=inventory_window)
             return
         values = tree.item(selected, "values")
+        if values[1] == CHB_ITEM_NAME:
+            messagebox.showerror("Error", "CHB item cannot be deleted. Quantity is synced from production.", parent=inventory_window)
+            return
         item_id = values[0]
         cursor.execute("DELETE FROM items WHERE id=?", (item_id,))
         conn.commit()
