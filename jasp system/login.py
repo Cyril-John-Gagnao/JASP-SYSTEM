@@ -73,37 +73,37 @@ def login():
 
 
 # ---------- REGISTER FUNCTION ----------
-def register():
-    username = username_entry.get().strip()
-    password_input = password_entry.get().strip()
-    role = "admin"
+# def register():
+#     username = username_entry.get().strip()
+#     password_input = password_entry.get().strip()
+#     role = "admin"
 
-    # ❗ EMPTY CHECK
-    if username == "" or password_input == "":
-        messagebox.showerror("Error", "All fields are required!")
-        return
+#     # ❗ EMPTY CHECK
+#     if username == "" or password_input == "":
+#         messagebox.showerror("Error", "All fields are required!")
+#         return
 
-    # ❗ OPTIONAL: Minimum password length
-    if len(password_input) < 4:
-        messagebox.showerror("Error", "Password must be at least 4 characters")
-        return
+#     # ❗ OPTIONAL: Minimum password length
+#     if len(password_input) < 4:
+#         messagebox.showerror("Error", "Password must be at least 4 characters")
+#         return
 
-    password = hash_password(password_input)
+#     password = hash_password(password_input)
 
-    conn = sqlite3.connect(DB_NAME)
-    cursor = conn.cursor()
+#     conn = sqlite3.connect(DB_NAME)
+#     cursor = conn.cursor()
 
-    try:
-        cursor.execute(
-            "INSERT INTO users (username, password, role) VALUES (?, ?, ?)",
-            (username, password, role)
-        )
-        conn.commit()
-        messagebox.showinfo("Success", "User Registered!")
-    except sqlite3.IntegrityError:
-        messagebox.showerror("Error", "Username already exists")
+#     try:
+#         cursor.execute(
+#             "INSERT INTO users (username, password, role) VALUES (?, ?, ?)",
+#             (username, password, role)
+#         )
+#         conn.commit()
+#         messagebox.showinfo("Success", "User Registered!")
+#     except sqlite3.IntegrityError:
+#         messagebox.showerror("Error", "Username already exists")
 
-    conn.close()
+#     conn.close()
 
 # ---------- GUI ----------
 setup_database()
@@ -161,11 +161,11 @@ login_btn.bind("<Enter>", on_enter)
 login_btn.bind("<Leave>", on_leave)
 
 # ---------- Register Button ----------
-register_btn = tk.Button(login_frame, text="Register",
-                         font=("Arial", 10),
-                         width=30, bg="#007bff", fg="white",
-                         relief="flat", command=register)
-register_btn.pack(ipady=5)
+#register_btn = tk.Button(login_frame, text="Register",
+#                        font=("Arial", 10),
+#                         width=30, bg="#007bff", fg="white",
+#                        relief="flat", command=register)
+#register_btn.pack(ipady=5)
 
 # ---------- Exit Button ----------
 tk.Button(root, text="Exit", command=root.destroy,

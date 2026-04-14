@@ -3,6 +3,7 @@ import tkinter as tk
 from tkinter import ttk, messagebox
 import os
 
+
 DB_NAME = os.path.join(os.path.dirname(__file__), "jasp.db")
 # Prevent multiple inventory windows
 inventory_window = None
