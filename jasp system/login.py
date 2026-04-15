@@ -40,8 +40,13 @@ def setup_database():
 
 # ---------- OPEN MAIN DASHBOARD ----------
 def open_main_in_place():
-    import main_dashboard
-    main_dashboard.open_main(root)
+    try:
+        import main_dashboard
+        main_dashboard.open_main(root)
+    except Exception as e:
+        messagebox.showerror("Error Loading Dashboard", f"Failed to load dashboard:\n\n{str(e)}\n\nCheck console for details.")
+        import traceback
+        traceback.print_exc()
 
 # ---------- LOGIN FUNCTION ----------
 def login():
