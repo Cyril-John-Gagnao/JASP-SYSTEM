@@ -45,7 +45,9 @@ def build_table(parent, columns, rows):
     style.configure("Dash.Treeview.Heading", font=("Arial", 10, "bold"), foreground=TEXT_PRIMARY)
     style.map("Dash.Treeview", background=[("selected", ACCENT)])
 
-    tree = ttk.Treeview(parent, columns=columns, show="headings", style="Dash.Treeview", height=6)
+    # Extract column IDs from columns tuples
+    col_ids = [col for col, _, _ in columns]
+    tree = ttk.Treeview(parent, columns=col_ids, show="headings", style="Dash.Treeview", height=6)
     for col, heading, width in columns:
         tree.heading(col, text=heading)
         tree.column(col, anchor="w", width=width, stretch=True)
