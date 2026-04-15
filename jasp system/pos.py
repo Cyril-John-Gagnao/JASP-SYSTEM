@@ -47,13 +47,27 @@ def open_pos():
     def load_inventory(search_query=""):
         for row in inv_tree.get_children():
             inv_tree.delete(row)
+
+        query = "SELECT * FROM items"
+        params = []
+
+        # 🔍 KEEP YOUR SEARCH (unchanged logic)
         if search_query:
-            cursor.execute("SELECT * FROM items WHERE name LIKE ?", ('%' + search_query + '%',))
+            query += " WHERE name LIKE ?"
+            params.append('%' + search_query + '%')
+
+        # 🔽 ADD SORTING (NEW PART)
+        if sort_var.get() == "Name":
+            query += " ORDER BY LOWER(name) ASC"
         else:
-            cursor.execute("SELECT * FROM items")
+            query += " ORDER BY id DESC"
+
+        cursor.execute(query, params)
+
         rows = cursor.fetchall()
         for row in rows:
             inv_tree.insert("", tk.END, values=row)
+
         refresh_inventory_names()
 
     # ---------- Cart Functions ----------
@@ -325,6 +339,22 @@ def open_pos():
               command=lambda: load_inventory(search_entry.get())).pack(side=tk.LEFT, padx=10)
     tk.Button(top_frame, text="Back", bg="#dc3545", fg="white", font=("Arial", 10, "bold"),
               command=back_to_main).pack(side=tk.RIGHT, padx=20)
+    
+    tk.Label(top_frame, text="Sort By:", bg="#f4f6f9").pack(side=tk.LEFT, padx=5)
+
+    sort_var = tk.StringVar(value="Name")
+
+    sort_menu = ttk.Combobox(
+        top_frame,
+        textvariable=sort_var,
+        values=["Name", "Newest"],
+        state="readonly",
+        width=12
+    )
+    sort_menu.pack(side=tk.LEFT, padx=5)
+
+    # reload when changed
+    sort_menu.bind("<<ComboboxSelected>>", lambda e: load_inventory(search_entry.get()))
 
     # ====== Main Frame ======
     main_frame = tk.Frame(root, bg="#f4f6f9")

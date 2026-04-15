@@ -3,6 +3,7 @@ from tkinter import ttk, messagebox
 import sqlite3
 from datetime import datetime
 import os
+from delivery_section import open_delivery_window
 
 DB_NAME = os.path.join(os.path.dirname(__file__), "jasp.db")
 CHB_ITEM_NAME = "CHB Blocks"
@@ -151,17 +152,17 @@ def open_chb_dashboard():
 
     # ================= SEARCH =================
     search_frame = tk.Frame(win, bg=BG_MAIN)
-    search_frame.pack(fill="x", padx=20, pady=(0, 10))
+    search_frame.pack(fill="x", padx=20, pady=(0, 15))
 
-    tk.Label(search_frame, text="🔍 Search:", bg=BG_MAIN, fg=TEXT)\
-        .pack(side="left", padx=5)
+    tk.Label(search_frame, text="🔍 Search:", bg=BG_MAIN, fg=TEXT, font=("Arial", 12, "bold"))\
+        .pack(side="left", padx=10, pady=10)
 
     search_var = tk.StringVar()
-    search_entry = tk.Entry(search_frame, textvariable=search_var, width=30)
-    search_entry.pack(side="left", padx=5)
+    search_entry = tk.Entry(search_frame, textvariable=search_var, width=35, font=("Arial", 11), bd=2, relief="solid")
+    search_entry.pack(side="left", padx=10, pady=10)
 
-    tk.Label(search_frame, text="Sort By:", bg=BG_MAIN, fg=TEXT)\
-        .pack(side="left", padx=(20, 5))
+    tk.Label(search_frame, text="Sort By:", bg=BG_MAIN, fg=TEXT, font=("Arial", 12, "bold"))\
+        .pack(side="left", padx=(30, 10), pady=10)
 
     sort_var = tk.StringVar(value="Date (Newest)")
 
@@ -170,52 +171,99 @@ def open_chb_dashboard():
         textvariable=sort_var,
         values=["Date (Newest)", "Worker Name"],
         state="readonly",
-        width=18
+        width=22,
+        font=("Arial", 11)
     )
-    sort_menu.pack(side="left")
+    sort_menu.pack(side="left", pady=10)
 
-    # ================= FORM =================
-    card = tk.Frame(win, bg=CARD_BG, bd=1, relief="solid")
-    card.pack(padx=20, pady=10, fill="x")
+    # ================= TOTAL HOLLOW BLOCKS DISPLAY =================
+    total_frame = tk.Frame(win, bg=BG_MAIN)
+    total_frame.pack(fill="x", padx=20, pady=(5, 10))
 
-    form = tk.Frame(card, bg=CARD_BG)
-    form.pack(pady=15, padx=20)
+    total_blocks_var = tk.StringVar(value="Total Hollow Blocks Available: 0")
 
-    tk.Label(form, text="Production Date", bg=CARD_BG).grid(row=0, column=0)
+    total_label = tk.Label(
+        total_frame,
+        textvariable=total_blocks_var,
+        font=("Arial", 14, "bold"),
+        bg=BG_MAIN,
+        fg="#1e40af"
+    )
+    total_label.pack(side="left")
+
+    # ================= MAIN CONTAINER (40-60 Split) =================
+    main_container = tk.Frame(win, bg=CARD_BG, bd=1, relief="solid")
+    main_container.pack(padx=20, pady=10, fill="both", expand=True)
+
+    # Configure columns: form (40%) and table (60%)
+    main_container.columnconfigure(0, weight=2)  # form - 40%
+    main_container.columnconfigure(1, weight=3)  # table - 60%
+    main_container.rowconfigure(0, weight=1)
+
+    # ================= FORM (LEFT SIDE - 40%) =================
+    form_card = tk.Frame(main_container, bg=CARD_BG)
+    form_card.grid(row=0, column=0, sticky="nsew", padx=15, pady=15)
+    form_card.columnconfigure(1, weight=1)
+
+    # Form Title
+    tk.Label(form_card, text="CHB Production", font=("Arial", 18, "bold"), bg=CARD_BG, fg=PRIMARY).pack(pady=(0, 20))
+
+    # Form Background Frame
+    form_bg = tk.Frame(form_card, bg="#f8fafb", bd=1, relief="flat")
+    form_bg.pack(fill="x", padx=5, pady=10)
+
+    form = tk.Frame(form_bg, bg="#f8fafb")
+    form.pack(fill="x", padx=20, pady=20)
+
+    # Production Date
+    tk.Label(form, text="Production Date", bg="#f8fafb", font=("Arial", 11, "bold"), fg="#1e293b").grid(row=0, column=0, sticky="w", pady=10)
     date_var = tk.StringVar(value=datetime.now().strftime("%Y-%m-%d"))
-    tk.Entry(form, textvariable=date_var).grid(row=0, column=1)
+    date_entry = tk.Entry(form, textvariable=date_var, width=20, font=("Arial", 11), bd=1, relief="solid", bg="white")
+    date_entry.grid(row=0, column=1, sticky="ew", padx=15, pady=10)
 
-    tk.Label(form, text="Worker Name", bg=CARD_BG).grid(row=1, column=0)
-    worker_entry = tk.Entry(form)
-    worker_entry.grid(row=1, column=1)
+    # Worker Name
+    tk.Label(form, text="Worker Name", bg="#f8fafb", font=("Arial", 11, "bold"), fg="#1e293b").grid(row=1, column=0, sticky="w", pady=10)
+    worker_entry = tk.Entry(form, width=20, font=("Arial", 11), bd=1, relief="solid", bg="white")
+    worker_entry.grid(row=1, column=1, sticky="ew", padx=15, pady=10)
 
-    tk.Label(form, text="Cement Bags", bg=CARD_BG).grid(row=2, column=0)
-    cement_entry = tk.Entry(form)
-    cement_entry.grid(row=2, column=1)
+    # Cement Bags
+    tk.Label(form, text="Bag/s of Cement", bg="#f8fafb", font=("Arial", 11, "bold"), fg="#1e293b").grid(row=2, column=0, sticky="w", pady=10)
+    cement_entry = tk.Entry(form, width=20, font=("Arial", 11), bd=1, relief="solid", bg="white")
+    cement_entry.grid(row=2, column=1, sticky="ew", padx=15, pady=10)
 
-    tk.Label(form, text="Fine Sand (Auto)", bg=CARD_BG).grid(row=3, column=0)
-    sand_entry = tk.Entry(form)
-    sand_entry.grid(row=3, column=1)
+    # Bag of Fine Sand
+    tk.Label(form, text="Bag/s of Fine Sand", bg="#f8fafb", font=("Arial", 11, "bold"), fg="#1e293b").grid(row=3, column=0, sticky="w", pady=10)
+    sand_entry = tk.Entry(form, width=20, font=("Arial", 11), bd=1, relief="solid", bg="white")
+    sand_entry.grid(row=3, column=1, sticky="ew", padx=15, pady=10)
 
-    tk.Label(form, text="Pay / 150 Blocks", bg=CARD_BG).grid(row=4, column=0)
+    # Pay Rate
+    tk.Label(form, text="Worker Salary / 150 Blocks  (₱)", bg="#f8fafb", font=("Arial", 11, "bold"), fg="#1e293b").grid(row=4, column=0, sticky="w", pady=10)
     pay_rate_var = tk.DoubleVar(value=pay_rate_default)
-    pay_rate_entry = tk.Entry(form, textvariable=pay_rate_var)
-    pay_rate_entry.grid(row=4, column=1)
+    pay_rate_entry = tk.Entry(form, textvariable=pay_rate_var, width=20, font=("Arial", 11), bd=1, relief="solid", bg="white")
+    pay_rate_entry.grid(row=4, column=1, sticky="ew", padx=15, pady=10)
 
+    # Configure column weight for better alignment
+    form.columnconfigure(1, weight=1)
+
+    # Result Display
     result_label = tk.Label(
-        card,
+        form_card,
         text="Blocks: 0 | Pay: ₱0",
-        font=("Arial", 12, "bold"),
-        bg=CARD_BG,
-        fg=PRIMARY
+        font=("Arial", 14, "bold"),
+        bg="#e0f2fe",
+        fg="#0369a1",
+        pady=12
     )
-    result_label.pack(pady=10)
+    result_label.pack(pady=15, fill="x", padx=5)
+
+    # Buttons Frame
+    btn_frame = tk.Frame(form_card, bg=CARD_BG)
+    btn_frame.pack(pady=15, fill="x")
 
     # ================= AUTO CALC =================
     def auto_sand(event=None):
         try:
             cement = int(cement_entry.get() or 0)
-
             sand = cement * 15
             sand_entry.delete(0, tk.END)
             sand_entry.insert(0, str(sand))
@@ -258,6 +306,10 @@ def open_chb_dashboard():
             messagebox.showerror("Error", "Fill all fields", parent=win)
             return
 
+        # Confirmation dialog
+        if not messagebox.askyesno("Confirm Save", f"Save production record for {worker}?", parent=win):
+            return
+
         ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
         cursor.execute("""
@@ -270,6 +322,7 @@ def open_chb_dashboard():
         sync_chb_inventory(conn, cursor)
         load_data()
         clear_form()
+        messagebox.showinfo("Success", "Record saved successfully!", parent=win)
 
     def update():
         if not selected_id.get():
@@ -284,6 +337,10 @@ def open_chb_dashboard():
             pay = cement * pay_rate
         except:
             messagebox.showerror("Error", "Invalid input", parent=win)
+            return
+
+        # Confirmation dialog
+        if not messagebox.askyesno("Confirm Update", f"Update record for {worker_entry.get()}?", parent=win):
             return
 
         cursor.execute("""
@@ -301,9 +358,14 @@ def open_chb_dashboard():
         sync_chb_inventory(conn, cursor)
         load_data()
         clear_form()
+        messagebox.showinfo("Success", "Record updated successfully!", parent=win)
 
     def delete():
         if not selected_id.get():
+            return
+
+        # Confirmation dialog
+        if not messagebox.askyesno("Confirm Delete", f"Delete record for {worker_entry.get()}?\n\nThis action cannot be undone.", parent=win):
             return
 
         cursor.execute("DELETE FROM chb_production WHERE id=?", (selected_id.get(),))
@@ -311,19 +373,63 @@ def open_chb_dashboard():
         sync_chb_inventory(conn, cursor)
         load_data()
         clear_form()
+        messagebox.showinfo("Success", "Record deleted successfully!", parent=win)
 
-    # ================= TABLE =================
-    table_card = tk.Frame(win, bg=CARD_BG)
-    table_card.pack(fill="both", expand=True, padx=20, pady=10)
+    def update_total_blocks():
+        cursor.execute("SELECT COALESCE(SUM(total_blocks),0) FROM chb_production")
+        produced = cursor.fetchone()[0] or 0
 
-    columns = ("id", "date", "worker", "cement", "sand", "blocks", "pay")
-    tree = ttk.Treeview(table_card, columns=columns, show="headings")
+        cursor.execute("SELECT COALESCE(SUM(qty),0) FROM sales WHERE item_name=?", (CHB_ITEM_NAME,))
+        sold = cursor.fetchone()[0] or 0
+
+        stock = max(produced - sold, 0)
+
+        total_blocks_var.set(f"Total Hollow Blocks Available: {stock:,}")
+
+    # ================= BUTTONS =================
+    tk.Button(btn_frame, text="✓ Save", command=save, bg="#15803d", fg="white", font=("Arial", 12, "bold"), width=12, padx=8, pady=10, relief="flat", cursor="hand2").pack(side="left", padx=6, pady=8)
+    tk.Button(btn_frame, text="🔁 Update", command=update, bg="#1e40af", fg="white", font=("Arial", 12, "bold"), width=12, padx=8, pady=10, relief="flat", cursor="hand2").pack(side="left", padx=6, pady=8)
+    tk.Button(btn_frame, text="🗑 Delete", command=delete, bg="#dc2626", fg="white", font=("Arial", 12, "bold"), width=12, padx=8, pady=10, relief="flat", cursor="hand2").pack(side="left", padx=6, pady=8)
+    tk.Button(btn_frame, text="✋ Clear", command=clear_form, bg="#64748b", fg="white", font=("Arial", 12, "bold"), width=12, padx=8, pady=10, relief="flat", cursor="hand2").pack(side="left", padx=6, pady=8)
+
+    # ================= TABLE (RIGHT SIDE - 60%) =================
+    table_card = tk.Frame(main_container, bg=CARD_BG)
+    table_card.grid(row=0, column=1, sticky="nsew", padx=15, pady=15)
+    table_card.columnconfigure(0, weight=1)
+    table_card.rowconfigure(0, weight=1)
+
+    columns = ("id", "date", "worker", "cement", "Fine Sand", "blocks", "pay")
+    
+    # Configure Treeview with larger fonts
+    style = ttk.Style()
+    style.configure('Treeview', font=('Arial', 11), rowheight=28)
+    style.configure('Treeview.Heading', font=('Arial', 12, 'bold'))
+    
+    # Create frame for tree and scrollbars
+    tree_frame = tk.Frame(table_card, bg=CARD_BG)
+    tree_frame.grid(row=0, column=0, sticky="nsew")
+    tree_frame.columnconfigure(0, weight=1)
+    tree_frame.rowconfigure(0, weight=1)
+    
+    # Create vertical scrollbar
+    vsb = ttk.Scrollbar(tree_frame, orient="vertical")
+    vsb.grid(row=0, column=1, sticky="ns")
+    
+    # Create horizontal scrollbar
+    hsb = ttk.Scrollbar(tree_frame, orient="horizontal")
+    hsb.grid(row=1, column=0, sticky="ew")
+    
+    # Create treeview with scrollbar commands
+    tree = ttk.Treeview(tree_frame, columns=columns, show="headings", style='Treeview', yscrollcommand=vsb.set, xscrollcommand=hsb.set)
+    tree.grid(row=0, column=0, sticky="nsew")
+    
+    # Configure scrollbars
+    vsb.config(command=tree.yview)
+    hsb.config(command=tree.xview)
 
     for col in columns:
         tree.heading(col, text=col.upper())
-        tree.column(col, anchor="center", width=120)
-
-    tree.pack(fill="both", expand=True)
+        tree.column(col, anchor="center", width=130)
 
     def on_select(event):
         selected = tree.focus()
@@ -348,6 +454,21 @@ def open_chb_dashboard():
             auto_sand()
 
     tree.bind("<ButtonRelease-1>", on_select)
+
+    # ================= DELIVERY BUTTON =================
+    delivery_btn = tk.Button(
+        win,
+        text="🚚 Open Delivery Form",
+        command=lambda: open_delivery_window(win, BG_MAIN, CARD_BG, PRIMARY),
+        bg="#f59e0b",
+        fg="white",
+        font=("Arial", 12, "bold"),
+        padx=15,
+        pady=8,
+        relief="flat",
+        cursor="hand2"
+    )
+    delivery_btn.pack(pady=10)
 
     # ================= LOAD DATA =================
     def load_data(event=None):
@@ -382,14 +503,6 @@ def open_chb_dashboard():
     search_entry.bind("<KeyRelease>", load_data)
     sort_menu.bind("<<ComboboxSelected>>", load_data)
 
-    # ================= BUTTONS =================
-    btn_frame = tk.Frame(win, bg=BG_MAIN)
-    btn_frame.pack(pady=10)
-
-    tk.Button(btn_frame, text="Save", command=save, bg="#16a34a", fg="white").grid(row=0, column=0, padx=5)
-    tk.Button(btn_frame, text="Update", command=update, bg="#2563eb", fg="white").grid(row=0, column=1, padx=5)
-    tk.Button(btn_frame, text="Delete", command=delete, bg="#dc2626", fg="white").grid(row=0, column=2, padx=5)
-    tk.Button(btn_frame, text="Clear", command=clear_form, bg="#64748b", fg="white").grid(row=0, column=3, padx=5)
-
     # ✅ INITIAL LOAD
     load_data()
+    update_total_blocks()
