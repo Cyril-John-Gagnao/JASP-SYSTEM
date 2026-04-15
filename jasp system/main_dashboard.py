@@ -6,6 +6,7 @@ from datetime import datetime
 from inventory import open_inventory
 from pos import open_pos
 from chb_dashboard import open_chb_dashboard
+from reports_dashboard import open_reports
 
 
 DB_NAME = os.path.join(os.path.dirname(__file__), "jasp.db")
@@ -44,7 +45,9 @@ def build_table(parent, columns, rows):
     style.configure("Dash.Treeview.Heading", font=("Arial", 10, "bold"), foreground=TEXT_PRIMARY)
     style.map("Dash.Treeview", background=[("selected", ACCENT)])
 
-    tree = ttk.Treeview(parent, columns=columns, show="headings", style="Dash.Treeview", height=6)
+    # Extract column IDs from columns tuples
+    col_ids = [col for col, _, _ in columns]
+    tree = ttk.Treeview(parent, columns=col_ids, show="headings", style="Dash.Treeview", height=6)
     for col, heading, width in columns:
         tree.heading(col, text=heading)
         tree.column(col, anchor="w", width=width, stretch=True)
@@ -211,7 +214,7 @@ def open_main(root):
     sidebar_btn("Inventory Management", open_inventory).pack(fill="x")
     sidebar_btn("CHB Production", open_chb_dashboard).pack(fill="x")
     sidebar_btn("Expenses & Cashouts", lambda: print("Expenses clicked")).pack(fill="x")
-    sidebar_btn("Reports & Analytics", lambda: print("Reports clicked")).pack(fill="x")
+    sidebar_btn("Reports & Analytics", open_reports).pack(fill="x")
     sidebar_btn("Settings & Users", lambda: print("Settings clicked")).pack(fill="x")
 
     tk.Label(sidebar, bg=BG_SIDEBAR).pack(expand=True, fill="both")
