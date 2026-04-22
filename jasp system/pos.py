@@ -27,7 +27,8 @@ def open_pos():
         name TEXT NOT NULL,
         quantity INTEGER NOT NULL,
         price REAL NOT NULL,
-        raw_price REAL DEFAULT 0
+        raw_price REAL DEFAULT 0,
+        unit TEXT DEFAULT ''
     )
     """)
     # Sales ledger for dashboard stats
@@ -42,6 +43,10 @@ def open_pos():
         ts TEXT NOT NULL
     )
     """)
+    cursor.execute("PRAGMA table_info(items)")
+    item_cols = [col[1] for col in cursor.fetchall()]
+    if "unit" not in item_cols:
+        cursor.execute("ALTER TABLE items ADD COLUMN unit TEXT DEFAULT ''")
     conn.commit()
 
     cart = []
@@ -57,7 +62,7 @@ def open_pos():
         for row in inv_tree.get_children():
             inv_tree.delete(row)
 
-        query = "SELECT * FROM items"
+        query = "SELECT id, name, unit, quantity, price FROM items"
         params = []
 
         # 🔍 KEEP YOUR SEARCH (unchanged logic)
@@ -144,8 +149,9 @@ def open_pos():
         values = inv_tree.item(selected, "values")
         product_id = int(values[0])
         name = values[1]
-        quantity = int(values[2])
-        price = float(values[3])
+        unit = values[2] or "pcs"
+        quantity = int(values[3])
+        price = float(values[4])
 
         modal = tk.Toplevel(root)
         modal.title("Add to Cart")
@@ -155,7 +161,7 @@ def open_pos():
         modal.grab_set()
 
         tk.Label(modal, text=name, font=("Arial", 14, "bold"), bg="white").pack(padx=16, pady=(14, 6))
-        tk.Label(modal, text=f"Available stock: {quantity}", font=("Arial", 11), bg="white").pack(padx=16, pady=(0, 10))
+        tk.Label(modal, text=f"Available stock: {quantity} {unit}", font=("Arial", 11), bg="white").pack(padx=16, pady=(0, 10))
 
         form = tk.Frame(modal, bg="white")
         form.pack(padx=16, pady=4, fill="x")
@@ -197,6 +203,9 @@ def open_pos():
         cursor.execute("SELECT quantity FROM items WHERE id=?", (item_id,))
         row = cursor.fetchone()
         available_stock = int(row[0]) if row else 0
+        cursor.execute("SELECT unit FROM items WHERE id=?", (item_id,))
+        unit_row = cursor.fetchone()
+        unit = unit_row[0] if unit_row and unit_row[0] else "pcs"
 
         modal = tk.Toplevel(root)
         modal.title("Edit Cart Item")
@@ -206,7 +215,7 @@ def open_pos():
         modal.grab_set()
 
         tk.Label(modal, text=cart_item['name'], font=("Arial", 14, "bold"), bg="white").pack(padx=16, pady=(14, 6))
-        tk.Label(modal, text=f"Available stock: {available_stock}", font=("Arial", 11), bg="white").pack(padx=16, pady=(0, 10))
+        tk.Label(modal, text=f"Available stock: {available_stock} {unit}", font=("Arial", 11), bg="white").pack(padx=16, pady=(0, 10))
 
         form = tk.Frame(modal, bg="white")
         form.pack(padx=16, pady=4, fill="x")
@@ -525,9 +534,9 @@ def open_pos():
     tk.Label(left_frame, text="Inventory", font=("Arial", 15, "bold"), bg="white").pack(pady=5)
 
     global inv_tree
-    inv_tree = ttk.Treeview(left_frame, columns=("ID","Name","Quantity","Price"), show="headings")
+    inv_tree = ttk.Treeview(left_frame, columns=("ID","Name","Unit","Quantity","Price"), show="headings")
     inv_tree.pack(fill=tk.BOTH, expand=True)
-    for col in ("ID","Name","Quantity","Price"):
+    for col in ("ID","Name","Unit","Quantity","Price"):
         inv_tree.heading(col, text=col)
         inv_tree.column(col, width=120, anchor="center")
 
