@@ -1,9 +1,14 @@
 import tkinter as tk
-from tkinter import ttk, messagebox
+from tkinter import ttk, messagebox, filedialog
 import sqlite3
 from datetime import datetime, timedelta
 import os
 from delivery_section import open_delivery_window
+from reportlab.lib.pagesizes import letter, A4
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib.units import inch
+from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+from reportlab.lib import colors
 
 DB_NAME = os.path.join(os.path.dirname(__file__), "jasp.db")
 CHB_ITEM_NAME = "CHB Blocks"
@@ -239,70 +244,213 @@ def open_chb_dashboard():
 
             start, end = compute_range()
             params = []
-            q = "SELECT worker_name, COALESCE(SUM(total_blocks),0) AS blocks, COALESCE(SUM(pay),0) AS pay FROM chb_production"
+            q = "SELECT production_date, worker_name, COALESCE(SUM(total_blocks),0) AS blocks, COALESCE(SUM(pay),0) AS pay FROM chb_production"
             if start and end:
                 q += " WHERE production_date BETWEEN ? AND ?"
                 params = [start.strftime("%Y-%m-%d"), end.strftime("%Y-%m-%d")]
-            q += " GROUP BY worker_name ORDER BY worker_name ASC"
+            q += " GROUP BY production_date, worker_name ORDER BY production_date DESC, worker_name ASC"
             cursor.execute(q, params)
             rows = cursor.fetchall()
             total_blocks = 0
             total_pay = 0
             for i, row in enumerate(rows):
-                worker, blocks, pay = row
+                date, worker, blocks, pay = row
                 total_blocks += blocks
                 total_pay += pay
                 tag = 'evenrow' if i % 2 == 0 else 'oddrow'
-                summary_tree.insert('', 'end', values=(worker, f"{blocks:,}", f"₱{pay:,.2f}"), tags=(tag,))
-            totals_var.set(f"TOTAL: {len(rows)} workers | {total_blocks:,} blocks | ₱{total_pay:,.2f}")
+                summary_tree.insert('', 'end', values=(date, worker, f"{blocks:,}", f"₱{pay:,.2f}"), tags=(tag,))
+            totals_var.set(f"TOTAL: {total_blocks:,} blocks | ₱{total_pay:,.2f}")
 
+        def export_to_pdf():
+            """Export summary data to PDF based on selected period"""
+            try:
+                file_path = filedialog.asksaveasfilename(
+                    defaultextension=".pdf",
+                    filetypes=[("PDF files", "*.pdf"), ("All files", "*.*")],
+                    initialfile=f"summary_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
+                )
+                
+                if not file_path:
+                    return
+                
+                # Create PDF
+                pdf = SimpleDocTemplate(file_path, pagesize=letter, topMargin=0.5*inch, bottomMargin=0.5*inch)
+                elements = []
+                
+                # Title and Date Range
+                p = period_var.get()
+                start, end = compute_range()
+                
+                if p == 'day':
+                    title_text = f"Daily Production Summary - {start.strftime('%B %d, %Y')}"
+                elif p == 'week':
+                    title_text = f"Weekly Production Summary - {start.strftime('%B %d')} to {end.strftime('%B %d, %Y')}"
+                else:  # month
+                    title_text = f"Monthly Production Summary - {start.strftime('%B %Y')}"
+                
+                styles = getSampleStyleSheet()
+                title_style = ParagraphStyle(
+                    'CustomTitle',
+                    parent=styles['Heading1'],
+                    fontSize=18,
+                    textColor=colors.HexColor('#2563eb'),
+                    spaceAfter=12,
+                    alignment=1
+                )
+                
+                subtitle_style = ParagraphStyle(
+                    'CustomSubtitle',
+                    parent=styles['Normal'],
+                    fontSize=12,
+                    textColor=colors.HexColor('#1e293b'),
+                    spaceAfter=12,
+                    alignment=1
+                )
+                
+                elements.append(Paragraph(title_text, title_style))
+                
+                # Get data from tree
+                tree_data = []
+                for item in summary_tree.get_children():
+                    values = summary_tree.item(item, 'values')
+                    tree_data.append(values)
+                
+                # Create table data
+                table_data = [['Production Date', 'Worker Name', 'Total Blocks', 'Total Pay']]
+                total_blocks = 0
+                total_pay = 0
+                
+                for row in tree_data:
+                    date, worker, blocks, pay = row
+                    blocks_int = int(blocks.replace(',', ''))
+                    pay_float = float(pay.replace('₱', '').replace(',', ''))
+                    
+                    total_blocks += blocks_int
+                    total_pay += pay_float
+                    
+                    table_data.append([date, worker, blocks, pay])
+                
+                # Add totals row
+                table_data.append(['', 'TOTAL', f"{total_blocks:,}", f"₱{total_pay:,.2f}"])
+                
+                # Create table with styling
+                table = Table(table_data, colWidths=[1.8*inch, 2.2*inch, 1.8*inch, 2*inch])
+                table.setStyle(TableStyle([
+                    ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#2563eb')),
+                    ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+                    ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+                    ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+                    ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                    ('FONTSIZE', (0, 0), (-1, 0), 12),
+                    ('FONTSIZE', (0, 1), (-1, -1), 11),
+                    ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+                    ('TOPPADDING', (0, 0), (-1, 0), 12),
+                    ('BACKGROUND', (0, -1), (-1, -1), colors.HexColor('#93c5fd')),
+                    ('FONTNAME', (0, -1), (-1, -1), 'Helvetica-Bold'),
+                    ('FONTSIZE', (0, -1), (-1, -1), 11),
+                    ('GRID', (0, 0), (-1, -1), 1, colors.black),
+                    ('ROWBACKGROUNDS', (0, 1), (-1, -2), [colors.white, colors.HexColor('#e0f2fe')]),
+                ]))
+                
+                elements.append(table)
+                elements.append(Spacer(1, 0.3*inch))
+                
+                # Add footer with current timestamp
+                footer_style = ParagraphStyle(
+                    'Footer',
+                    parent=styles['Normal'],
+                    fontSize=9,
+                    textColor=colors.grey,
+                    alignment=1
+                )
+                elements.append(Paragraph(f"Generated on {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}", footer_style))
+                
+                # Build PDF
+                pdf.build(elements)
+                messagebox.showinfo("Success", f"PDF exported successfully!\n{file_path}", parent=summary_win)
+                
+            except Exception as e:
+                messagebox.showerror("Error", f"Failed to export PDF:\n{str(e)}", parent=summary_win)
+
+        # Create window and center it
         summary_win = tk.Toplevel(win)
         summary_win.title('Production Summary')
-        summary_win.geometry('700x450')
+        summary_win.geometry('950x550')
         summary_win.configure(bg=BG_MAIN)
+        
+        # Center window on screen
+        summary_win.update_idletasks()
+        x = (summary_win.winfo_screenwidth() // 2) - (950 // 2)
+        y = (summary_win.winfo_screenheight() // 2) - (550 // 2)
+        summary_win.geometry(f'950x550+{x}+{y}')
 
+        # ============ TOP FRAME WITH LARGER FONT ==============
         top_frame = tk.Frame(summary_win, bg=BG_MAIN)
-        top_frame.pack(fill='x', pady=8)
+        top_frame.pack(fill='x', pady=12, padx=10)
 
         period_var = tk.StringVar(value='day')
-        tk.Radiobutton(top_frame, text='Day', variable=period_var, value='day', bg=BG_MAIN, command=load_summary).pack(side='left', padx=6)
-        tk.Radiobutton(top_frame, text='Week', variable=period_var, value='week', bg=BG_MAIN, command=load_summary).pack(side='left', padx=6)
-        tk.Radiobutton(top_frame, text='Month', variable=period_var, value='month', bg=BG_MAIN, command=load_summary).pack(side='left', padx=6)
+        
+        # Period selection with larger font
+        tk.Label(top_frame, text='Period:', bg=BG_MAIN, font=('Arial', 11, 'bold'), fg=TEXT).pack(side='left', padx=6)
+        tk.Radiobutton(top_frame, text='Day', variable=period_var, value='day', bg=BG_MAIN, font=('Arial', 10), command=load_summary).pack(side='left', padx=8)
+        tk.Radiobutton(top_frame, text='Week', variable=period_var, value='week', bg=BG_MAIN, font=('Arial', 10), command=load_summary).pack(side='left', padx=8)
+        tk.Radiobutton(top_frame, text='Month', variable=period_var, value='month', bg=BG_MAIN, font=('Arial', 10), command=load_summary).pack(side='left', padx=8)
 
-        tk.Label(top_frame, text=' Date (YYYY-MM-DD):', bg=BG_MAIN).pack(side='left', padx=(20,4))
+        # Date selection frame
+        date_frame = tk.Frame(top_frame, bg=BG_MAIN)
+        date_frame.pack(side='left', padx=(30, 10))
+        
+        tk.Label(date_frame, text='Date:', bg=BG_MAIN, font=('Arial', 11, 'bold'), fg=TEXT).pack(side='left', padx=(0, 6))
         date_sel = tk.StringVar(value=datetime.now().strftime('%Y-%m-%d'))
-        date_entry2 = tk.Entry(top_frame, textvariable=date_sel, width=12)
+        date_entry2 = tk.Entry(date_frame, textvariable=date_sel, width=15, font=('Arial', 11), relief='solid', bd=1)
         date_entry2.pack(side='left', padx=4)
 
+        # Month/Year selection frame
+        month_year_frame = tk.Frame(top_frame, bg=BG_MAIN)
+        month_year_frame.pack(side='left', padx=10)
+        
         months = ["January", "February", "March", "April", "May", "June",
                   "July", "August", "September", "October", "November", "December"]
         month_var = tk.StringVar(value=datetime.now().strftime('%B'))
-        month_cb = ttk.Combobox(top_frame, values=months, textvariable=month_var, width=10, state='readonly')
-        month_cb.pack(side='left', padx=6)
+        month_cb = ttk.Combobox(month_year_frame, values=months, textvariable=month_var, width=12, state='readonly', font=('Arial', 10))
+        month_cb.pack(side='left', padx=4)
 
         year_var = tk.StringVar(value=str(datetime.now().year))
         years = [str(y) for y in range(datetime.now().year - 5, datetime.now().year + 1)]
-        year_cb = ttk.Combobox(top_frame, values=years, textvariable=year_var, width=6, state='readonly')
-        year_cb.pack(side='left', padx=6)
+        year_cb = ttk.Combobox(month_year_frame, values=years, textvariable=year_var, width=8, state='readonly', font=('Arial', 10))
+        year_cb.pack(side='left', padx=4)
 
-        tk.Button(top_frame, text='Apply', command=load_summary, bg='#3b82f6', fg='white').pack(side='left', padx=8)
+        # Buttons frame
+        btn_frame = tk.Frame(top_frame, bg=BG_MAIN)
+        btn_frame.pack(side='left', padx=10)
+        
+        tk.Button(btn_frame, text='Apply', command=load_summary, bg='#3b82f6', fg='white', font=('Arial', 10, 'bold'), padx=10, pady=5).pack(side='left', padx=4)
+        tk.Button(btn_frame, text='Export to PDF', command=export_to_pdf, bg='#059669', fg='white', font=('Arial', 10, 'bold'), padx=12, pady=5).pack(side='left', padx=4)
 
-        # Summary tree
-        cols = ('worker', 'blocks', 'pay')
-        summary_tree = ttk.Treeview(summary_win, columns=cols, show='headings')
-        summary_tree.heading('worker', text='Worker')
+        # ============ SUMMARY TREE WITH LARGER FONT ==============
+        cols = ('date', 'worker', 'blocks', 'pay')
+        
+        style = ttk.Style()
+        style.configure('Summary.Treeview', font=('Arial', 12), rowheight=32)
+        style.configure('Summary.Treeview.Heading', font=('Arial', 13, 'bold'))
+        
+        summary_tree = ttk.Treeview(summary_win, columns=cols, show='headings', style='Summary.Treeview')
+        summary_tree.heading('date', text='Production Date')
+        summary_tree.heading('worker', text='Worker Name')
         summary_tree.heading('blocks', text='Total Blocks')
         summary_tree.heading('pay', text='Total Pay')
-        summary_tree.column('worker', width=250)
-        summary_tree.column('blocks', width=120, anchor='center')
-        summary_tree.column('pay', width=140, anchor='center')
-        summary_tree.pack(fill='both', expand=True, padx=12, pady=8)
-        summary_tree.tag_configure('oddrow', background='#ffffff')
-        summary_tree.tag_configure('evenrow', background='#93c5fd')
+        summary_tree.column('date', width=140, anchor='center')
+        summary_tree.column('worker', width=280, anchor='w')
+        summary_tree.column('blocks', width=180, anchor='center')
+        summary_tree.column('pay', width=180, anchor='center')
+        summary_tree.pack(fill='both', expand=True, padx=12, pady=12)
+        summary_tree.tag_configure('oddrow', background='#ffffff', font=('Arial', 12))
+        summary_tree.tag_configure('evenrow', background='#93c5fd', font=('Arial', 12))
 
+        # ============ TOTALS DISPLAY WITH LARGER FONT ==============
         totals_var = tk.StringVar(value='')
-        totals_lbl = tk.Label(summary_win, textvariable=totals_var, bg=BG_MAIN, font=('Arial', 11, 'bold'))
-        totals_lbl.pack(fill='x', padx=12, pady=(0,10))
+        totals_lbl = tk.Label(summary_win, textvariable=totals_var, bg=BG_MAIN, font=('Arial', 13, 'bold'), fg='#1e40af')
+        totals_lbl.pack(fill='x', padx=12, pady=(0, 12))
 
         load_summary()
 
