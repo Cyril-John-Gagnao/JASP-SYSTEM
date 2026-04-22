@@ -369,7 +369,7 @@ def open_chb_dashboard():
     sand_entry.grid(row=3, column=1, sticky="ew", padx=15, pady=10)
 
     # Pay Rate
-    tk.Label(form, text="Worker Salary / 150 Blocks  (₱)", bg="#fef3c7", font=("Arial", 11, "bold"), fg="#1e293b").grid(row=4, column=0, sticky="w", pady=10)
+    tk.Label(form, text="Worker Salary / 75 Blocks  (₱)", bg="#fef3c7", font=("Arial", 11, "bold"), fg="#1e293b").grid(row=4, column=0, sticky="w", pady=10)
     pay_rate_var = tk.DoubleVar(value=pay_rate_default)
     pay_rate_entry = tk.Entry(form, textvariable=pay_rate_var, width=20, font=("Arial", 11), bd=1, relief="solid", bg="white")
     pay_rate_entry.grid(row=4, column=1, sticky="ew", padx=15, pady=10)
@@ -400,7 +400,7 @@ def open_chb_dashboard():
             sand_entry.delete(0, tk.END)
             sand_entry.insert(0, str(sand))
 
-            blocks = cement * 150
+            blocks = cement * 75
             pay = cement * float(pay_rate_var.get() or 0)
 
             result_label.config(text=f"Blocks: {blocks:,} | Pay: ₱{pay:,}")
@@ -424,7 +424,7 @@ def open_chb_dashboard():
         try:
             cement = int(cement_entry.get())
             sand = cement * 15
-            blocks = cement * 150
+            blocks = cement * 75
             pay_rate = float(pay_rate_var.get())
             pay = cement * pay_rate
         except:
@@ -464,7 +464,7 @@ def open_chb_dashboard():
         try:
             cement = int(cement_entry.get())
             sand = cement * 15
-            blocks = cement * 150
+            blocks = cement * 75
             pay_rate = float(pay_rate_var.get())
             pay = cement * pay_rate
         except:
