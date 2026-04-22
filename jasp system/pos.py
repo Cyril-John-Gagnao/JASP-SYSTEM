@@ -1,7 +1,6 @@
 import sqlite3
 import tkinter as tk
 from tkinter import ttk, messagebox
-from fpdf import FPDF
 from datetime import datetime
 import os
 
@@ -263,6 +262,16 @@ def open_pos():
         center_window(modal)
 
     def generate_invoice_pdf(cart_items, total_amount, money_received, change, mode, platform, txn_id):
+        try:
+            from fpdf import FPDF
+        except ImportError:
+            messagebox.showwarning(
+                "PDF Library Missing",
+                "Receipt PDF was skipped because 'fpdf' is not installed.\n"
+                "Install it with: pip install fpdf"
+            )
+            return None
+
         documents_path = os.path.expanduser("~/Documents")
         pdf_path = os.path.join(documents_path, f"receipt_{txn_id}.pdf")
         pdf = FPDF()
