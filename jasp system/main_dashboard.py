@@ -16,7 +16,7 @@ BG_SIDEBAR = "#273142"
 BG_CARD = "#ffffff"
 TEXT_PRIMARY = "#1f2933"
 TEXT_MUTED = "#6b7280"
-ACCENT = "#f5f6fa"
+ACCENT = "#8d93aa"
 LINE = "#e5e7eb"
 
 
@@ -304,7 +304,7 @@ def open_main(root):
             row.pack(fill="x", pady=4)
             tk.Label(row, text=item, bg=BG_CARD, fg=TEXT_PRIMARY, font=("Arial", 10)).pack(
                 side="left", padx=6, pady=4)
-            tk.Label(row, text=f"{qty} pcs", bg="#e5e7eb", fg=TEXT_PRIMARY, font=("Arial", 10, "bold"),
+            tk.Label(row, text=f"{qty} pcs", bg="#336bdb", fg=TEXT_PRIMARY, font=("Arial", 10, "bold"),
                      padx=10, pady=4).pack(side="right", padx=6)
     else:
         tk.Label(alert_container, text="No items below threshold.", bg=BG_CARD,

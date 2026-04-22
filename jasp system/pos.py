@@ -7,6 +7,16 @@ import os
 
 DB_NAME = os.path.join(os.path.dirname(__file__), "jasp.db")
 
+# ==================== HELPER FUNCTIONS ====================
+def center_window(window):
+    """Center a window on the screen"""
+    window.update_idletasks()
+    width = window.winfo_width()
+    height = window.winfo_height()
+    x = (window.winfo_screenwidth() // 2) - (width // 2)
+    y = (window.winfo_screenheight() // 2) - (height // 2)
+    window.geometry(f"+{x}+{y}")
+
 # ==================== POS WINDOW ====================
 def open_pos():
     conn = sqlite3.connect(DB_NAME)
@@ -70,42 +80,42 @@ def open_pos():
         refresh_inventory_names()
 
     # ---------- Cart Functions ----------
-    def add_to_cart():
+    def add_item_to_cart(product_id, name, quantity, price, qty):
         nonlocal cart
-        selected = inv_tree.focus()
-        if not selected:
-            messagebox.showerror("Error", "Select a product from inventory", parent=root)
-            return
-        values = inv_tree.item(selected, "values")
-        product_id = int(values[0])
-        name = values[1]
-        quantity = int(values[2])
-        price = float(values[3])
-        # capture raw price if available
         cursor.execute("SELECT raw_price FROM items WHERE id=?", (product_id,))
         rp = cursor.fetchone()
         raw_price = float(rp[0]) if rp and rp[0] is not None else price
 
-        qty = qty_entry_cart.get()
-        if not qty.isdigit() or int(qty) <= 0:
-            messagebox.showerror("Error", "Enter valid quantity", parent=root)
-            return
-        qty = int(qty)
-        if qty > quantity:
-            messagebox.showerror("Error", "Not enough stock", parent=root)
-            return
-
-        # Add or update cart
+        existing_qty = 0
+        existing_item = None
         for item in cart:
             if item['id'] == product_id:
-                item['qty'] += qty
-                item['total'] = item['qty'] * item['price']
+                existing_qty = item['qty']
+                existing_item = item
                 break
+
+        if qty <= 0:
+            messagebox.showerror("Error", "Enter a valid quantity", parent=root)
+            return False
+        if existing_qty + qty > quantity:
+            messagebox.showerror("Error", "Stocks aren't enough", parent=root)
+            return False
+
+        if existing_item:
+            existing_item['qty'] += qty
+            existing_item['total'] = existing_item['qty'] * existing_item['price']
         else:
-            cart.append({'id': product_id, 'name': name, 'qty': qty, 'price': price,
-                         'raw_price': raw_price, 'total': qty*price})
+            cart.append({
+                'id': product_id,
+                'name': name,
+                'qty': qty,
+                'price': price,
+                'raw_price': raw_price,
+                'total': qty * price
+            })
 
         update_cart()
+        return True
 
     def update_cart():
         nonlocal cart
@@ -115,6 +125,133 @@ def open_pos():
             cart_tree.insert("", tk.END, values=(item['id'], item['name'], item['qty'], f"{item['total']:.2f}"))
             total += item['total']
         total_label.config(text=f"Total: {total:.2f}")
+
+    def clear_cart():
+        nonlocal cart
+        if not cart:
+            messagebox.showinfo("Cart", "Cart is already empty", parent=root)
+            return
+        if not messagebox.askyesno("Clear Cart", "Clear all items from the cart?", parent=root):
+            return
+        cart.clear()
+        update_cart()
+
+    def open_add_to_cart_modal(_event=None):
+        selected = inv_tree.focus()
+        if not selected:
+            return
+
+        values = inv_tree.item(selected, "values")
+        product_id = int(values[0])
+        name = values[1]
+        quantity = int(values[2])
+        price = float(values[3])
+
+        modal = tk.Toplevel(root)
+        modal.title("Add to Cart")
+        modal.configure(bg="white")
+        modal.resizable(False, False)
+        modal.transient(root)
+        modal.grab_set()
+
+        tk.Label(modal, text=name, font=("Arial", 14, "bold"), bg="white").pack(padx=16, pady=(14, 6))
+        tk.Label(modal, text=f"Available stock: {quantity}", font=("Arial", 11), bg="white").pack(padx=16, pady=(0, 10))
+
+        form = tk.Frame(modal, bg="white")
+        form.pack(padx=16, pady=4, fill="x")
+        tk.Label(form, text="Quantity", bg="white", font=("Arial", 12)).grid(row=0, column=0, padx=(0, 8), pady=4)
+        qty_entry = tk.Entry(form, width=12, font=("Arial", 12))
+        qty_entry.grid(row=0, column=1, pady=4)
+        qty_entry.focus_set()
+
+        def submit():
+            qty_text = qty_entry.get().strip()
+            if not qty_text.isdigit():
+                messagebox.showerror("Error", "Enter a valid quantity", parent=modal)
+                return
+            if add_item_to_cart(product_id, name, quantity, price, int(qty_text)):
+                modal.destroy()
+
+        btns = tk.Frame(modal, bg="white")
+        btns.pack(pady=(10, 14))
+        tk.Button(btns, text="Add to Cart", bg="#16a34a", fg="white", font=("Arial", 12, "bold"),
+                  command=submit, padx=10, pady=8).pack(side="left", padx=6)
+        tk.Button(btns, text="Cancel", bg="#6b7280", fg="white", font=("Arial", 12, "bold"),
+                  command=modal.destroy, padx=10, pady=8).pack(side="left", padx=6)
+
+        qty_entry.bind("<Return>", lambda _e: submit())
+        center_window(modal)
+
+    def open_cart_item_modal(_event=None):
+        nonlocal cart
+        selected = cart_tree.focus()
+        if not selected:
+            return
+
+        values = cart_tree.item(selected, "values")
+        item_id = int(values[0])
+        cart_item = next((item for item in cart if item['id'] == item_id), None)
+        if not cart_item:
+            return
+
+        cursor.execute("SELECT quantity FROM items WHERE id=?", (item_id,))
+        row = cursor.fetchone()
+        available_stock = int(row[0]) if row else 0
+
+        modal = tk.Toplevel(root)
+        modal.title("Edit Cart Item")
+        modal.configure(bg="white")
+        modal.resizable(False, False)
+        modal.transient(root)
+        modal.grab_set()
+
+        tk.Label(modal, text=cart_item['name'], font=("Arial", 14, "bold"), bg="white").pack(padx=16, pady=(14, 6))
+        tk.Label(modal, text=f"Available stock: {available_stock}", font=("Arial", 11), bg="white").pack(padx=16, pady=(0, 10))
+
+        form = tk.Frame(modal, bg="white")
+        form.pack(padx=16, pady=4, fill="x")
+        tk.Label(form, text="Quantity", bg="white", font=("Arial", 12)).grid(row=0, column=0, padx=(0, 8), pady=4)
+        qty_entry = tk.Entry(form, width=12, font=("Arial", 12))
+        qty_entry.grid(row=0, column=1, pady=4)
+        qty_entry.insert(0, str(cart_item['qty']))
+        qty_entry.focus_set()
+        qty_entry.select_range(0, tk.END)
+
+        def save_changes():
+            qty_text = qty_entry.get().strip()
+            if not qty_text.isdigit():
+                messagebox.showerror("Error", "Enter a valid quantity", parent=modal)
+                return
+            new_qty = int(qty_text)
+            if new_qty <= 0:
+                messagebox.showerror("Error", "Enter a valid quantity", parent=modal)
+                return
+            if new_qty > available_stock:
+                messagebox.showerror("Error", "Stocks aren't enough", parent=modal)
+                return
+            cart_item['qty'] = new_qty
+            cart_item['total'] = new_qty * cart_item['price']
+            update_cart()
+            modal.destroy()
+
+        def remove_item():
+            if not messagebox.askyesno("Remove Item", f"Remove {cart_item['name']} from the cart?", parent=modal):
+                return
+            cart.remove(cart_item)
+            update_cart()
+            modal.destroy()
+
+        btns = tk.Frame(modal, bg="white")
+        btns.pack(pady=(10, 14))
+        tk.Button(btns, text="Save", bg="#16a34a", fg="white", font=("Arial", 12, "bold"),
+                  command=save_changes, padx=10, pady=8).pack(side="left", padx=6)
+        tk.Button(btns, text="Remove", bg="#dc3545", fg="white", font=("Arial", 12, "bold"),
+                  command=remove_item, padx=10, pady=8).pack(side="left", padx=6)
+        tk.Button(btns, text="Cancel", bg="#6b7280", fg="white", font=("Arial", 12, "bold"),
+                  command=modal.destroy, padx=10, pady=8).pack(side="left", padx=6)
+
+        qty_entry.bind("<Return>", lambda _e: save_changes())
+        center_window(modal)
 
     def generate_invoice_pdf(cart_items, total_amount, money_received, change, mode, platform, txn_id):
         documents_path = os.path.expanduser("~/Documents")
@@ -150,6 +287,70 @@ def open_pos():
         pdf.output(pdf_path)
         return pdf_path
 
+    def open_invoice_window(cart_items, total_amount, money_received, change, mode, platform, txn_id):
+        """Display invoice in a new floating window"""
+        inv_window = tk.Toplevel(root)
+        inv_window.title("Invoice")
+        inv_window.configure(bg="white")
+        inv_window.resizable(True, True)
+        inv_window.minsize(500, 600)
+        inv_window.transient(root)
+
+        # Header
+        header_frame = tk.Frame(inv_window, bg="#2c3e50")
+        header_frame.pack(fill="x")
+        tk.Label(header_frame, text="JASP Hardware", font=("Arial", 17, "bold"), bg="#2c3e50", fg="white").pack(pady=(10, 4))
+        tk.Label(header_frame, text="123 Business St, City", font=("Arial", 11), bg="#2c3e50", fg="white").pack()
+        tk.Label(header_frame, text="email@example.com | +63-900-000-0000", font=("Arial", 10), bg="#2c3e50", fg="white").pack(pady=(0, 10))
+
+        # Content
+        content_frame = tk.Frame(inv_window, bg="white")
+        content_frame.pack(fill="both", expand=True, padx=15, pady=15)
+
+        tk.Label(content_frame, text=f"Date/Time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}", font=("Arial", 11), bg="white").pack(anchor="w", pady=(0, 4))
+        tk.Label(content_frame, text=f"Transaction ID: {txn_id}", font=("Arial", 11), bg="white").pack(anchor="w", pady=(0, 10))
+
+        # Items table
+        tk.Label(content_frame, text="Items", font=("Arial", 12, "bold"), bg="white").pack(anchor="w", pady=(10, 5))
+        
+        table_frame = tk.Frame(content_frame, bg="white")
+        table_frame.pack(fill="x", pady=(0, 10))
+        
+        # Headers
+        header_subframe = tk.Frame(table_frame, bg="#ecf0f1")
+        header_subframe.pack(fill="x")
+        tk.Label(header_subframe, text="Item", font=("Arial", 11, "bold"), bg="#ecf0f1", width=30, anchor="w").pack(side="left", padx=5, pady=4)
+        tk.Label(header_subframe, text="Qty", font=("Arial", 11, "bold"), bg="#ecf0f1", width=8, anchor="center").pack(side="left", padx=5, pady=4)
+        tk.Label(header_subframe, text="Price", font=("Arial", 11, "bold"), bg="#ecf0f1", width=12, anchor="e").pack(side="left", padx=5, pady=4)
+        tk.Label(header_subframe, text="Total", font=("Arial", 11, "bold"), bg="#ecf0f1", width=12, anchor="e").pack(side="left", padx=5, pady=4)
+
+        # Items
+        for item in cart_items:
+            item_subframe = tk.Frame(table_frame, bg="white")
+            item_subframe.pack(fill="x")
+            tk.Label(item_subframe, text=item['name'], font=("Arial", 11), bg="white", width=30, anchor="w").pack(side="left", padx=5, pady=3)
+            tk.Label(item_subframe, text=f"x{item['qty']}", font=("Arial", 11), bg="white", width=8, anchor="center").pack(side="left", padx=5, pady=3)
+            tk.Label(item_subframe, text=f"{item['price']:.2f}", font=("Arial", 11), bg="white", width=12, anchor="e").pack(side="left", padx=5, pady=3)
+            tk.Label(item_subframe, text=f"{item['total']:.2f}", font=("Arial", 11), bg="white", width=12, anchor="e").pack(side="left", padx=5, pady=3)
+
+        # Totals
+        sep_frame = tk.Frame(content_frame, bg="#d1d5db", height=1)
+        sep_frame.pack(fill="x", pady=10)
+
+        tk.Label(content_frame, text=f"Total Amount: {total_amount:.2f}", font=("Arial", 12, "bold"), bg="white").pack(anchor="w", pady=2)
+        tk.Label(content_frame, text=f"Money Received: {money_received:.2f}", font=("Arial", 12), bg="white").pack(anchor="w", pady=2)
+        tk.Label(content_frame, text=f"Mode of Payment: {mode}" + (f" ({platform})" if platform else ""), font=("Arial", 12), bg="white").pack(anchor="w", pady=2)
+        if mode == "Cash":
+            tk.Label(content_frame, text=f"Change: {change:.2f}", font=("Arial", 12), bg="white").pack(anchor="w", pady=2)
+
+        # Buttons
+        btn_frame = tk.Frame(inv_window, bg="white")
+        btn_frame.pack(pady=15)
+        tk.Button(btn_frame, text="Printing...", bg="#6b7280", fg="white", font=("Arial", 12, "bold"), width=18, padx=12, pady=10).pack(side="left", padx=6)
+        tk.Button(btn_frame, text="Close", bg="#ef4444", fg="white", font=("Arial", 12, "bold"), width=18, padx=12, pady=10, command=inv_window.destroy).pack(side="left", padx=6)
+
+        center_window(inv_window)
+
     def finalize_transaction(mode, money_received, platform):
         nonlocal cart
         if not cart:
@@ -169,10 +370,11 @@ def open_pos():
         conn.commit()
 
         pdf_path = generate_invoice_pdf(cart, total_amount, money_received, change, mode, platform, txn_id)
+        cart_items_copy = [item.copy() for item in cart]
         cart.clear()
         update_cart()
         load_inventory()
-        messagebox.showinfo("Success", f"Payment completed. Invoice saved to:\n{pdf_path}", parent=root)
+        open_invoice_window(cart_items_copy, total_amount, money_received, change, mode, platform, txn_id)
         return True
 
     def open_payment_modal():
@@ -230,85 +432,43 @@ def open_pos():
         pay_modal.configure(bg="white")
         pay_modal.resizable(False, False)
 
-        tk.Label(pay_modal, text=f"Total Amount: {total_amount:.2f}", font=("Arial", 14, "bold"), bg="white").pack(pady=(12, 6))
+        tk.Label(pay_modal, text=f"Total Amount: {total_amount:.2f}", font=("Arial", 15, "bold"), bg="white").pack(pady=(12, 6))
 
         pay_mode = tk.StringVar(value="Cash")
         mode_frame = tk.Frame(pay_modal, bg="white")
         mode_frame.pack(fill="x", padx=12, pady=6)
-        tk.Radiobutton(mode_frame, text="Cash", variable=pay_mode, value="Cash", bg="white", command=on_mode_change).pack(side="left", padx=6)
-        tk.Radiobutton(mode_frame, text="Online Payment", variable=pay_mode, value="Online", bg="white", command=on_mode_change).pack(side="left", padx=6)
+        tk.Radiobutton(mode_frame, text="Cash", variable=pay_mode, value="Cash", bg="white", command=on_mode_change, font=("Arial", 11)).pack(side="left", padx=6)
+        tk.Radiobutton(mode_frame, text="Online Payment", variable=pay_mode, value="Online", bg="white", command=on_mode_change, font=("Arial", 11)).pack(side="left", padx=6)
 
         money_frame = tk.Frame(pay_modal, bg="white")
         money_frame.pack(fill="x", padx=12, pady=6)
-        tk.Label(money_frame, text="Money Received:", bg="white", font=("Arial", 11)).pack(anchor="w")
-        money_entry = tk.Entry(money_frame, font=("Arial", 12))
+        tk.Label(money_frame, text="Money Received:", bg="white", font=("Arial", 12)).pack(anchor="w")
+        money_entry = tk.Entry(money_frame, font=("Arial", 13))
         money_entry.pack(fill="x", pady=4)
         money_entry.insert(0, f"{total_amount:.2f}")
         money_entry.bind("<KeyRelease>", update_change)
 
         change_var = tk.StringVar(value="Change: 0.00")
-        tk.Label(pay_modal, textvariable=change_var, bg="white", font=("Arial", 11, "bold")).pack(anchor="w", padx=12)
+        tk.Label(pay_modal, textvariable=change_var, bg="white", font=("Arial", 12, "bold")).pack(anchor="w", padx=12)
 
         qr_frame = tk.Frame(pay_modal, bg="white", highlightthickness=1, highlightbackground="#d1d5db")
         tk.Label(qr_frame, text="QR / Online Payment Placeholder", bg="white", fg="#6b7280").pack(padx=20, pady=20)
 
         platform_frame = tk.Frame(pay_modal, bg="white")
         platform_frame.pack(fill="x", padx=12, pady=6)
-        tk.Label(platform_frame, text="Platform (e.g., GCash/Bank):", bg="white").pack(anchor="w")
-        platform_entry = tk.Entry(platform_frame, font=("Arial", 11))
+        tk.Label(platform_frame, text="Platform (e.g., GCash/Bank):", bg="white", font=("Arial", 11)).pack(anchor="w")
+        platform_entry = tk.Entry(platform_frame, font=("Arial", 12))
         platform_entry.pack(fill="x", pady=4)
 
         btns = tk.Frame(pay_modal, bg="white")
         btns.pack(pady=12)
-        tk.Button(btns, text="Pay & Print", bg="#16a34a", fg="white", font=("Arial", 11, "bold"),
-                  command=on_pay).pack(side="left", padx=6)
-        tk.Button(btns, text="Cancel", bg="#ef4444", fg="white", font=("Arial", 11, "bold"),
-                  command=pay_modal.destroy).pack(side="left", padx=6)
+        tk.Button(btns, text="Checkout", bg="#16a34a", fg="white", font=("Arial", 12, "bold"),
+                  command=on_pay, padx=15, pady=10).pack(side="left", padx=6)
+        tk.Button(btns, text="Cancel", bg="#ef4444", fg="white", font=("Arial", 12, "bold"),
+                  command=pay_modal.destroy, padx=15, pady=10).pack(side="left", padx=6)
 
         on_mode_change()
-
-    # Called when an item in the cart is selected
-    def on_cart_select(event):
-        selected = cart_tree.focus()
-        if not selected:
-            return
-        values = cart_tree.item(selected, "values")
-        qty = values[2]  # Quantity in the cart
-        qty_entry_cart.delete(0, tk.END)
-        qty_entry_cart.insert(0, qty)
-
-# Remove or update the selected item in the cart
-    def remove_from_cart():
-        nonlocal cart
-        selected = cart_tree.focus()
-        if not selected:
-            messagebox.showerror("Error", "Select an item from cart to remove", parent=root)
-            return
-        values = cart_tree.item(selected, "values")
-        item_id = int(values[0])
-
-        # Get the quantity to remove from entry box
-        qty_to_remove = qty_entry_cart.get()
-        if not qty_to_remove.isdigit() or int(qty_to_remove) <= 0:
-            messagebox.showerror("Error", "Enter a valid quantity to remove", parent=root)
-            return
-        qty_to_remove = int(qty_to_remove)
-
-        # Find the item in the cart
-        for item in cart:
-            if item['id'] == item_id:
-                name = item['name']
-                if qty_to_remove >= item['qty']:
-                    cart.remove(item)  # Remove completely if quantity >= in cart
-                    messagebox.showinfo("Removed", f"{name} removed from cart", parent=root)
-                else:
-                    item['qty'] -= qty_to_remove  # Reduce quantity
-                    item['total'] = item['qty'] * item['price']
-                    messagebox.showinfo("Removed", f"{qty_to_remove} of {name} removed from cart", parent=root)
-                break
-
-        update_cart()
-        qty_entry_cart.delete(0, tk.END)
+        center_window(pay_modal)
 
     def back_to_main():
         root.destroy()
@@ -326,20 +486,20 @@ def open_pos():
     top_frame = tk.Frame(root, bg="#f4f6f9", pady=10)
     top_frame.pack(fill="x")
 
-    tk.Label(top_frame, text="Search Inventory:", bg="#f4f6f9").pack(side=tk.LEFT, padx=10)
-    search_entry = ttk.Combobox(top_frame, width=30, font=("Arial", 11))
+    tk.Label(top_frame, text="Search Inventory:", bg="#f4f6f9", font=("Arial", 11)).pack(side=tk.LEFT, padx=10)
+    search_entry = ttk.Combobox(top_frame, width=30, font=("Arial", 12))
     search_entry.pack(side=tk.LEFT, padx=10)
     def update_suggestions(event=None):
         text = search_entry.get()
         filtered = [n for n in inventory_names if text.lower() in n.lower()]
         search_entry["values"] = filtered
     search_entry.bind("<KeyRelease>", lambda e: (update_suggestions(), load_inventory(search_entry.get())))
-    tk.Button(top_frame, text="Search", bg="#17a2b8", fg="white", font=("Arial", 10, "bold"),
-              command=lambda: load_inventory(search_entry.get())).pack(side=tk.LEFT, padx=10)
-    tk.Button(top_frame, text="Back", bg="#dc3545", fg="white", font=("Arial", 10, "bold"),
-              command=back_to_main).pack(side=tk.RIGHT, padx=20)
+    tk.Button(top_frame, text="Search", bg="#17a2b8", fg="white", font=("Arial", 11, "bold"),
+              command=lambda: load_inventory(search_entry.get()), padx=12, pady=8).pack(side=tk.LEFT, padx=10)
+    tk.Button(top_frame, text="Back", bg="#dc3545", fg="white", font=("Arial", 11, "bold"),
+              command=back_to_main, padx=12, pady=8).pack(side=tk.RIGHT, padx=20)
     
-    tk.Label(top_frame, text="Sort By:", bg="#f4f6f9").pack(side=tk.LEFT, padx=5)
+    tk.Label(top_frame, text="Sort By:", bg="#f4f6f9", font=("Arial", 11)).pack(side=tk.LEFT, padx=5)
 
     sort_var = tk.StringVar(value="Name")
 
@@ -362,7 +522,7 @@ def open_pos():
     # Left Frame - Inventory
     left_frame = tk.Frame(main_frame, bg="white", padx=10, pady=10)
     left_frame.pack(side="left", fill="both", expand=True, padx=(0,5))
-    tk.Label(left_frame, text="Inventory", font=("Arial", 14, "bold"), bg="white").pack(pady=5)
+    tk.Label(left_frame, text="Inventory", font=("Arial", 15, "bold"), bg="white").pack(pady=5)
 
     global inv_tree
     inv_tree = ttk.Treeview(left_frame, columns=("ID","Name","Quantity","Price"), show="headings")
@@ -371,26 +531,22 @@ def open_pos():
         inv_tree.heading(col, text=col)
         inv_tree.column(col, width=120, anchor="center")
 
+    # Add to Cart button for inventory
+    btn_frame_left = tk.Frame(left_frame, bg="white")
+    btn_frame_left.pack(pady=10)
+    tk.Button(btn_frame_left, text="Add to Cart", bg="#16a34a", fg="white", font=("Arial", 12, "bold"),
+              command=open_add_to_cart_modal, padx=15, pady=10).pack()
+
     # Right Frame - Cart / POS
     right_frame = tk.Frame(main_frame, bg="#f4f6f9", padx=10, pady=10)
     right_frame.pack(side="right", fill="both", expand=True, padx=(5,0))
 
-    tk.Label(right_frame, text="Cart / POS", font=("Arial", 14, "bold"), bg="#f4f6f9").pack(pady=5)
+    tk.Label(right_frame, text="Cart / POS", font=("Arial", 15, "bold"), bg="#f4f6f9").pack(pady=5)
 
-    # Qty + Add + Remove button
     cart_frame = tk.Frame(right_frame, bg="#f4f6f9")
     cart_frame.pack(pady=5)
-
-    tk.Label(cart_frame, text="Qty:", font=("Arial", 10), bg="#f4f6f9").grid(row=0, column=0, padx=5)
-    global qty_entry_cart
-    qty_entry_cart = tk.Entry(cart_frame, width=5, font=("Arial", 11))
-    qty_entry_cart.grid(row=0, column=1, padx=5)
-
-    tk.Button(cart_frame, text="Add to Cart", bg="#28a745", fg="white", font=("Arial", 10, "bold"),
-            command=add_to_cart).grid(row=0, column=2, padx=5)
-
-    tk.Button(cart_frame, text="Remove Selected Item", bg="#dc3545", fg="white", font=("Arial", 10, "bold"),
-            command=remove_from_cart).grid(row=0, column=3, padx=5)
+    tk.Label(cart_frame, text="Double-click an inventory item to add it to cart.", font=("Arial", 11),
+             bg="#f4f6f9").pack()
         # Cart Treeview
     global cart_tree
     cart_tree = ttk.Treeview(right_frame, columns=("ID","Name","Qty","Total"), show="headings")
@@ -400,16 +556,19 @@ def open_pos():
             cart_tree.column(col, width=w, anchor="center")
 
     global total_label
-    total_label = tk.Label(right_frame, text="Total: 0.00", font=("Arial", 14, "bold"), bg="#f4f6f9")
+    total_label = tk.Label(right_frame, text="Total: 0.00", font=("Arial", 15, "bold"), bg="#f4f6f9")
     total_label.pack(pady=5)
 
     # Checkout buttons
     btn_frame_right = tk.Frame(right_frame, bg="#f4f6f9")
     btn_frame_right.pack(pady=10)
-    tk.Button(btn_frame_right, text="Pay / Checkout", bg="#ffc107", fg="black", width=22, font=("Arial", 11, "bold"),
-              command=open_payment_modal).grid(row=0,column=0,padx=5)
-    tk.Button(btn_frame_right, text="Remove Selected Item", bg="#dc3545", fg="white", width=22, font=("Arial", 11, "bold"),
-              command=remove_from_cart).grid(row=0,column=1,padx=5)
+    tk.Button(btn_frame_right, text="Pay / Checkout", bg="#ffc107", fg="black", width=25, font=("Arial", 12, "bold"),
+              command=open_payment_modal, padx=15, pady=10).grid(row=0,column=0,padx=5)
+    tk.Button(btn_frame_right, text="Clear Cart", bg="#dc3545", fg="white", width=25, font=("Arial", 12, "bold"),
+              command=clear_cart, padx=15, pady=10).grid(row=0,column=1,padx=5)
+
+    inv_tree.bind("<Double-1>", open_add_to_cart_modal)
+    cart_tree.bind("<Double-1>", open_cart_item_modal)
 
     load_inventory()
     root.mainloop()
