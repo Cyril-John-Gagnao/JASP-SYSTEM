@@ -1,7 +1,7 @@
 import tkinter as tk
 from tkinter import ttk, messagebox
 import sqlite3
-from datetime import datetime
+from datetime import datetime, timedelta
 import os
 from delivery_section import open_delivery_window
 
@@ -132,14 +132,34 @@ def open_chb_dashboard():
         fg=PRIMARY
     ).grid(row=0, column=1)
 
-    # RIGHT: Back Button
+    # RIGHT: Refresh and Back Buttons
     def go_back():
         win.destroy()
         import main_dashboard
         main_dashboard.open_main()
 
+    def refresh_data():
+        load_data()
+        update_total_blocks()
+
+    # Button container for Refresh and Back
+    btn_container = tk.Frame(header_frame, bg=BG_MAIN)
+    btn_container.grid(row=0, column=2, sticky="e")
+
     tk.Button(
-        header_frame,
+        btn_container,
+        text="🔄 Refresh",
+        command=refresh_data,
+        bg="#f59e0b",
+        fg="white",
+        font=("Arial", 10, "bold"),
+        padx=12,
+        pady=5,
+        relief="flat"
+    ).pack(side="left", padx=3)
+
+    tk.Button(
+        btn_container,
         text="← Back",
         command=go_back,
         bg="#2563eb",
@@ -148,7 +168,7 @@ def open_chb_dashboard():
         padx=12,
         pady=5,
         relief="flat"
-    ).grid(row=0, column=2, sticky="e")
+    ).pack(side="left", padx=3)
 
     # ================= SEARCH =================
     search_frame = tk.Frame(win, bg=BG_MAIN)
@@ -175,6 +195,109 @@ def open_chb_dashboard():
         font=("Arial", 11)
     )
     sort_menu.pack(side="left", pady=10)
+    # Summary button (opens period summary dialog)
+    def open_period_summary():
+        def compute_range():
+            p = period_var.get()
+            if p == 'day':
+                d = datetime.strptime(date_sel.get(), "%Y-%m-%d")
+                start = d
+                end = d
+            elif p == 'week':
+                d = datetime.strptime(date_sel.get(), "%Y-%m-%d")
+                start = d - timedelta(days=d.weekday())
+                end = start + timedelta(days=6)
+            elif p == 'month':
+                try:
+                    m = months.index(month_var.get()) + 1
+                    y = int(year_var.get())
+                except Exception:
+                    m = datetime.now().month
+                    y = datetime.now().year
+                start = datetime(y, m, 1)
+                if m == 12:
+                    end = datetime(y, 12, 31)
+                else:
+                    end = datetime(y, m + 1, 1) - timedelta(days=1)
+            else:
+                start = None
+                end = None
+            return start, end
+
+        def load_summary():
+            for r in summary_tree.get_children():
+                summary_tree.delete(r)
+
+            start, end = compute_range()
+            params = []
+            q = "SELECT worker_name, COALESCE(SUM(total_blocks),0) AS blocks, COALESCE(SUM(pay),0) AS pay FROM chb_production"
+            if start and end:
+                q += " WHERE production_date BETWEEN ? AND ?"
+                params = [start.strftime("%Y-%m-%d"), end.strftime("%Y-%m-%d")]
+            q += " GROUP BY worker_name ORDER BY worker_name ASC"
+            cursor.execute(q, params)
+            rows = cursor.fetchall()
+            total_blocks = 0
+            total_pay = 0
+            for i, row in enumerate(rows):
+                worker, blocks, pay = row
+                total_blocks += blocks
+                total_pay += pay
+                tag = 'evenrow' if i % 2 == 0 else 'oddrow'
+                summary_tree.insert('', 'end', values=(worker, f"{blocks:,}", f"₱{pay:,.2f}"), tags=(tag,))
+            totals_var.set(f"TOTAL: {len(rows)} workers | {total_blocks:,} blocks | ₱{total_pay:,.2f}")
+
+        summary_win = tk.Toplevel(win)
+        summary_win.title('Production Summary')
+        summary_win.geometry('700x450')
+        summary_win.configure(bg=BG_MAIN)
+
+        top_frame = tk.Frame(summary_win, bg=BG_MAIN)
+        top_frame.pack(fill='x', pady=8)
+
+        period_var = tk.StringVar(value='day')
+        tk.Radiobutton(top_frame, text='Day', variable=period_var, value='day', bg=BG_MAIN, command=load_summary).pack(side='left', padx=6)
+        tk.Radiobutton(top_frame, text='Week', variable=period_var, value='week', bg=BG_MAIN, command=load_summary).pack(side='left', padx=6)
+        tk.Radiobutton(top_frame, text='Month', variable=period_var, value='month', bg=BG_MAIN, command=load_summary).pack(side='left', padx=6)
+
+        tk.Label(top_frame, text=' Date (YYYY-MM-DD):', bg=BG_MAIN).pack(side='left', padx=(20,4))
+        date_sel = tk.StringVar(value=datetime.now().strftime('%Y-%m-%d'))
+        date_entry2 = tk.Entry(top_frame, textvariable=date_sel, width=12)
+        date_entry2.pack(side='left', padx=4)
+
+        months = ["January", "February", "March", "April", "May", "June",
+                  "July", "August", "September", "October", "November", "December"]
+        month_var = tk.StringVar(value=datetime.now().strftime('%B'))
+        month_cb = ttk.Combobox(top_frame, values=months, textvariable=month_var, width=10, state='readonly')
+        month_cb.pack(side='left', padx=6)
+
+        year_var = tk.StringVar(value=str(datetime.now().year))
+        years = [str(y) for y in range(datetime.now().year - 5, datetime.now().year + 1)]
+        year_cb = ttk.Combobox(top_frame, values=years, textvariable=year_var, width=6, state='readonly')
+        year_cb.pack(side='left', padx=6)
+
+        tk.Button(top_frame, text='Apply', command=load_summary, bg='#3b82f6', fg='white').pack(side='left', padx=8)
+
+        # Summary tree
+        cols = ('worker', 'blocks', 'pay')
+        summary_tree = ttk.Treeview(summary_win, columns=cols, show='headings')
+        summary_tree.heading('worker', text='Worker')
+        summary_tree.heading('blocks', text='Total Blocks')
+        summary_tree.heading('pay', text='Total Pay')
+        summary_tree.column('worker', width=250)
+        summary_tree.column('blocks', width=120, anchor='center')
+        summary_tree.column('pay', width=140, anchor='center')
+        summary_tree.pack(fill='both', expand=True, padx=12, pady=8)
+        summary_tree.tag_configure('oddrow', background='#ffffff')
+        summary_tree.tag_configure('evenrow', background='#93c5fd')
+
+        totals_var = tk.StringVar(value='')
+        totals_lbl = tk.Label(summary_win, textvariable=totals_var, bg=BG_MAIN, font=('Arial', 11, 'bold'))
+        totals_lbl.pack(fill='x', padx=12, pady=(0,10))
+
+        load_summary()
+
+    tk.Button(search_frame, text='Summary', command=open_period_summary, bg='#8b5cf6', fg='white', font=('Arial', 10, 'bold')).pack(side='left', padx=10)
 
     # ================= TOTAL HOLLOW BLOCKS DISPLAY =================
     total_frame = tk.Frame(win, bg=BG_MAIN)
@@ -191,53 +314,53 @@ def open_chb_dashboard():
     )
     total_label.pack(side="left")
 
-    # ================= MAIN CONTAINER (40-60 Split) =================
+    # ================= MAIN CONTAINER (60-40 Split) =================
     main_container = tk.Frame(win, bg=CARD_BG, bd=1, relief="solid")
     main_container.pack(padx=20, pady=10, fill="both", expand=True)
 
-    # Configure columns: form (40%) and table (60%)
-    main_container.columnconfigure(0, weight=2)  # form - 40%
-    main_container.columnconfigure(1, weight=3)  # table - 60%
+    # Configure columns: table (60%) and form (40%)
+    main_container.columnconfigure(0, weight=3)  # table - 60%
+    main_container.columnconfigure(1, weight=2)  # form - 40%
     main_container.rowconfigure(0, weight=1)
 
-    # ================= FORM (LEFT SIDE - 40%) =================
+    # ================= FORM (RIGHT SIDE - 40%) =================
     form_card = tk.Frame(main_container, bg=CARD_BG)
-    form_card.grid(row=0, column=0, sticky="nsew", padx=15, pady=15)
+    form_card.grid(row=0, column=1, sticky="nsew", padx=15, pady=15)
     form_card.columnconfigure(1, weight=1)
 
     # Form Title
     tk.Label(form_card, text="CHB Production", font=("Arial", 18, "bold"), bg=CARD_BG, fg=PRIMARY).pack(pady=(0, 20))
 
     # Form Background Frame
-    form_bg = tk.Frame(form_card, bg="#f8fafb", bd=1, relief="flat")
+    form_bg = tk.Frame(form_card, bg="#fef3c7", bd=1, relief="flat")
     form_bg.pack(fill="x", padx=5, pady=10)
 
-    form = tk.Frame(form_bg, bg="#f8fafb")
+    form = tk.Frame(form_bg, bg="#fef3c7")
     form.pack(fill="x", padx=20, pady=20)
 
     # Production Date
-    tk.Label(form, text="Production Date", bg="#f8fafb", font=("Arial", 11, "bold"), fg="#1e293b").grid(row=0, column=0, sticky="w", pady=10)
+    tk.Label(form, text="Production Date", bg="#fef3c7", font=("Arial", 11, "bold"), fg="#1e293b").grid(row=0, column=0, sticky="w", pady=10)
     date_var = tk.StringVar(value=datetime.now().strftime("%Y-%m-%d"))
     date_entry = tk.Entry(form, textvariable=date_var, width=20, font=("Arial", 11), bd=1, relief="solid", bg="white")
     date_entry.grid(row=0, column=1, sticky="ew", padx=15, pady=10)
 
     # Worker Name
-    tk.Label(form, text="Worker Name", bg="#f8fafb", font=("Arial", 11, "bold"), fg="#1e293b").grid(row=1, column=0, sticky="w", pady=10)
+    tk.Label(form, text="Worker Name", bg="#fef3c7", font=("Arial", 11, "bold"), fg="#1e293b").grid(row=1, column=0, sticky="w", pady=10)
     worker_entry = tk.Entry(form, width=20, font=("Arial", 11), bd=1, relief="solid", bg="white")
     worker_entry.grid(row=1, column=1, sticky="ew", padx=15, pady=10)
 
     # Cement Bags
-    tk.Label(form, text="Bag/s of Cement", bg="#f8fafb", font=("Arial", 11, "bold"), fg="#1e293b").grid(row=2, column=0, sticky="w", pady=10)
+    tk.Label(form, text="Bag/s of Cement", bg="#fef3c7", font=("Arial", 11, "bold"), fg="#1e293b").grid(row=2, column=0, sticky="w", pady=10)
     cement_entry = tk.Entry(form, width=20, font=("Arial", 11), bd=1, relief="solid", bg="white")
     cement_entry.grid(row=2, column=1, sticky="ew", padx=15, pady=10)
 
     # Bag of Fine Sand
-    tk.Label(form, text="Bag/s of Fine Sand", bg="#f8fafb", font=("Arial", 11, "bold"), fg="#1e293b").grid(row=3, column=0, sticky="w", pady=10)
+    tk.Label(form, text="Bag/s of Fine Sand", bg="#fef3c7", font=("Arial", 11, "bold"), fg="#1e293b").grid(row=3, column=0, sticky="w", pady=10)
     sand_entry = tk.Entry(form, width=20, font=("Arial", 11), bd=1, relief="solid", bg="white")
     sand_entry.grid(row=3, column=1, sticky="ew", padx=15, pady=10)
 
     # Pay Rate
-    tk.Label(form, text="Worker Salary / 150 Blocks  (₱)", bg="#f8fafb", font=("Arial", 11, "bold"), fg="#1e293b").grid(row=4, column=0, sticky="w", pady=10)
+    tk.Label(form, text="Worker Salary / 150 Blocks  (₱)", bg="#fef3c7", font=("Arial", 11, "bold"), fg="#1e293b").grid(row=4, column=0, sticky="w", pady=10)
     pay_rate_var = tk.DoubleVar(value=pay_rate_default)
     pay_rate_entry = tk.Entry(form, textvariable=pay_rate_var, width=20, font=("Arial", 11), bd=1, relief="solid", bg="white")
     pay_rate_entry.grid(row=4, column=1, sticky="ew", padx=15, pady=10)
@@ -392,9 +515,9 @@ def open_chb_dashboard():
     tk.Button(btn_frame, text="🗑 Delete", command=delete, bg="#dc2626", fg="white", font=("Arial", 12, "bold"), width=12, padx=8, pady=10, relief="flat", cursor="hand2").pack(side="left", padx=6, pady=8)
     tk.Button(btn_frame, text="✋ Clear", command=clear_form, bg="#64748b", fg="white", font=("Arial", 12, "bold"), width=12, padx=8, pady=10, relief="flat", cursor="hand2").pack(side="left", padx=6, pady=8)
 
-    # ================= TABLE (RIGHT SIDE - 60%) =================
+    # ================= TABLE (LEFT SIDE - 60%) =================
     table_card = tk.Frame(main_container, bg=CARD_BG)
-    table_card.grid(row=0, column=1, sticky="nsew", padx=15, pady=15)
+    table_card.grid(row=0, column=0, sticky="nsew", padx=15, pady=15)
     table_card.columnconfigure(0, weight=1)
     table_card.rowconfigure(0, weight=1)
 
@@ -404,6 +527,12 @@ def open_chb_dashboard():
     style = ttk.Style()
     style.configure('Treeview', font=('Arial', 11), rowheight=28)
     style.configure('Treeview.Heading', font=('Arial', 12, 'bold'))
+    
+    # Configure alternating row colors
+    style.configure('Treeview', background="white", fieldbackground="white")
+    style.map('Treeview', background=[('selected', '#2563eb')])
+    style.configure('oddrow.Treeview', background='#ffffff')
+    style.configure('evenrow.Treeview', background='#e0f2fe')
     
     # Create frame for tree and scrollbars
     tree_frame = tk.Frame(table_card, bg=CARD_BG)
@@ -429,7 +558,17 @@ def open_chb_dashboard():
 
     for col in columns:
         tree.heading(col, text=col.upper())
-        tree.column(col, anchor="center", width=130)
+        tree.column(col, anchor="center", width=130, stretch=False)
+
+    # Bind to configure event to update scrollbar after column resize
+    def on_tree_configure(event=None):
+        tree.update_idletasks()
+    
+    tree.bind('<Configure>', on_tree_configure)
+    
+    # Configure tags for alternating row colors
+    tree.tag_configure('oddrow', background='#ffffff', foreground='#000000')
+    tree.tag_configure('evenrow', background='#93c5fd', foreground='#000000')
 
     def on_select(event):
         selected = tree.focus()
@@ -496,8 +635,11 @@ def open_chb_dashboard():
 
         cursor.execute(query, params)
 
+        row_index = 0
         for row in cursor.fetchall():
-            tree.insert("", "end", values=row)
+            tag = 'evenrow' if row_index % 2 == 0 else 'oddrow'
+            tree.insert("", "end", values=row, tags=(tag,))
+            row_index += 1
 
     # ✅ BINDINGS (LIVE SEARCH)
     search_entry.bind("<KeyRelease>", load_data)

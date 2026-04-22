@@ -77,6 +77,7 @@ def open_delivery_window(parent_win, bg_main, card_bg, primary):
     header_frame = tk.Frame(delivery_win, bg=bg_main)
     header_frame.pack(fill="x", padx=20, pady=10)
 
+    # Configure grid (3 columns)
     header_frame.columnconfigure(0, weight=1)
     header_frame.columnconfigure(1, weight=1)
     header_frame.columnconfigure(2, weight=1)
@@ -92,8 +93,27 @@ def open_delivery_window(parent_win, bg_main, card_bg, primary):
     def go_back():
         delivery_win.destroy()
 
+    def refresh_data():
+        load_data()
+
+    # RIGHT: Button container for Refresh and Back
+    btn_container = tk.Frame(header_frame, bg=bg_main)
+    btn_container.grid(row=0, column=2, sticky="e")
+
     tk.Button(
-        header_frame,
+        btn_container,
+        text="🔄 Refresh",
+        command=refresh_data,
+        bg="#f59e0b",
+        fg="white",
+        font=("Arial", 10, "bold"),
+        padx=12,
+        pady=5,
+        relief="flat"
+    ).pack(side="left", padx=3)
+
+    tk.Button(
+        btn_container,
         text="← Back",
         command=go_back,
         bg=primary,
@@ -102,7 +122,7 @@ def open_delivery_window(parent_win, bg_main, card_bg, primary):
         padx=12,
         pady=5,
         relief="flat"
-    ).grid(row=0, column=2, sticky="e")
+    ).pack(side="left", padx=3)
 
     # ================= SEARCH & SORT =================
     search_frame = tk.Frame(delivery_win, bg=bg_main)
@@ -130,17 +150,17 @@ def open_delivery_window(parent_win, bg_main, card_bg, primary):
     )
     sort_menu.pack(side="left", pady=10)
 
-    # ================= MAIN CONTAINER (40-60 Split) =================
+    # ================= MAIN CONTAINER (60-40 Split) =================
     main_container = tk.Frame(delivery_win, bg=card_bg, bd=1, relief="solid")
     main_container.pack(padx=20, pady=10, fill="both", expand=True)
 
-    main_container.columnconfigure(0, weight=2)
-    main_container.columnconfigure(1, weight=3)
+    main_container.columnconfigure(0, weight=3)  # table - 60%
+    main_container.columnconfigure(1, weight=2)  # form - 40%
     main_container.rowconfigure(0, weight=1)
 
-    # ================= FORM (LEFT SIDE - 40%) =================
+    # ================= FORM (RIGHT SIDE - 40%) =================
     form_card = tk.Frame(main_container, bg=card_bg)
-    form_card.grid(row=0, column=0, sticky="nsew", padx=15, pady=15)
+    form_card.grid(row=0, column=1, sticky="nsew", padx=15, pady=15)
     form_card.columnconfigure(1, weight=1)
 
     tk.Label(form_card, text="Delivery Form", font=("Arial", 18, "bold"), bg=card_bg, fg=primary).pack(pady=(0, 20))
@@ -297,9 +317,9 @@ def open_delivery_window(parent_win, bg_main, card_bg, primary):
     tk.Button(btn_frame, text="🗑 Delete", command=delete_delivery, bg="#dc2626", fg="white", font=("Arial", 12, "bold"), width=12, padx=8, pady=10, relief="flat", cursor="hand2").pack(side="left", padx=6, pady=8)
     tk.Button(btn_frame, text="✋ Clear", command=clear_form, bg="#64748b", fg="white", font=("Arial", 12, "bold"), width=12, padx=8, pady=10, relief="flat", cursor="hand2").pack(side="left", padx=6, pady=8)
 
-    # ================= TABLE (RIGHT SIDE - 60%) =================
+    # ================= TABLE (LEFT SIDE - 60%) =================
     table_card = tk.Frame(main_container, bg=card_bg)
-    table_card.grid(row=0, column=1, sticky="nsew", padx=15, pady=15)
+    table_card.grid(row=0, column=0, sticky="nsew", padx=15, pady=15)
     table_card.columnconfigure(0, weight=1)
     table_card.rowconfigure(0, weight=1)
 
@@ -309,6 +329,11 @@ def open_delivery_window(parent_win, bg_main, card_bg, primary):
     style = ttk.Style()
     style.configure('Treeview', font=('Arial', 11), rowheight=28)
     style.configure('Treeview.Heading', font=('Arial', 12, 'bold'))
+    
+    # Configure alternating row colors
+    style.map('Treeview', background=[('selected', '#2563eb')])
+    style.configure('oddrow.Treeview', background='#ffffff')
+    style.configure('evenrow.Treeview', background='#e0f2fe')
 
     # Create frame for tree and scrollbars
     tree_frame = tk.Frame(table_card, bg=card_bg)
@@ -334,7 +359,17 @@ def open_delivery_window(parent_win, bg_main, card_bg, primary):
 
     for col in columns:
         tree.heading(col, text=col.upper())
-        tree.column(col, anchor="center", width=130)
+        tree.column(col, anchor="center", width=130, stretch=False)
+
+    # Bind to configure event to update scrollbar after column resize
+    def on_tree_configure(event=None):
+        tree.update_idletasks()
+    
+    tree.bind('<Configure>', on_tree_configure)
+    
+    # Configure tags for alternating row colors
+    tree.tag_configure('oddrow', background='#ffffff', foreground='#000000')
+    tree.tag_configure('evenrow', background='#93c5fd', foreground='#000000')
 
     def on_select(event):
         selected = tree.focus()
@@ -379,8 +414,11 @@ def open_delivery_window(parent_win, bg_main, card_bg, primary):
             cursor.execute(query, params)
             rows = cursor.fetchall()
 
+            row_index = 0
             for row in rows:
-                tree.insert("", "end", values=tuple(row))
+                tag = 'evenrow' if row_index % 2 == 0 else 'oddrow'
+                tree.insert("", "end", values=tuple(row), tags=(tag,))
+                row_index += 1
         except Exception as e:
             messagebox.showerror("Error", f"Failed to load data: {str(e)}", parent=delivery_win)
 
