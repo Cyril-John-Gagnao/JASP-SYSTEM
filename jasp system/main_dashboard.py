@@ -213,7 +213,7 @@ def open_main(root):
     sidebar_btn("Dashboard Overview", lambda: None).pack(fill="x")
     sidebar_btn("Point of Sale (POS)", open_pos).pack(fill="x")
     sidebar_btn("Inventory Management", open_inventory).pack(fill="x")
-    sidebar_btn("CHB Production", open_chb_dashboard).pack(fill="x")
+    sidebar_btn("CHB and Delivery Production", open_chb_dashboard).pack(fill="x")
     sidebar_btn("User Management", lambda: open_user_management(root)).pack(fill="x")
     sidebar_btn("Reports & Analytics", open_reports).pack(fill="x")
     sidebar_btn("Settings & Users", lambda: print("Settings clicked")).pack(fill="x")
