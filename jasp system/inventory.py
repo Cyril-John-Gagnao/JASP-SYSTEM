@@ -7,6 +7,26 @@ import os
 
 DB_NAME = os.path.join(os.path.dirname(__file__), "jasp.db")
 CHB_ITEM_NAME = "CHB Blocks"
+
+# Predefined items with their measurement units
+CHB_DEFAULT_UNIT = "pieces"
+PREDEFINED_ITEMS = {
+    "Nails": "kilograms",
+    "CHB Blocks": CHB_DEFAULT_UNIT,
+    "Cement": "bag/sack"
+}
+
+UNIT_OPTIONS = [
+    CHB_DEFAULT_UNIT,
+    "kilograms",
+    "bag/sack",
+    "pieces",
+    "meters",
+    "liters",
+    "boxes",
+    "sets",
+    "rolls",]
+
 # Prevent multiple inventory windows
 inventory_window = None
 
@@ -20,11 +40,14 @@ def open_inventory():
     conn = sqlite3.connect(DB_NAME)
     cursor = conn.cursor()
 
-    # Add raw_price column if not exists
+    # Add raw_price and unit columns if not exists
     cursor.execute("PRAGMA table_info(items)")
     columns = [col[1] for col in cursor.fetchall()]
     if "raw_price" not in columns:
         cursor.execute("ALTER TABLE items ADD COLUMN raw_price REAL DEFAULT 0")
+        conn.commit()
+    if "unit" not in columns:
+        cursor.execute("ALTER TABLE items ADD COLUMN unit TEXT DEFAULT ''")
         conn.commit()
 
     cursor.execute("""
@@ -33,7 +56,8 @@ def open_inventory():
         name TEXT NOT NULL,
         quantity INTEGER NOT NULL,
         price REAL NOT NULL,
-        raw_price REAL DEFAULT 0
+        raw_price REAL DEFAULT 0,
+        unit TEXT DEFAULT ''
     )
     """)
     conn.commit()
@@ -76,15 +100,28 @@ def open_inventory():
         cursor.execute("SELECT id FROM items WHERE name=?", (CHB_ITEM_NAME,))
         row = cursor.fetchone()
         if row:
-            cursor.execute("UPDATE items SET quantity=? WHERE id=?", (stock, row[0]))
+            cursor.execute(
+                "UPDATE items SET quantity=?, unit=? WHERE id=?",
+                (stock, CHB_DEFAULT_UNIT, row[0])
+            )
         else:
             cursor.execute(
-                "INSERT INTO items (name, quantity, price, raw_price) VALUES (?, ?, ?, ?)",
-                (CHB_ITEM_NAME, stock, 0, 0)
+                "INSERT INTO items (name, quantity, price, raw_price, unit) VALUES (?, ?, ?, ?, ?)",
+                (CHB_ITEM_NAME, stock, 0, 0, CHB_DEFAULT_UNIT)
             )
         conn.commit()
 
     ensure_chb_item()
+
+    def normalize_predefined_units():
+        for item_name, item_unit in PREDEFINED_ITEMS.items():
+            cursor.execute(
+                "UPDATE items SET unit=? WHERE name=? AND COALESCE(unit, '') = ''",
+                (item_unit, item_name)
+            )
+        conn.commit()
+
+    normalize_predefined_units()
 
     # ---------- GUI ----------
     inventory_window = tk.Toplevel()
@@ -109,9 +146,12 @@ def open_inventory():
         for row in tree.get_children():
             tree.delete(row)
         if filter_text:
-            cursor.execute("SELECT * FROM items WHERE name LIKE ?", (f"%{filter_text}%",))
+            cursor.execute(
+                "SELECT id, name, unit, quantity, price, raw_price FROM items WHERE name LIKE ?",
+                (f"%{filter_text}%",)
+            )
         else:
-            cursor.execute("SELECT * FROM items")
+            cursor.execute("SELECT id, name, unit, quantity, price, raw_price FROM items")
         rows = cursor.fetchall()
         for row in rows:
             tree.insert("", tk.END, values=row)
@@ -162,40 +202,61 @@ def open_inventory():
         form.configure(bg="white")
 
         tk.Label(form, text="Item Name", font=("Arial", 11, "bold"), bg="white").grid(row=0, column=0, padx=10, pady=5, sticky="w")
-        name_entry = tk.Entry(form, width=25, font=("Arial", 11))
+        name_var = tk.StringVar()
+        name_entry = tk.Entry(form, textvariable=name_var, width=25, font=("Arial", 11))
         name_entry.grid(row=0, column=1, pady=5)
 
-        tk.Label(form, text="Quantity", font=("Arial", 11, "bold"), bg="white").grid(row=1, column=0, padx=10, pady=5, sticky="w")
+        tk.Label(form, text="Measurement Unit", font=("Arial", 11, "bold"), bg="white").grid(row=1, column=0, padx=10, pady=5, sticky="w")
+        unit_var = tk.StringVar()
+        unit_entry = ttk.Combobox(form, textvariable=unit_var, values=UNIT_OPTIONS, width=23, font=("Arial", 11), state="readonly")
+        unit_entry.grid(row=1, column=1, pady=5)
+
+        tk.Label(form, text="Quantity", font=("Arial", 11, "bold"), bg="white").grid(row=2, column=0, padx=10, pady=5, sticky="w")
         quantity_entry = tk.Entry(form, width=25, font=("Arial", 11))
-        quantity_entry.grid(row=1, column=1, pady=5)
+        quantity_entry.grid(row=2, column=1, pady=5)
 
-        tk.Label(form, text="Selling Price", font=("Arial", 11, "bold"), bg="white").grid(row=2, column=0, padx=10, pady=5, sticky="w")
+        tk.Label(form, text="Selling Price", font=("Arial", 11, "bold"), bg="white").grid(row=3, column=0, padx=10, pady=5, sticky="w")
         price_entry = tk.Entry(form, width=25, font=("Arial", 11))
-        price_entry.grid(row=2, column=1, pady=5)
+        price_entry.grid(row=3, column=1, pady=5)
 
-        tk.Label(form, text="Raw Price", font=("Arial", 11, "bold"), bg="white").grid(row=3, column=0, padx=10, pady=5, sticky="w")
+        tk.Label(form, text="Raw Price", font=("Arial", 11, "bold"), bg="white").grid(row=4, column=0, padx=10, pady=5, sticky="w")
         raw_price_entry = tk.Entry(form, width=25, font=("Arial", 11))
-        raw_price_entry.grid(row=3, column=1, pady=5)
+        raw_price_entry.grid(row=4, column=1, pady=5)
+
+        def sync_unit_from_name(event=None):
+            selected_item = name_var.get().strip()
+            if selected_item in PREDEFINED_ITEMS:
+                unit_var.set(PREDEFINED_ITEMS[selected_item])
+
+        name_entry.bind("<KeyRelease>", sync_unit_from_name)
+        name_entry.bind("<FocusOut>", sync_unit_from_name)
 
         if mode == "edit" and item_values:
-            name_entry.insert(0, item_values[1])
-            quantity_entry.insert(0, item_values[2])
-            price_entry.insert(0, item_values[3])
-            raw_price_entry.insert(0, item_values[4])
+            name_var.set(item_values[1])
+            unit_var.set(item_values[2] if len(item_values) > 2 else "")
+            quantity_entry.insert(0, item_values[3])
+            price_entry.insert(0, item_values[4])
+            raw_price_entry.insert(0, item_values[5])
+
+            if not unit_var.get() and item_values[1] in PREDEFINED_ITEMS:
+                unit_var.set(PREDEFINED_ITEMS[item_values[1]])
 
             if item_values[1] == CHB_ITEM_NAME:
                 name_entry.config(state="disabled")
                 quantity_entry.config(state="disabled")
                 raw_price_entry.config(state="disabled")
-                tk.Label(form, text="Quantity is auto from CHB production. Only price can be updated.", fg="#dc2626", bg="white", font=("Arial", 9, "italic")).grid(row=5, column=0, columnspan=2, pady=(4, 0))
+                unit_entry.config(state="disabled")
+                unit_var.set(CHB_DEFAULT_UNIT)
+                tk.Label(form, text="Quantity is auto from CHB production. Only price can be updated.", fg="#dc2626", bg="white", font=("Arial", 9, "italic")).grid(row=6, column=0, columnspan=2, pady=(4, 0))
 
         def submit():
-            name = name_entry.get().strip()
+            name = name_var.get().strip()
+            unit = unit_var.get().strip()
             quantity = quantity_entry.get().strip()
             price = price_entry.get().strip()
             raw = raw_price_entry.get().strip()
 
-            if not name or not quantity or not price or not raw:
+            if not name or not unit or not quantity or not price or not raw:
                 messagebox.showerror("Error", "All fields are required!", parent=form)
                 return
 
@@ -214,8 +275,12 @@ def open_inventory():
             # Lock quantity/name for CHB on edit – only allow price change
             if mode == "edit" and item_values and item_values[1] == CHB_ITEM_NAME:
                 name = CHB_ITEM_NAME
-                quantity_val = int(item_values[2])
-                raw_val = float(item_values[4])
+                quantity_val = int(item_values[3])
+                raw_val = float(item_values[5])
+                unit = CHB_DEFAULT_UNIT
+
+            if name in PREDEFINED_ITEMS and not unit:
+                unit = PREDEFINED_ITEMS[name]
 
             if mode == "add":
                 # If an item with the same name and price exists, stack quantities instead of creating a duplicate
@@ -225,21 +290,21 @@ def open_inventory():
                 if existing:
                     item_id, current_qty = existing
                     new_qty = int(current_qty) + quantity_val
-                    cursor.execute("UPDATE items SET quantity = ?, raw_price = ? WHERE id = ?", (new_qty, raw_val, item_id))
+                    cursor.execute("UPDATE items SET quantity = ?, raw_price = ?, unit = ? WHERE id = ?", (new_qty, raw_val, unit, item_id))
                     success_msg = "Item quantity updated successfully!"
                     log_restock(name, quantity_val, price_val, raw_val)
                 else:
                     cursor.execute(
-                        "INSERT INTO items (name, quantity, price, raw_price) VALUES (?, ?, ?, ?)",
-                        (name, quantity_val, price_val, raw_val),
+                        "INSERT INTO items (name, quantity, price, raw_price, unit) VALUES (?, ?, ?, ?, ?)",
+                        (name, quantity_val, price_val, raw_val, unit),
                     )
                     success_msg = "Item added successfully!"
                     log_restock(name, quantity_val, price_val, raw_val)
             else:
                 item_id = item_values[0]
-                previous_qty = int(item_values[2])
-                cursor.execute("UPDATE items SET name=?, quantity=?, price=?, raw_price=? WHERE id=?",
-                               (name, quantity_val, price_val, raw_val, item_id))
+                previous_qty = int(item_values[3])
+                cursor.execute("UPDATE items SET name=?, quantity=?, price=?, raw_price=?, unit=? WHERE id=?",
+                               (name, quantity_val, price_val, raw_val, unit, item_id))
                 success_msg = "Item updated successfully!"
                 if quantity_val > previous_qty:
                     log_restock(name, quantity_val - previous_qty, price_val, raw_val)
@@ -249,8 +314,8 @@ def open_inventory():
             form.destroy()
             view_items()
 
-        tk.Button(form, text="Save", width=15, bg="#28a745", fg="white", font=("Arial", 11, "bold"), command=submit).grid(row=4, column=0, pady=15)
-        tk.Button(form, text="Cancel", width=15, bg="#6c757d", fg="white", font=("Arial", 11, "bold"), command=form.destroy).grid(row=4, column=1, pady=15)
+        tk.Button(form, text="Save", width=15, bg="#28a745", fg="white", font=("Arial", 11, "bold"), command=submit).grid(row=5, column=0, pady=15)
+        tk.Button(form, text="Cancel", width=15, bg="#6c757d", fg="white", font=("Arial", 11, "bold"), command=form.destroy).grid(row=5, column=1, pady=15)
 
     def add_item():
         open_item_form("add")
@@ -305,7 +370,7 @@ def open_inventory():
     tree_frame = tk.Frame(right_frame)
     tree_frame.pack(fill="both", expand=True, pady=10)
 
-    tree = ttk.Treeview(tree_frame, columns=("ID", "Name", "Quantity", "Price", "Raw Price"), show="headings", selectmode="browse")
+    tree = ttk.Treeview(tree_frame, columns=("ID", "Name", "Unit", "Quantity", "Price", "Raw Price"), show="headings", selectmode="browse")
     v_scroll = ttk.Scrollbar(tree_frame, orient="vertical", command=tree.yview)
     v_scroll.pack(side="right", fill="y")
     h_scroll = ttk.Scrollbar(tree_frame, orient="horizontal", command=tree.xview)
@@ -316,12 +381,14 @@ def open_inventory():
     tree.heading("ID", text="ID", command=lambda: sort_tree("ID", numeric=True))
     tree.column("ID", width=70, anchor="center")
     tree.heading("Name", text="Name", command=lambda: sort_tree("Name", numeric=False))
-    tree.column("Name", width=250, anchor="w")
+    tree.column("Name", width=200, anchor="w")
+    tree.heading("Unit", text="Unit", command=lambda: sort_tree("Unit", numeric=False))
+    tree.column("Unit", width=120, anchor="center")
     tree.heading("Quantity", text="Quantity", command=lambda: sort_tree("Quantity", numeric=True))
-    tree.column("Quantity", width=120, anchor="center")
+    tree.column("Quantity", width=100, anchor="center")
     tree.heading("Price", text="Selling Price", command=lambda: sort_tree("Price", numeric=True))
-    tree.column("Price", width=120, anchor="center")
+    tree.column("Price", width=100, anchor="center")
     tree.heading("Raw Price", text="Raw Price", command=lambda: sort_tree("Raw Price", numeric=True))
-    tree.column("Raw Price", width=120, anchor="center")
+    tree.column("Raw Price", width=100, anchor="center")
 
     view_items()

@@ -7,6 +7,7 @@ from delivery_section import open_delivery_window
 
 DB_NAME = os.path.join(os.path.dirname(__file__), "jasp.db")
 CHB_ITEM_NAME = "CHB Blocks"
+CHB_DEFAULT_UNIT = "pieces"
 
 # 🎨 COLORS
 BG_MAIN = "#eef6ff"
@@ -41,7 +42,8 @@ def init_db():
             name TEXT,
             quantity INTEGER,
             price REAL,
-            raw_price REAL
+            raw_price REAL,
+            unit TEXT DEFAULT ''
         )
     """)
 
@@ -62,6 +64,10 @@ def init_db():
     existing_cols = [col[1] for col in cursor.fetchall()]
     if "pay_rate" not in existing_cols:
         cursor.execute("ALTER TABLE chb_production ADD COLUMN pay_rate REAL DEFAULT 200")
+    cursor.execute("PRAGMA table_info(items)")
+    item_cols = [col[1] for col in cursor.fetchall()]
+    if "unit" not in item_cols:
+        cursor.execute("ALTER TABLE items ADD COLUMN unit TEXT DEFAULT ''")
 
     conn.commit()
     conn.close()
@@ -80,11 +86,14 @@ def sync_chb_inventory(conn, cursor):
     cursor.execute("SELECT id FROM items WHERE name=?", (CHB_ITEM_NAME,))
     row = cursor.fetchone()
     if row:
-        cursor.execute("UPDATE items SET quantity=? WHERE id=?", (stock, row[0]))
+        cursor.execute(
+            "UPDATE items SET quantity=?, unit=? WHERE id=?",
+            (stock, CHB_DEFAULT_UNIT, row[0])
+        )
     else:
         cursor.execute(
-            "INSERT INTO items (name, quantity, price, raw_price) VALUES (?, ?, ?, ?)",
-            (CHB_ITEM_NAME, stock, 0, 0)
+            "INSERT INTO items (name, quantity, price, raw_price, unit) VALUES (?, ?, ?, ?, ?)",
+            (CHB_ITEM_NAME, stock, 0, 0, CHB_DEFAULT_UNIT)
         )
     conn.commit()
 
