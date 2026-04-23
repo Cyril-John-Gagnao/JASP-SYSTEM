@@ -3,8 +3,12 @@ import tkinter as tk
 from tkinter import ttk, messagebox
 from datetime import datetime
 import os
+import sys
 
 DB_NAME = os.path.join(os.path.dirname(__file__), "jasp.db")
+pos_refresh_callback = None
+CHB_ITEM_NAME = "CHB Blocks"
+CHB_STATE_ID = 1
 
 # ==================== HELPER FUNCTIONS ====================
 def center_window(window):
@@ -16,8 +20,20 @@ def center_window(window):
     y = (window.winfo_screenheight() // 2) - (height // 2)
     window.geometry(f"+{x}+{y}")
 
+
+def notify_inventory_views():
+    """Refresh open inventory windows when stock changes."""
+    module = sys.modules.get("inventory")
+    callback = getattr(module, "inventory_refresh_callback", None) if module else None
+    if callable(callback):
+        try:
+            callback()
+        except Exception:
+            pass
+
 # ==================== POS WINDOW ====================
 def open_pos():
+    global pos_refresh_callback
     conn = sqlite3.connect(DB_NAME)
     cursor = conn.cursor()
     cursor.execute("""
@@ -42,10 +58,46 @@ def open_pos():
         ts TEXT NOT NULL
     )
     """)
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS chb_production (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        production_date TEXT,
+        worker_name TEXT,
+        cement_bags INTEGER,
+        fine_sand REAL,
+        total_blocks INTEGER,
+        pay REAL,
+        pay_rate REAL DEFAULT 200,
+        ts TEXT
+    )
+    """)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS chb_inventory_state (
+            id INTEGER PRIMARY KEY CHECK (id = 1),
+            total_produced INTEGER NOT NULL DEFAULT 0,
+            total_sold INTEGER NOT NULL DEFAULT 0,
+            available INTEGER NOT NULL DEFAULT 0,
+            updated_ts TEXT
+        )
+    """)
     cursor.execute("PRAGMA table_info(items)")
     item_cols = [col[1] for col in cursor.fetchall()]
     if "unit" not in item_cols:
         cursor.execute("ALTER TABLE items ADD COLUMN unit TEXT DEFAULT ''")
+
+    cursor.execute("SELECT id FROM chb_inventory_state WHERE id=?", (CHB_STATE_ID,))
+    if not cursor.fetchone():
+        cursor.execute("SELECT COALESCE(SUM(total_blocks),0) FROM chb_production")
+        produced = cursor.fetchone()[0] or 0
+        cursor.execute("SELECT COALESCE(SUM(qty),0) FROM sales WHERE item_name=?", (CHB_ITEM_NAME,))
+        sold = cursor.fetchone()[0] or 0
+        cursor.execute("SELECT COALESCE(quantity,0) FROM items WHERE name=? ORDER BY id ASC LIMIT 1", (CHB_ITEM_NAME,))
+        row = cursor.fetchone()
+        available = row[0] if row else max(produced - sold, 0)
+        cursor.execute(
+            "INSERT INTO chb_inventory_state (id, total_produced, total_sold, available, updated_ts) VALUES (?, ?, ?, ?, ?)",
+            (CHB_STATE_ID, produced, sold, available, datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+        )
     conn.commit()
 
     cart = []
@@ -385,7 +437,19 @@ def open_pos():
                 "INSERT INTO sales (item_name, qty, price, raw_price, total, ts) VALUES (?, ?, ?, ?, ?, ?)",
                 (item['name'], item['qty'], item['price'], item.get('raw_price', 0), item['total'], now)
             )
+            if item['name'] == CHB_ITEM_NAME:
+                cursor.execute(
+                    """
+                    UPDATE chb_inventory_state
+                    SET total_sold = total_sold + ?,
+                        available = MAX(available - ?, 0),
+                        updated_ts = ?
+                    WHERE id = ?
+                    """,
+                    (item['qty'], item['qty'], now, CHB_STATE_ID)
+                )
         conn.commit()
+        notify_inventory_views()
 
         pdf_path = generate_invoice_pdf(cart, total_amount, money_received, change, mode, platform, txn_id)
         cart_items_copy = [item.copy() for item in cart]
@@ -489,6 +553,13 @@ def open_pos():
         center_window(pay_modal)
 
     def back_to_main():
+        global pos_refresh_callback
+        pos_refresh_callback = None
+        root.destroy()
+
+    def on_close():
+        global pos_refresh_callback
+        pos_refresh_callback = None
         root.destroy()
 
     # ---------- GUI ----------
@@ -499,6 +570,7 @@ def open_pos():
 
     root.transient()        # link to main window
     root.grab_set()         # lock focus to POS
+    root.protocol("WM_DELETE_WINDOW", on_close)
 
     # ====== Top Frame (Search + Back) ======
     top_frame = tk.Frame(root, bg="#f4f6f9", pady=10)
@@ -532,6 +604,7 @@ def open_pos():
 
     # reload when changed
     sort_menu.bind("<<ComboboxSelected>>", lambda e: load_inventory(search_entry.get()))
+    pos_refresh_callback = lambda: load_inventory(search_entry.get())
 
     # ====== Main Frame ======
     main_frame = tk.Frame(root, bg="#f4f6f9")

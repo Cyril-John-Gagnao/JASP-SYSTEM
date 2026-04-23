@@ -7,6 +7,7 @@ import os
 
 DB_NAME = os.path.join(os.path.dirname(__file__), "jasp.db")
 CHB_ITEM_NAME = "CHB Blocks"
+CHB_STATE_ID = 1
 
 # Predefined items with their measurement units
 CHB_DEFAULT_UNIT = "pieces"
@@ -29,9 +30,11 @@ UNIT_OPTIONS = [
 
 # Prevent multiple inventory windows
 inventory_window = None
+inventory_refresh_callback = None
+inventory_refresh_job = None
 
 def open_inventory():
-    global inventory_window
+    global inventory_window, inventory_refresh_callback, inventory_refresh_job
     if inventory_window and inventory_window.winfo_exists():
         inventory_window.focus()
         return
@@ -86,28 +89,54 @@ def open_inventory():
         ts TEXT
     )
     """)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS chb_inventory_state (
+            id INTEGER PRIMARY KEY CHECK (id = 1),
+            total_produced INTEGER NOT NULL DEFAULT 0,
+            total_sold INTEGER NOT NULL DEFAULT 0,
+            available INTEGER NOT NULL DEFAULT 0,
+            updated_ts TEXT
+        )
+    """)
     conn.commit()
 
-    def compute_chb_stock():
-        cursor.execute("SELECT COALESCE(SUM(total_blocks),0) FROM chb_production")
-        produced = cursor.fetchone()[0] or 0
-        cursor.execute("SELECT COALESCE(SUM(qty),0) FROM sales WHERE item_name=?", (CHB_ITEM_NAME,))
-        sold = cursor.fetchone()[0] or 0
-        return max(produced - sold, 0)
-
     def ensure_chb_item():
-        stock = compute_chb_stock()
-        cursor.execute("SELECT id FROM items WHERE name=?", (CHB_ITEM_NAME,))
-        row = cursor.fetchone()
-        if row:
+        cursor.execute("SELECT id FROM items WHERE name=? ORDER BY id ASC", (CHB_ITEM_NAME,))
+        rows = cursor.fetchall()
+        if rows:
+            keeper_id = rows[0][0]
             cursor.execute(
-                "UPDATE items SET quantity=?, unit=? WHERE id=?",
-                (stock, CHB_DEFAULT_UNIT, row[0])
+                "UPDATE items SET unit=? WHERE id=?",
+                (CHB_DEFAULT_UNIT, keeper_id)
             )
+            if len(rows) > 1:
+                cursor.execute(
+                    "DELETE FROM items WHERE name=? AND id<>?",
+                    (CHB_ITEM_NAME, keeper_id)
+                )
         else:
+            cursor.execute("SELECT COALESCE(SUM(total_blocks),0) FROM chb_production")
+            produced = cursor.fetchone()[0] or 0
+            cursor.execute("SELECT COALESCE(SUM(qty),0) FROM sales WHERE item_name=?", (CHB_ITEM_NAME,))
+            sold = cursor.fetchone()[0] or 0
+            stock = max(produced - sold, 0)
             cursor.execute(
                 "INSERT INTO items (name, quantity, price, raw_price, unit) VALUES (?, ?, ?, ?, ?)",
                 (CHB_ITEM_NAME, stock, 0, 0, CHB_DEFAULT_UNIT)
+            )
+
+        cursor.execute("SELECT id FROM chb_inventory_state WHERE id=?", (CHB_STATE_ID,))
+        if not cursor.fetchone():
+            cursor.execute("SELECT COALESCE(SUM(total_blocks),0) FROM chb_production")
+            produced = cursor.fetchone()[0] or 0
+            cursor.execute("SELECT COALESCE(SUM(qty),0) FROM sales WHERE item_name=?", (CHB_ITEM_NAME,))
+            sold = cursor.fetchone()[0] or 0
+            cursor.execute("SELECT COALESCE(quantity,0) FROM items WHERE name=? ORDER BY id ASC LIMIT 1", (CHB_ITEM_NAME,))
+            item_row = cursor.fetchone()
+            available = item_row[0] if item_row else max(produced - sold, 0)
+            cursor.execute(
+                "INSERT INTO chb_inventory_state (id, total_produced, total_sold, available, updated_ts) VALUES (?, ?, ?, ?, ?)",
+                (CHB_STATE_ID, produced, sold, available, datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
             )
         conn.commit()
 
@@ -155,6 +184,9 @@ def open_inventory():
         rows = cursor.fetchall()
         for row in rows:
             tree.insert("", tk.END, values=row)
+
+    def refresh_current_view():
+        view_items(search_entry.get())
 
     def sort_tree(column, numeric=False):
         # Grab current rows
@@ -335,7 +367,7 @@ def open_inventory():
             return
         values = tree.item(selected, "values")
         if values[1] == CHB_ITEM_NAME:
-            messagebox.showerror("Error", "CHB item cannot be deleted. Quantity is synced from production.", parent=inventory_window)
+            messagebox.showerror("Error", "CHB item cannot be deleted. Its stock is managed separately.", parent=inventory_window)
             return
         item_id = values[0]
         cursor.execute("DELETE FROM items WHERE id=?", (item_id,))
@@ -350,6 +382,19 @@ def open_inventory():
         view_items(search_entry.get())
 
     def back_to_main():
+        global inventory_refresh_callback, inventory_refresh_job
+        inventory_refresh_callback = None
+        if inventory_refresh_job and inventory_window and inventory_window.winfo_exists():
+            inventory_window.after_cancel(inventory_refresh_job)
+        inventory_refresh_job = None
+        inventory_window.destroy()
+
+    def on_close():
+        global inventory_refresh_callback, inventory_refresh_job
+        inventory_refresh_callback = None
+        if inventory_refresh_job and inventory_window and inventory_window.winfo_exists():
+            inventory_window.after_cancel(inventory_refresh_job)
+        inventory_refresh_job = None
         inventory_window.destroy()
 
     # ---------- Buttons ----------
@@ -366,6 +411,7 @@ def open_inventory():
     search_entry = tk.Entry(right_frame, font=("Arial", 11))
     search_entry.pack(fill="x", pady=5)
     search_entry.bind("<KeyRelease>", search_items)
+    inventory_refresh_callback = refresh_current_view
 
     tree_frame = tk.Frame(right_frame)
     tree_frame.pack(fill="both", expand=True, pady=10)
@@ -391,4 +437,5 @@ def open_inventory():
     tree.heading("Raw Price", text="Raw Price", command=lambda: sort_tree("Raw Price", numeric=True))
     tree.column("Raw Price", width=100, anchor="center")
 
+    inventory_window.protocol("WM_DELETE_WINDOW", on_close)
     view_items()

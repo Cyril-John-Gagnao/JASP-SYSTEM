@@ -3,6 +3,7 @@ from tkinter import ttk, messagebox, filedialog
 import sqlite3
 from datetime import datetime, timedelta
 import os
+import sys
 from delivery_section import open_delivery_window
 from reportlab.lib.pagesizes import letter, A4
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
@@ -13,6 +14,7 @@ from reportlab.lib import colors
 DB_NAME = os.path.join(os.path.dirname(__file__), "jasp.db")
 CHB_ITEM_NAME = "CHB Blocks"
 CHB_DEFAULT_UNIT = "pieces"
+CHB_STATE_ID = 1
 
 # 🎨 COLORS
 BG_MAIN = "#eef6ff"
@@ -53,6 +55,16 @@ def init_db():
     """)
 
     cursor.execute("""
+        CREATE TABLE IF NOT EXISTS chb_inventory_state (
+            id INTEGER PRIMARY KEY CHECK (id = 1),
+            total_produced INTEGER NOT NULL DEFAULT 0,
+            total_sold INTEGER NOT NULL DEFAULT 0,
+            available INTEGER NOT NULL DEFAULT 0,
+            updated_ts TEXT
+        )
+    """)
+
+    cursor.execute("""
         CREATE TABLE IF NOT EXISTS sales (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             item_name TEXT NOT NULL,
@@ -78,29 +90,99 @@ def init_db():
     conn.close()
 
 
-def sync_chb_inventory(conn, cursor):
-    """Mirror CHB stock in the inventory table (production minus sales)."""
-    cursor.execute("SELECT COALESCE(SUM(total_blocks),0) FROM chb_production")
-    produced = cursor.fetchone()[0] or 0
-
-    cursor.execute("SELECT COALESCE(SUM(qty),0) FROM sales WHERE item_name=?", (CHB_ITEM_NAME,))
-    sold = cursor.fetchone()[0] or 0
-
-    stock = max(produced - sold, 0)
-
-    cursor.execute("SELECT id FROM items WHERE name=?", (CHB_ITEM_NAME,))
-    row = cursor.fetchone()
-    if row:
+def ensure_chb_inventory(conn, cursor):
+    """Ensure CHB inventory rows exist without recalculating away history."""
+    cursor.execute("SELECT id, quantity FROM items WHERE name=? ORDER BY id ASC", (CHB_ITEM_NAME,))
+    rows = cursor.fetchall()
+    if rows:
+        keeper_id = rows[0][0]
         cursor.execute(
-            "UPDATE items SET quantity=?, unit=? WHERE id=?",
-            (stock, CHB_DEFAULT_UNIT, row[0])
+            "UPDATE items SET unit=? WHERE id=?",
+            (CHB_DEFAULT_UNIT, keeper_id)
         )
+        if len(rows) > 1:
+            cursor.execute(
+                "DELETE FROM items WHERE name=? AND id<>?",
+                (CHB_ITEM_NAME, keeper_id)
+            )
     else:
+        cursor.execute("SELECT COALESCE(SUM(total_blocks),0) FROM chb_production")
+        produced = cursor.fetchone()[0] or 0
+        cursor.execute("SELECT COALESCE(SUM(qty),0) FROM sales WHERE item_name=?", (CHB_ITEM_NAME,))
+        sold = cursor.fetchone()[0] or 0
+        stock = max(produced - sold, 0)
         cursor.execute(
             "INSERT INTO items (name, quantity, price, raw_price, unit) VALUES (?, ?, ?, ?, ?)",
             (CHB_ITEM_NAME, stock, 0, 0, CHB_DEFAULT_UNIT)
         )
+
+    cursor.execute("SELECT id, total_produced, total_sold, available FROM chb_inventory_state WHERE id=?", (CHB_STATE_ID,))
+    state_row = cursor.fetchone()
+    if not state_row:
+        cursor.execute("SELECT COALESCE(SUM(total_blocks),0) FROM chb_production")
+        produced = cursor.fetchone()[0] or 0
+        cursor.execute("SELECT COALESCE(SUM(qty),0) FROM sales WHERE item_name=?", (CHB_ITEM_NAME,))
+        sold = cursor.fetchone()[0] or 0
+        cursor.execute("SELECT COALESCE(quantity,0) FROM items WHERE name=? ORDER BY id ASC LIMIT 1", (CHB_ITEM_NAME,))
+        item_row = cursor.fetchone()
+        available = item_row[0] if item_row else max(produced - sold, 0)
+        cursor.execute(
+            "INSERT INTO chb_inventory_state (id, total_produced, total_sold, available, updated_ts) VALUES (?, ?, ?, ?, ?)",
+            (CHB_STATE_ID, produced, sold, available, datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+        )
+
     conn.commit()
+
+
+def adjust_chb_inventory(conn, cursor, produced_delta=0, sold_delta=0):
+    """Persist CHB totals without tying them to deletions."""
+    ensure_chb_inventory(conn, cursor)
+
+    if produced_delta:
+        cursor.execute(
+            """
+            UPDATE chb_inventory_state
+            SET total_produced = total_produced + ?,
+                available = MAX(available + ?, 0),
+                updated_ts = ?
+            WHERE id = ?
+            """,
+            (produced_delta, produced_delta, datetime.now().strftime("%Y-%m-%d %H:%M:%S"), CHB_STATE_ID)
+        )
+        cursor.execute(
+            "UPDATE items SET quantity = MAX(COALESCE(quantity, 0) + ?, 0) WHERE name=?",
+            (produced_delta, CHB_ITEM_NAME)
+        )
+
+    if sold_delta:
+        cursor.execute(
+            """
+            UPDATE chb_inventory_state
+            SET total_sold = total_sold + ?,
+                available = MAX(available - ?, 0),
+                updated_ts = ?
+            WHERE id = ?
+            """,
+            (sold_delta, sold_delta, datetime.now().strftime("%Y-%m-%d %H:%M:%S"), CHB_STATE_ID)
+        )
+        cursor.execute(
+            "UPDATE items SET quantity = MAX(COALESCE(quantity, 0) - ?, 0) WHERE name=?",
+            (sold_delta, CHB_ITEM_NAME)
+        )
+
+    conn.commit()
+
+
+def notify_inventory_views():
+    """Refresh open inventory/POS windows if they registered callbacks."""
+    for module_name, callback_name in (("inventory", "inventory_refresh_callback"), ("pos", "pos_refresh_callback")):
+        module = sys.modules.get(module_name)
+        callback = getattr(module, callback_name, None) if module else None
+        if callable(callback):
+            try:
+                callback()
+            except Exception:
+                pass
 
 
 # ================= MAIN =================
@@ -114,7 +196,8 @@ def open_chb_dashboard():
 
     conn = sqlite3.connect(DB_NAME)
     cursor = conn.cursor()
-    sync_chb_inventory(conn, cursor)
+    ensure_chb_inventory(conn, cursor)
+    notify_inventory_views()
 
     cursor.execute("SELECT pay_rate FROM chb_production ORDER BY ts DESC LIMIT 1")
     last_rate = cursor.fetchone()
@@ -599,8 +682,10 @@ def open_chb_dashboard():
         """, (date, worker, cement, sand, blocks, pay, pay_rate, ts))
 
         conn.commit()
-        sync_chb_inventory(conn, cursor)
+        adjust_chb_inventory(conn, cursor, produced_delta=blocks)
+        notify_inventory_views()
         load_data()
+        update_total_blocks()
         clear_form()
         messagebox.showinfo("Success", "Record saved successfully!", parent=win)
 
@@ -623,6 +708,10 @@ def open_chb_dashboard():
         if not messagebox.askyesno("Confirm Update", f"Update record for {worker_entry.get()}?", parent=win):
             return
 
+        cursor.execute("SELECT COALESCE(total_blocks, 0) FROM chb_production WHERE id=?", (selected_id.get(),))
+        old_row = cursor.fetchone()
+        old_blocks = old_row[0] if old_row else 0
+
         cursor.execute("""
             UPDATE chb_production
             SET production_date=?, worker_name=?, cement_bags=?, fine_sand=?, total_blocks=?, pay=?, pay_rate=?
@@ -635,8 +724,10 @@ def open_chb_dashboard():
         ))
 
         conn.commit()
-        sync_chb_inventory(conn, cursor)
+        adjust_chb_inventory(conn, cursor, produced_delta=(blocks - old_blocks))
+        notify_inventory_views()
         load_data()
+        update_total_blocks()
         clear_form()
         messagebox.showinfo("Success", "Record updated successfully!", parent=win)
 
@@ -648,22 +739,31 @@ def open_chb_dashboard():
         if not messagebox.askyesno("Confirm Delete", f"Delete record for {worker_entry.get()}?\n\nThis action cannot be undone.", parent=win):
             return
 
+        cursor.execute("SELECT COALESCE(total_blocks, 0) FROM chb_production WHERE id=?", (selected_id.get(),))
+        old_row = cursor.fetchone()
+        old_blocks = old_row[0] if old_row else 0
+
         cursor.execute("DELETE FROM chb_production WHERE id=?", (selected_id.get(),))
         conn.commit()
-        sync_chb_inventory(conn, cursor)
+        adjust_chb_inventory(conn, cursor, produced_delta=-old_blocks)
+        notify_inventory_views()
         load_data()
+        update_total_blocks()
         clear_form()
         messagebox.showinfo("Success", "Record deleted successfully!", parent=win)
 
     def update_total_blocks():
-        cursor.execute("SELECT COALESCE(SUM(total_blocks),0) FROM chb_production")
-        produced = cursor.fetchone()[0] or 0
-
-        cursor.execute("SELECT COALESCE(SUM(qty),0) FROM sales WHERE item_name=?", (CHB_ITEM_NAME,))
-        sold = cursor.fetchone()[0] or 0
-
-        stock = max(produced - sold, 0)
-
+        ensure_chb_inventory(conn, cursor)
+        cursor.execute("""
+            SELECT total_produced, total_sold, available
+            FROM chb_inventory_state
+            WHERE id=?
+        """, (CHB_STATE_ID,))
+        state = cursor.fetchone()
+        if state:
+            produced, sold, stock = state
+        else:
+            produced = sold = stock = 0
         total_blocks_var.set(f"Total Hollow Blocks Available: {stock:,}")
 
     # ================= BUTTONS =================

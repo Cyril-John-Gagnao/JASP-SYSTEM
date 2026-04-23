@@ -122,7 +122,7 @@ def fetch_dashboard_data():
     cursor.execute("SELECT COALESCE(SUM((price - raw_price) * qty),0) FROM sales WHERE DATE(ts)=?", (today,))
     profit = cursor.fetchone()[0] or 0
 
-    cursor.execute("SELECT COALESCE(quantity,0) FROM items WHERE name LIKE '%CHB%' LIMIT 1")
+    cursor.execute("SELECT COALESCE(quantity,0) FROM items WHERE name=? ORDER BY id ASC LIMIT 1", ("CHB Blocks",))
     chb_stock = cursor.fetchone()
     chb_stock = chb_stock[0] if chb_stock else 0
 
