@@ -10,7 +10,7 @@ from reportlab.lib.units import inch
 from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
 from reportlab.lib import colors
 
-from .chb_dashboard import CHB_STATE_ID, ensure_chb_inventory, adjust_chb_inventory, fetch_production_summary, fetch_latest_production_date
+from .chb_database import CHB_STATE_ID, ensure_chb_inventory, adjust_chb_inventory, fetch_production_summary, fetch_latest_production_date
 
 
 def notify_inventory_views():

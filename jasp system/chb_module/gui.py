@@ -4,7 +4,7 @@ import sqlite3
 from datetime import datetime
 from delivery_section import open_delivery_window
 
-from .chb_dashboard import DB_NAME, init_db, ensure_chb_inventory
+from .chb_database import DB_NAME, init_db, ensure_chb_inventory
 from . import functions as chb_functions
 
 # 🎨 COLORS
