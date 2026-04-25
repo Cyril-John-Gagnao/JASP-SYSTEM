@@ -23,7 +23,7 @@ def center_window(window):
 
 def notify_inventory_views():
     """Refresh open inventory windows when stock changes."""
-    module = sys.modules.get("inventory")
+    module = sys.modules.get("inventory_module") or sys.modules.get("inventory")
     callback = getattr(module, "inventory_refresh_callback", None) if module else None
     if callable(callback):
         try:
@@ -43,7 +43,8 @@ def open_pos():
         quantity INTEGER NOT NULL,
         price REAL NOT NULL,
         raw_price REAL DEFAULT 0,
-        unit TEXT DEFAULT ''
+        unit TEXT DEFAULT '',
+        status TEXT DEFAULT 'Active'
     )
     """)
     # Sales ledger for dashboard stats
@@ -84,6 +85,9 @@ def open_pos():
     item_cols = [col[1] for col in cursor.fetchall()]
     if "unit" not in item_cols:
         cursor.execute("ALTER TABLE items ADD COLUMN unit TEXT DEFAULT ''")
+    if "status" not in item_cols:
+        cursor.execute("ALTER TABLE items ADD COLUMN status TEXT DEFAULT 'Active'")
+        cursor.execute("UPDATE items SET status='Active' WHERE status IS NULL OR status=''")
 
     cursor.execute("SELECT id FROM chb_inventory_state WHERE id=?", (CHB_STATE_ID,))
     if not cursor.fetchone():
@@ -106,19 +110,19 @@ def open_pos():
     # ---------- Inventory ----------
     def refresh_inventory_names():
         nonlocal inventory_names
-        cursor.execute("SELECT name FROM items")
+        cursor.execute("SELECT name FROM items WHERE COALESCE(status, 'Active') = 'Active'")
         inventory_names = [row[0] for row in cursor.fetchall()]
 
     def load_inventory(search_query=""):
         for row in inv_tree.get_children():
             inv_tree.delete(row)
 
-        query = "SELECT id, name, unit, quantity, price FROM items"
+        query = "SELECT id, name, unit, quantity, price FROM items WHERE COALESCE(status, 'Active') = 'Active'"
         params = []
 
         # 🔍 KEEP YOUR SEARCH (unchanged logic)
         if search_query:
-            query += " WHERE name LIKE ?"
+            query += " AND name LIKE ?"
             params.append('%' + search_query + '%')
 
         # 🔽 ADD SORTING (NEW PART)
@@ -138,9 +142,13 @@ def open_pos():
     # ---------- Cart Functions ----------
     def add_item_to_cart(product_id, name, quantity, price, qty):
         nonlocal cart
-        cursor.execute("SELECT raw_price FROM items WHERE id=?", (product_id,))
+        cursor.execute("SELECT raw_price, COALESCE(status, 'Active') FROM items WHERE id=?", (product_id,))
         rp = cursor.fetchone()
-        raw_price = float(rp[0]) if rp and rp[0] is not None else price
+        if not rp or rp[1] != "Active":
+            messagebox.showerror("Error", "This item is inactive and cannot be sold.", parent=root)
+            load_inventory(search_entry.get())
+            return False
+        raw_price = float(rp[0]) if rp[0] is not None else price
 
         existing_qty = 0
         existing_item = None

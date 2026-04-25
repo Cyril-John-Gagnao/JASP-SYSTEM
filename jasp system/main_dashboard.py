@@ -3,7 +3,7 @@ from tkinter import ttk
 import sqlite3
 import os
 from datetime import datetime
-from inventory import open_inventory
+from inventory_module import open_inventory
 from pos import open_pos
 from chb_module import open_chb_dashboard
 from reports_dashboard import open_reports

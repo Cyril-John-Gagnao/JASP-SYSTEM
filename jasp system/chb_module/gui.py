@@ -68,7 +68,7 @@ def open_chb_dashboard():
     tk.Button(
         btn_container,
         text="🔄 Refresh",
-        command=lambda: chb_functions.refresh_data(load_data, update_total_blocks),
+        command=lambda: refresh_all(),
         bg="#f59e0b",
         fg="white",
         font=("Arial", 10, "bold"),
@@ -186,13 +186,39 @@ def open_chb_dashboard():
 
     # Cement Bags
     tk.Label(form, text="Bag/s of Cement", bg="#fef3c7", font=("Arial", 11, "bold"), fg="#1e293b").grid(row=2, column=0, sticky="w", pady=10)
-    cement_entry = tk.Entry(form, width=20, font=("Arial", 11), bd=1, relief="solid", bg="white")
-    cement_entry.grid(row=2, column=1, sticky="ew", padx=15, pady=10)
+    cement_frame = tk.Frame(form, bg="#fef3c7")
+    cement_frame.grid(row=2, column=1, sticky="ew", padx=15, pady=10)
+    cement_frame.columnconfigure(0, weight=1)
+    cement_stock_var = tk.StringVar()
+    cement_entry = tk.Entry(cement_frame, width=12, font=("Arial", 11), bd=1, relief="solid", bg="white")
+    cement_entry.grid(row=0, column=0, sticky="ew")
+    cement_stock_combo = ttk.Combobox(
+        cement_frame,
+        textvariable=cement_stock_var,
+        values=[],
+        state="readonly",
+        width=15,
+        font=("Arial", 10)
+    )
+    cement_stock_combo.grid(row=0, column=1, sticky="ew", padx=(6, 0))
 
     # Bag of Fine Sand
     tk.Label(form, text="Bag/s of Fine Sand", bg="#fef3c7", font=("Arial", 11, "bold"), fg="#1e293b").grid(row=3, column=0, sticky="w", pady=10)
-    sand_entry = tk.Entry(form, width=20, font=("Arial", 11), bd=1, relief="solid", bg="white")
-    sand_entry.grid(row=3, column=1, sticky="ew", padx=15, pady=10)
+    sand_frame = tk.Frame(form, bg="#fef3c7")
+    sand_frame.grid(row=3, column=1, sticky="ew", padx=15, pady=10)
+    sand_frame.columnconfigure(0, weight=1)
+    sand_stock_var = tk.StringVar()
+    sand_entry = tk.Entry(sand_frame, width=12, font=("Arial", 11), bd=1, relief="solid", bg="white")
+    sand_entry.grid(row=0, column=0, sticky="ew")
+    sand_stock_combo = ttk.Combobox(
+        sand_frame,
+        textvariable=sand_stock_var,
+        values=[],
+        state="readonly",
+        width=15,
+        font=("Arial", 10)
+    )
+    sand_stock_combo.grid(row=0, column=1, sticky="ew", padx=(6, 0))
 
     # Pay Rate
     tk.Label(form, text="Worker Salary / 75 Blocks  (₱)", bg="#fef3c7", font=("Arial", 11, "bold"), fg="#1e293b").grid(row=4, column=0, sticky="w", pady=10)
@@ -254,9 +280,11 @@ def open_chb_dashboard():
     # ================= FUNCTIONS =================
     clear_form = lambda: chb_functions.clear_form(worker_entry, cement_entry, sand_entry, blocks_entry, result_label, selected_id)
     update_total_blocks = lambda: chb_functions.update_total_blocks(conn, cursor, total_blocks_var)
-    save = lambda: chb_functions.save(conn, cursor, win, worker_entry, date_var, cement_entry, blocks_entry, pay_rate_var, load_data, update_total_blocks, clear_form)
-    update = lambda: chb_functions.update(conn, cursor, win, selected_id, worker_entry, date_var, cement_entry, blocks_entry, pay_rate_var, load_data, update_total_blocks, clear_form)
-    delete = lambda: chb_functions.delete(conn, cursor, win, selected_id, worker_entry, load_data, update_total_blocks, clear_form)
+    refresh_materials = lambda: chb_functions.refresh_material_dropdowns(cursor, cement_stock_var, sand_stock_var, cement_stock_combo, sand_stock_combo)
+    refresh_all = lambda: (chb_functions.refresh_data(load_data, update_total_blocks), refresh_materials())
+    save = lambda: chb_functions.save(conn, cursor, win, worker_entry, date_var, cement_entry, blocks_entry, pay_rate_var, load_data, update_total_blocks, clear_form, refresh_materials)
+    update = lambda: chb_functions.update(conn, cursor, win, selected_id, worker_entry, date_var, cement_entry, blocks_entry, pay_rate_var, load_data, update_total_blocks, clear_form, refresh_materials)
+    delete = lambda: chb_functions.delete(conn, cursor, win, selected_id, worker_entry, load_data, update_total_blocks, clear_form, refresh_materials)
 
     # ================= BUTTONS =================
     tk.Button(btn_frame, text="✓ Save", command=save, bg="#15803d", fg="white", font=("Arial", 12, "bold"), width=12, padx=8, pady=10, relief="flat", cursor="hand2").pack(side="left", padx=6, pady=8)
@@ -332,3 +360,4 @@ def open_chb_dashboard():
     # ✅ INITIAL LOAD
     load_data()
     update_total_blocks()
+    refresh_materials()

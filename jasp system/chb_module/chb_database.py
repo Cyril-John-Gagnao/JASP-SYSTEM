@@ -6,6 +6,9 @@ DB_NAME = os.path.join(os.path.dirname(os.path.dirname(__file__)), "jasp.db")
 CHB_ITEM_NAME = "CHB Blocks"
 CHB_DEFAULT_UNIT = "pieces"
 CHB_STATE_ID = 1
+CEMENT_ITEM_NAME = "Cement"
+FINE_SAND_ITEM_NAME = "Fine Sand"
+RAW_MATERIAL_UNIT = "bag/sack"
 
 # ================= INIT DB =================
 def init_db():
@@ -21,6 +24,7 @@ def init_db():
             total_blocks INTEGER,
             pay REAL,
             pay_rate REAL DEFAULT 200,
+            material_inventory_applied INTEGER DEFAULT 0,
             ts TEXT
         )
     """)
@@ -63,6 +67,8 @@ def init_db():
     existing_cols = [col[1] for col in cursor.fetchall()]
     if "pay_rate" not in existing_cols:
         cursor.execute("ALTER TABLE chb_production ADD COLUMN pay_rate REAL DEFAULT 200")
+    if "material_inventory_applied" not in existing_cols:
+        cursor.execute("ALTER TABLE chb_production ADD COLUMN material_inventory_applied INTEGER DEFAULT 0")
     cursor.execute("PRAGMA table_info(items)")
     item_cols = [col[1] for col in cursor.fetchall()]
     if "unit" not in item_cols:
@@ -153,6 +159,65 @@ def adjust_chb_inventory(conn, cursor, produced_delta=0, sold_delta=0):
         )
 
     conn.commit()
+
+
+def fetch_material_stock(cursor, item_name):
+    cursor.execute(
+        "SELECT COALESCE(SUM(quantity), 0) FROM items WHERE LOWER(name) = LOWER(?)",
+        (item_name,)
+    )
+    return int(cursor.fetchone()[0] or 0)
+
+
+def ensure_material_item(cursor, item_name):
+    cursor.execute("SELECT id FROM items WHERE LOWER(name) = LOWER(?) ORDER BY id ASC LIMIT 1", (item_name,))
+    if not cursor.fetchone():
+        cursor.execute(
+            "INSERT INTO items (name, quantity, price, raw_price, unit) VALUES (?, ?, ?, ?, ?)",
+            (item_name, 0, 0, 0, RAW_MATERIAL_UNIT)
+        )
+
+
+def adjust_material_inventory(cursor, item_name, quantity_delta):
+    """Adjust raw material stock. Negative values consume inventory."""
+    if not quantity_delta:
+        return
+
+    ensure_material_item(cursor, item_name)
+
+    if quantity_delta > 0:
+        cursor.execute(
+            """
+            UPDATE items
+            SET quantity = COALESCE(quantity, 0) + ?,
+                unit = CASE WHEN COALESCE(unit, '') = '' THEN ? ELSE unit END
+            WHERE id = (
+                SELECT id FROM items WHERE LOWER(name) = LOWER(?) ORDER BY id ASC LIMIT 1
+            )
+            """,
+            (quantity_delta, RAW_MATERIAL_UNIT, item_name)
+        )
+        return
+
+    needed = abs(quantity_delta)
+    available = fetch_material_stock(cursor, item_name)
+    if available < needed:
+        raise ValueError(f"Not enough {item_name}. Available: {available}, needed: {needed}.")
+
+    cursor.execute(
+        "SELECT id, COALESCE(quantity, 0) FROM items WHERE LOWER(name) = LOWER(?) ORDER BY id ASC",
+        (item_name,)
+    )
+    for item_id, current_qty in cursor.fetchall():
+        if needed <= 0:
+            break
+        deduction = min(int(current_qty or 0), needed)
+        if deduction:
+            cursor.execute(
+                "UPDATE items SET quantity = COALESCE(quantity, 0) - ? WHERE id=?",
+                (deduction, item_id)
+            )
+            needed -= deduction
 
 
 def fetch_production_summary(cursor, start=None, end=None):
