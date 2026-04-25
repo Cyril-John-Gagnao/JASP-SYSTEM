@@ -5,7 +5,7 @@ import os
 from datetime import datetime
 from inventory import open_inventory
 from pos import open_pos
-from chb_dashboard import open_chb_dashboard
+from chb_module import open_chb_dashboard
 from reports_dashboard import open_reports
 from user_management import open_user_management
 
@@ -170,7 +170,7 @@ def fetch_dashboard_data():
     }
 
 
-def open_main(root):
+def open_main(root, logout_callback=None):
     """Render dashboard inside existing root window (no new window)."""
     data = fetch_dashboard_data()
 
@@ -222,7 +222,7 @@ def open_main(root):
 
     tk.Button(sidebar, text="Logout", bg="#dc2626", fg="white",
               font=("Arial", 11, "bold"), relief="flat", bd=0,
-              command=root.destroy, padx=16, pady=10,
+              command=(logout_callback if logout_callback else root.destroy), padx=16, pady=10,
               activebackground="#b91c1c").pack(fill="x", padx=18, pady=16)
 
     # ================= MAIN CONTENT =================
@@ -237,7 +237,7 @@ def open_main(root):
     tk.Button(header, text="Refresh Data", bg=ACCENT, fg=TEXT_PRIMARY,
               font=("Arial", 10, "bold"), relief="flat", bd=0,
               padx=12, pady=8,
-              command=lambda: open_main(root)).pack(side="right", padx=14, pady=10)
+              command=lambda: open_main(root, logout_callback)).pack(side="right", padx=14, pady=10)
     tk.Button(header, text="Open Inventory", bg="#2563eb", fg="white",
               font=("Arial", 10, "bold"), relief="flat", bd=0,
               padx=12, pady=8,

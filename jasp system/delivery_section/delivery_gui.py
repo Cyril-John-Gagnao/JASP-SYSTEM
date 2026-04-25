@@ -1,0 +1,279 @@
+import tkinter as tk
+from tkinter import ttk
+from datetime import datetime
+
+from .delivery_database import init_delivery_db, open_delivery_connection
+from . import delivery_functions
+
+# COLORS
+BG_MAIN = "#eef6ff"
+CARD_BG = "#ffffff"
+PRIMARY = "#2563eb"
+ACCENT = "#60a5fa"
+TEXT = "#1e293b"
+BORDER = "#dbeafe"
+
+
+def open_delivery_window(parent_win, bg_main, card_bg, primary):
+    """Open delivery section window"""
+    init_delivery_db()
+
+    delivery_win = tk.Toplevel(parent_win)
+    delivery_win.title("CHB Delivery Module")
+    delivery_win.state("zoomed")
+    delivery_win.configure(bg=bg_main)
+
+    # Create a persistent connection that stays open for the window lifetime
+    conn, cursor = open_delivery_connection()
+
+    selected_id = tk.StringVar()
+
+    # ================= HEADER WITH CENTER TITLE =================
+    header_frame = tk.Frame(delivery_win, bg=bg_main)
+    header_frame.pack(fill="x", padx=20, pady=10)
+
+    # Configure grid (3 columns)
+    header_frame.columnconfigure(0, weight=1)
+    header_frame.columnconfigure(1, weight=1)
+    header_frame.columnconfigure(2, weight=1)
+
+    tk.Label(
+        header_frame,
+        text="CHB Delivery Management",
+        font=("Arial", 18, "bold"),
+        bg=bg_main,
+        fg=primary
+    ).grid(row=0, column=1)
+
+    # RIGHT: Button container for Refresh and Back
+    btn_container = tk.Frame(header_frame, bg=bg_main)
+    btn_container.grid(row=0, column=2, sticky="e")
+
+    tk.Button(
+        btn_container,
+        text="Refresh",
+        command=lambda: delivery_functions.refresh_data(load_data),
+        bg="#f59e0b",
+        fg="white",
+        font=("Arial", 10, "bold"),
+        padx=12,
+        pady=5,
+        relief="flat"
+    ).pack(side="left", padx=3)
+
+    tk.Button(
+        btn_container,
+        text="Back",
+        command=lambda: delivery_functions.go_back(delivery_win),
+        bg=primary,
+        fg="white",
+        font=("Arial", 10, "bold"),
+        padx=12,
+        pady=5,
+        relief="flat"
+    ).pack(side="left", padx=3)
+
+    # ================= SEARCH & SORT =================
+    search_frame = tk.Frame(delivery_win, bg=bg_main)
+    search_frame.pack(fill="x", padx=20, pady=(0, 15))
+
+    tk.Label(search_frame, text="Search:", bg=bg_main, fg=TEXT, font=("Arial", 12, "bold"))\
+        .pack(side="left", padx=10, pady=10)
+
+    search_var = tk.StringVar()
+    search_entry = tk.Entry(search_frame, textvariable=search_var, width=35, font=("Arial", 11), bd=2, relief="solid")
+    search_entry.pack(side="left", padx=10, pady=10)
+
+    tk.Label(search_frame, text="Sort By:", bg=bg_main, fg=TEXT, font=("Arial", 12, "bold"))\
+        .pack(side="left", padx=(30, 10), pady=10)
+
+    sort_var = tk.StringVar(value="Date (Latest)")
+
+    sort_menu = ttk.Combobox(
+        search_frame,
+        textvariable=sort_var,
+        values=["Date (Latest)", "Worker Name"],
+        state="readonly",
+        width=22,
+        font=("Arial", 11)
+    )
+    sort_menu.pack(side="left", pady=10)
+
+    tk.Button(search_frame, text="Summary", command=lambda: delivery_functions.open_delivery_summary(delivery_win, cursor, bg_main, TEXT), bg="#8b5cf6", fg="white", font=("Arial", 10, "bold"), padx=12, pady=5, relief="flat").pack(side="left", padx=10)
+
+    # ================= MAIN CONTAINER (60-40 Split) =================
+    main_container = tk.Frame(delivery_win, bg=card_bg, bd=1, relief="solid")
+    main_container.pack(padx=20, pady=(5, 10), fill="both", expand=True)
+
+    main_container.columnconfigure(0, weight=3, uniform="delivery")  # table - 60%
+    main_container.columnconfigure(1, weight=2, uniform="delivery")  # form - 40%
+    main_container.rowconfigure(0, weight=1)
+
+    # ================= FORM (RIGHT SIDE - 40%) =================
+    form_card = tk.Frame(main_container, bg=card_bg)
+    form_card.grid(row=0, column=1, sticky="nsew", padx=15, pady=15)
+    form_card.columnconfigure(1, weight=1)
+
+    tk.Label(form_card, text="Delivery Form", font=("Arial", 16, "bold"), bg=card_bg, fg=primary).pack(pady=(0, 8))
+
+    form_bg = tk.Frame(form_card, bg="#fef3c7", bd=1, relief="flat")
+    form_bg.pack(fill="x", padx=5, pady=4)
+
+    form = tk.Frame(form_bg, bg="#fef3c7")
+    form.pack(fill="x", padx=16, pady=10)
+
+    # Transaction Date
+    tk.Label(form, text="Transaction Date", bg="#fef3c7", font=("Arial", 11, "bold"), fg="#1e293b").grid(row=0, column=0, sticky="w", pady=4)
+    transaction_date_var = tk.StringVar(value=datetime.now().strftime("%Y-%m-%d"))
+    transaction_date_frame = tk.Frame(form, bg="#fef3c7")
+    transaction_date_frame.grid(row=0, column=1, sticky="ew", padx=12, pady=4)
+    transaction_date_entry = tk.Entry(transaction_date_frame, textvariable=transaction_date_var, width=17, font=("Arial", 11), bd=1, relief="solid", bg="white")
+    transaction_date_entry.pack(side="left", fill="x", expand=True)
+    tk.Button(transaction_date_frame, text="Cal", command=lambda: delivery_functions.open_date_calendar(delivery_win, transaction_date_var), bg="#3b82f6", fg="white", font=("Arial", 9, "bold"), relief="flat", padx=6).pack(side="left", padx=(4, 0))
+
+    # Delivery Date
+    tk.Label(form, text="Delivery Date", bg="#fef3c7", font=("Arial", 11, "bold"), fg="#1e293b").grid(row=1, column=0, sticky="w", pady=4)
+    date_var = tk.StringVar(value=datetime.now().strftime("%Y-%m-%d"))
+    date_frame = tk.Frame(form, bg="#fef3c7")
+    date_frame.grid(row=1, column=1, sticky="ew", padx=12, pady=4)
+    date_entry = tk.Entry(date_frame, textvariable=date_var, width=17, font=("Arial", 11), bd=1, relief="solid", bg="white")
+    date_entry.pack(side="left", fill="x", expand=True)
+    tk.Button(date_frame, text="Cal", command=lambda: delivery_functions.open_date_calendar(delivery_win, date_var), bg="#3b82f6", fg="white", font=("Arial", 9, "bold"), relief="flat", padx=6).pack(side="left", padx=(4, 0))
+
+    # Worker Name
+    tk.Label(form, text="Worker Name", bg="#fef3c7", font=("Arial", 11, "bold"), fg="#1e293b").grid(row=2, column=0, sticky="w", pady=4)
+    worker_entry = tk.Entry(form, width=20, font=("Arial", 11), bd=1, relief="solid", bg="white")
+    worker_entry.grid(row=2, column=1, sticky="ew", padx=12, pady=4)
+
+    # Driver Name
+    tk.Label(form, text="Driver Name", bg="#fef3c7", font=("Arial", 11, "bold"), fg="#1e293b").grid(row=3, column=0, sticky="w", pady=4)
+    driver_entry = tk.Entry(form, width=20, font=("Arial", 11), bd=1, relief="solid", bg="white")
+    driver_entry.grid(row=3, column=1, sticky="ew", padx=12, pady=4)
+
+    # Address
+    tk.Label(form, text="Address", bg="#fef3c7", font=("Arial", 11, "bold"), fg="#1e293b").grid(row=4, column=0, sticky="w", pady=4)
+    address_entry = tk.Entry(form, width=20, font=("Arial", 11), bd=1, relief="solid", bg="white")
+    address_entry.grid(row=4, column=1, sticky="ew", padx=12, pady=4)
+
+    # Blocks to be Delivered
+    tk.Label(form, text="Blocks Delivered", bg="#fef3c7", font=("Arial", 11, "bold"), fg="#1e293b").grid(row=5, column=0, sticky="w", pady=4)
+    blocks_entry = tk.Entry(form, width=20, font=("Arial", 11), bd=1, relief="solid", bg="white")
+    blocks_entry.grid(row=5, column=1, sticky="ew", padx=12, pady=4)
+
+    # Delivery Fee
+    tk.Label(form, text="Delivery Fee (₱)", bg="#fef3c7", font=("Arial", 11, "bold"), fg="#1e293b").grid(row=6, column=0, sticky="w", pady=4)
+    delivery_fee_entry = tk.Entry(form, width=20, font=("Arial", 11), bd=1, relief="solid", bg="white")
+    delivery_fee_entry.grid(row=6, column=1, sticky="ew", padx=12, pady=4)
+
+    # Payment per Block
+    tk.Label(form, text="Worker Salary / Block (₱)", bg="#fef3c7", font=("Arial", 11, "bold"), fg="#1e293b").grid(row=7, column=0, sticky="w", pady=4)
+    payment_var = tk.DoubleVar(value=2.0)
+    payment_entry = tk.Entry(form, textvariable=payment_var, width=20, font=("Arial", 11), bd=1, relief="solid", bg="white")
+    payment_entry.grid(row=7, column=1, sticky="ew", padx=12, pady=4)
+
+    form.columnconfigure(1, weight=1)
+
+    # Result Display
+    result_label = tk.Label(
+        form_card,
+        text="Total Salary of Worker: ₱0",
+        font=("Arial", 14, "bold"),
+        bg="#e0f2fe",
+        fg="#0369a1",
+        pady=8
+    )
+    result_label.pack(pady=8, fill="x", padx=5)
+
+    # Buttons Frame
+    btn_frame = tk.Frame(form_card, bg=card_bg)
+    btn_frame.pack(pady=6, fill="x")
+    btn_frame.columnconfigure(0, weight=1)
+    btn_frame.columnconfigure(1, weight=1)
+
+    # ================= AUTO CALC =================
+    auto_calc = lambda event=None: delivery_functions.auto_calc(event, blocks_entry, payment_var, result_label)
+
+    blocks_entry.bind("<KeyRelease>", auto_calc)
+    payment_entry.bind("<KeyRelease>", auto_calc)
+
+    # ================= FUNCTIONS =================
+    clear_form = lambda: delivery_functions.clear_form(transaction_date_var, date_var, worker_entry, driver_entry, address_entry, blocks_entry, delivery_fee_entry, payment_var, result_label, selected_id)
+    save_delivery = lambda: delivery_functions.save_delivery(conn, cursor, delivery_win, transaction_date_var, worker_entry, date_var, driver_entry, address_entry, blocks_entry, delivery_fee_entry, payment_var, load_data, clear_form)
+    update_delivery = lambda: delivery_functions.update_delivery(conn, cursor, delivery_win, selected_id, transaction_date_var, worker_entry, date_var, driver_entry, address_entry, blocks_entry, delivery_fee_entry, payment_var, load_data, clear_form)
+    delete_delivery = lambda: delivery_functions.delete_delivery(conn, cursor, delivery_win, selected_id, worker_entry, load_data, clear_form)
+
+    # ================= BUTTONS =================
+    tk.Button(btn_frame, text="Save", command=save_delivery, bg="#15803d", fg="white", font=("Arial", 12, "bold"), padx=8, pady=7, relief="flat", cursor="hand2").grid(row=0, column=0, sticky="ew", padx=6, pady=4)
+    tk.Button(btn_frame, text="Update", command=update_delivery, bg="#1e40af", fg="white", font=("Arial", 12, "bold"), padx=8, pady=7, relief="flat", cursor="hand2").grid(row=0, column=1, sticky="ew", padx=6, pady=4)
+    tk.Button(btn_frame, text="Delete", command=delete_delivery, bg="#dc2626", fg="white", font=("Arial", 12, "bold"), padx=8, pady=7, relief="flat", cursor="hand2").grid(row=1, column=0, sticky="ew", padx=6, pady=4)
+    tk.Button(btn_frame, text="Clear", command=clear_form, bg="#64748b", fg="white", font=("Arial", 12, "bold"), padx=8, pady=7, relief="flat", cursor="hand2").grid(row=1, column=1, sticky="ew", padx=6, pady=4)
+
+    # ================= TABLE (LEFT SIDE - 60%) =================
+    table_card = tk.Frame(main_container, bg=card_bg)
+    table_card.grid(row=0, column=0, sticky="nsew", padx=15, pady=15)
+    table_card.columnconfigure(0, weight=1)
+    table_card.rowconfigure(0, weight=1)
+
+    columns = ("id", "transaction date", "delivery date", "worker", "driver", "address", "blocks", "delivery fee", "total Salary")
+
+    # Configure Treeview with larger fonts and blue scrollbars
+    style = ttk.Style()
+    style.configure('Treeview', font=('Arial', 11), rowheight=28)
+    style.configure('Treeview.Heading', font=('Arial', 12, 'bold'))
+
+    # Configure alternating row colors
+    style.map('Treeview', background=[('selected', '#2563eb')])
+    style.configure('oddrow.Treeview', background='#ffffff')
+    style.configure('evenrow.Treeview', background='#e0f2fe')
+
+    # Create frame for tree and scrollbars
+    tree_frame = tk.Frame(table_card, bg=card_bg)
+    tree_frame.grid(row=0, column=0, sticky="nsew")
+    tree_frame.columnconfigure(0, weight=1)
+    tree_frame.rowconfigure(0, weight=1)
+
+    # Create vertical scrollbar
+    vsb = ttk.Scrollbar(tree_frame, orient="vertical")
+    vsb.grid(row=0, column=1, sticky="ns")
+
+    # Create horizontal scrollbar
+    hsb = ttk.Scrollbar(tree_frame, orient="horizontal")
+    hsb.grid(row=1, column=0, sticky="ew")
+
+    # Create treeview with scrollbar commands
+    tree = ttk.Treeview(tree_frame, columns=columns, show="headings", yscrollcommand=vsb.set, xscrollcommand=hsb.set)
+    tree.grid(row=0, column=0, sticky="nsew")
+
+    # Configure scrollbars
+    vsb.config(command=tree.yview)
+    hsb.config(command=tree.xview)
+
+    for col in columns:
+        tree.heading(col, text=col.upper())
+        tree.column(col, anchor="center", width=130, stretch=False)
+
+    # Bind to configure event to update scrollbar after column resize
+    on_tree_configure = lambda event=None: delivery_functions.on_tree_configure(event, tree)
+
+    tree.bind('<Configure>', on_tree_configure)
+
+    # Configure tags for alternating row colors
+    tree.tag_configure('oddrow', background='#ffffff', foreground='#000000')
+    tree.tag_configure('evenrow', background='#93c5fd', foreground='#000000')
+
+    on_select = lambda event: delivery_functions.on_select(event, tree, selected_id, transaction_date_var, date_var, worker_entry, driver_entry, address_entry, blocks_entry, delivery_fee_entry, auto_calc)
+
+    tree.bind("<ButtonRelease-1>", on_select)
+
+    # ================= LOAD DATA =================
+    load_data = lambda event=None: delivery_functions.load_data(event, cursor, tree, search_var, sort_var, delivery_win)
+
+    # BINDINGS (LIVE SEARCH)
+    search_entry.bind("<KeyRelease>", load_data)
+    sort_menu.bind("<<ComboboxSelected>>", load_data)
+
+    # WINDOW CLOSE HANDLER
+    delivery_win.protocol("WM_DELETE_WINDOW", lambda: delivery_functions.on_closing(conn, delivery_win))
+
+    # INITIAL LOAD
+    load_data()
