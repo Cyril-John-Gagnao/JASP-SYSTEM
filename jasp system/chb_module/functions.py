@@ -14,6 +14,162 @@ from .chb_database import (
 )
 from .summary import open_date_calendar, open_period_summary
 
+SUCCESS_GREEN = "#16a34a"
+ERROR_RED = "#dc2626"
+
+
+def center_popup(window, width, height, parent=None):
+    window.update_idletasks()
+    if parent and parent.winfo_exists():
+        parent.update_idletasks()
+        x = parent.winfo_rootx() + (parent.winfo_width() // 2) - (width // 2)
+        y = parent.winfo_rooty() + (parent.winfo_height() // 2) - (height // 2)
+    else:
+        x = (window.winfo_screenwidth() // 2) - (width // 2)
+        y = (window.winfo_screenheight() // 2) - (height // 2)
+    window.geometry(f"{width}x{height}+{x}+{y}")
+
+
+def show_chb_popup(parent, title, message, accent_color):
+    popup = tk.Toplevel(parent)
+    popup.title(title)
+    popup.transient(parent)
+    popup.grab_set()
+    popup.configure(bg="#ffffff")
+    popup.resizable(False, False)
+
+    tk.Frame(popup, bg=accent_color, height=12).pack(fill="x")
+
+    content = tk.Frame(popup, bg="#ffffff", padx=48, pady=36)
+    content.pack(fill="both", expand=True)
+
+    tk.Label(
+        content,
+        text=title,
+        bg="#ffffff",
+        fg=accent_color,
+        font=("Arial", 28, "bold")
+    ).pack(pady=(0, 14))
+
+    tk.Label(
+        content,
+        text=message,
+        bg="#ffffff",
+        fg="#111827",
+        font=("Arial", 17),
+        wraplength=440,
+        justify="center"
+    ).pack(pady=(0, 28))
+
+    def close_popup():
+        popup.destroy()
+
+    ok_btn = tk.Button(
+        content,
+        text="OK",
+        command=close_popup,
+        bg=accent_color,
+        fg="white",
+        activebackground=accent_color,
+        font=("Arial", 15, "bold"),
+        relief="flat",
+        width=14,
+        pady=9
+    )
+    ok_btn.pack()
+    ok_btn.focus_set()
+
+    popup.bind("<Return>", lambda _event: close_popup())
+    popup.bind("<Escape>", lambda _event: close_popup())
+    popup.protocol("WM_DELETE_WINDOW", close_popup)
+    center_popup(popup, 560, 300, parent)
+    parent.wait_window(popup)
+
+
+def show_chb_error(parent, title, message):
+    show_chb_popup(parent, title, message, ERROR_RED)
+
+
+def show_chb_success(parent, title, message):
+    show_chb_popup(parent, title, message, SUCCESS_GREEN)
+
+
+def ask_chb_confirmation(parent, title, message, confirm_text="Yes", cancel_text="Cancel", accent_color="#2563eb"):
+    result = {"confirmed": False}
+
+    popup = tk.Toplevel(parent)
+    popup.title(title)
+    popup.transient(parent)
+    popup.grab_set()
+    popup.configure(bg="#ffffff")
+    popup.resizable(False, False)
+
+    tk.Frame(popup, bg=accent_color, height=12).pack(fill="x")
+
+    content = tk.Frame(popup, bg="#ffffff", padx=48, pady=36)
+    content.pack(fill="both", expand=True)
+
+    tk.Label(
+        content,
+        text=title,
+        bg="#ffffff",
+        fg=accent_color,
+        font=("Arial", 26, "bold")
+    ).pack(pady=(0, 14))
+
+    tk.Label(
+        content,
+        text=message,
+        bg="#ffffff",
+        fg="#111827",
+        font=("Arial", 16),
+        wraplength=470,
+        justify="center"
+    ).pack(pady=(0, 28))
+
+    button_row = tk.Frame(content, bg="#ffffff")
+    button_row.pack()
+
+    def confirm():
+        result["confirmed"] = True
+        popup.destroy()
+
+    def cancel():
+        popup.destroy()
+
+    tk.Button(
+        button_row,
+        text=cancel_text,
+        command=cancel,
+        bg="#64748b",
+        fg="white",
+        activebackground="#475569",
+        font=("Arial", 14, "bold"),
+        relief="flat",
+        width=13,
+        pady=9
+    ).pack(side="left", padx=8)
+
+    tk.Button(
+        button_row,
+        text=confirm_text,
+        command=confirm,
+        bg=accent_color,
+        fg="white",
+        activebackground=accent_color,
+        font=("Arial", 14, "bold"),
+        relief="flat",
+        width=13,
+        pady=9
+    ).pack(side="left", padx=8)
+
+    popup.bind("<Return>", lambda _event: confirm())
+    popup.bind("<Escape>", lambda _event: cancel())
+    popup.protocol("WM_DELETE_WINDOW", cancel)
+    center_popup(popup, 600, 330, parent)
+    parent.wait_window(popup)
+    return result["confirmed"]
+
 
 def notify_inventory_views():
     """Refresh open inventory/POS windows if they registered callbacks."""
@@ -114,14 +270,17 @@ def ask_return_materials(win, action, cement, sand):
     if cement <= 0 and sand <= 0:
         return False
 
-    return messagebox.askyesno(
+    return ask_chb_confirmation(
+        win,
         "Return Materials",
         (
             f"Do you want to return the materials from this production record to inventory before {action}?\n\n"
             f"Cement: {cement:,} bag/s\n"
             f"Fine Sand: {sand:,} bag/s"
         ),
-        parent=win
+        confirm_text="Return",
+        cancel_text="Do Not Return",
+        accent_color="#2563eb"
     )
 
 
@@ -155,6 +314,20 @@ def clear_form(worker_entry, cement_entry, sand_entry, blocks_entry, result_labe
     selected_id.set("")
 
 
+def confirm_clear_form(win, worker_entry, cement_entry, sand_entry, blocks_entry, result_label, selected_id):
+    if not ask_chb_confirmation(
+        win,
+        "Clear Form",
+        "Clear all current form inputs?",
+        confirm_text="Clear",
+        cancel_text="Cancel",
+        accent_color="#64748b"
+    ):
+        return
+    clear_form(worker_entry, cement_entry, sand_entry, blocks_entry, result_label, selected_id)
+    show_chb_success(win, "Success", "Form cleared successfully!")
+
+
 def save(conn, cursor, win, worker_entry, date_var, cement_entry, blocks_entry, pay_rate_var, load_data, update_total_blocks, clear_form, refresh_materials=None):
     try:
         cement = int(cement_entry.get())
@@ -163,23 +336,23 @@ def save(conn, cursor, win, worker_entry, date_var, cement_entry, blocks_entry, 
         pay_rate = float(pay_rate_var.get())
         pay = cement * pay_rate
     except:
-        messagebox.showerror("Error", "Invalid input", parent=win)
+        show_chb_error(win, "Error", "Invalid input.")
         return
 
     worker = worker_entry.get()
     date = date_var.get()
 
     if not worker:
-        messagebox.showerror("Error", "Fill all fields", parent=win)
+        show_chb_error(win, "Error", "Fill all fields.")
         return
 
     ok, error = validate_material_stock(cursor, cement, sand)
     if not ok:
-        messagebox.showerror("Insufficient Inventory", error, parent=win)
+        show_chb_error(win, "Insufficient Inventory", error)
         return
 
     # Confirmation dialog
-    if not messagebox.askyesno("Confirm Save", f"Save production record for {worker}?", parent=win):
+    if not ask_chb_confirmation(win, "Confirm Save", f"Save production record for {worker}?", confirm_text="Save", cancel_text="Cancel", accent_color=SUCCESS_GREEN):
         return
 
     ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -200,12 +373,12 @@ def save(conn, cursor, win, worker_entry, date_var, cement_entry, blocks_entry, 
     if callable(refresh_materials):
         refresh_materials()
     clear_form()
-    messagebox.showinfo("Success", "Record saved successfully!", parent=win)
+    show_chb_success(win, "Success", "Record saved successfully!")
 
 
 def update(conn, cursor, win, selected_id, worker_entry, date_var, cement_entry, blocks_entry, pay_rate_var, load_data, update_total_blocks, clear_form, refresh_materials=None):
     if not selected_id.get():
-        messagebox.showerror("Error", "Select a record", parent=win)
+        show_chb_error(win, "Error", "Select a record.")
         return
 
     try:
@@ -215,7 +388,7 @@ def update(conn, cursor, win, selected_id, worker_entry, date_var, cement_entry,
         pay_rate = float(pay_rate_var.get())
         pay = cement * pay_rate
     except:
-        messagebox.showerror("Error", "Invalid input", parent=win)
+        show_chb_error(win, "Error", "Invalid input.")
         return
 
     old_blocks, old_cement_value, old_sand_value, old_applied = get_production_inventory_values(cursor, selected_id.get())
@@ -224,11 +397,11 @@ def update(conn, cursor, win, selected_id, worker_entry, date_var, cement_entry,
 
     ok, error = validate_material_stock(cursor, cement, sand, selected_id.get())
     if not ok:
-        messagebox.showerror("Insufficient Inventory", error, parent=win)
+        show_chb_error(win, "Insufficient Inventory", error)
         return
 
     # Confirmation dialog
-    if not messagebox.askyesno("Confirm Update", f"Update record for {worker_entry.get()}?", parent=win):
+    if not ask_chb_confirmation(win, "Confirm Update", f"Update record for {worker_entry.get()}?", confirm_text="Update", cancel_text="Cancel", accent_color="#1e40af"):
         return
 
     cursor.execute("""
@@ -252,15 +425,23 @@ def update(conn, cursor, win, selected_id, worker_entry, date_var, cement_entry,
     if callable(refresh_materials):
         refresh_materials()
     clear_form()
-    messagebox.showinfo("Success", "Record updated successfully!", parent=win)
+    show_chb_success(win, "Success", "Record updated successfully!")
 
 
 def delete(conn, cursor, win, selected_id, worker_entry, load_data, update_total_blocks, clear_form, refresh_materials=None):
     if not selected_id.get():
+        show_chb_error(win, "Error", "Select a record to delete.")
         return
 
     # Confirmation dialog
-    if not messagebox.askyesno("Confirm Delete", f"Delete record for {worker_entry.get()}?\n\nThis action cannot be undone.", parent=win):
+    if not ask_chb_confirmation(
+        win,
+        "Confirm Delete",
+        f"Delete record for {worker_entry.get()}?\n\nThis action cannot be undone.",
+        confirm_text="Delete",
+        cancel_text="Cancel",
+        accent_color=ERROR_RED
+    ):
         return
 
     old_blocks, old_cement_value, old_sand_value, old_applied = get_production_inventory_values(cursor, selected_id.get())
@@ -280,7 +461,7 @@ def delete(conn, cursor, win, selected_id, worker_entry, load_data, update_total
     if callable(refresh_materials):
         refresh_materials()
     clear_form()
-    messagebox.showinfo("Success", "Record deleted successfully!", parent=win)
+    show_chb_success(win, "Success", "Record deleted successfully!")
 
 
 def update_total_blocks(conn, cursor, total_blocks_var):

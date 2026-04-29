@@ -163,6 +163,40 @@ def ensure_chb_item(conn, cursor):
     conn.commit()
 
 
+def ensure_chb_material_items(conn, cursor):
+    for item_name in ("Cement", "Fine Sand"):
+        cursor.execute("SELECT id FROM items WHERE LOWER(name) = LOWER(?) ORDER BY id ASC LIMIT 1", (item_name,))
+        row = cursor.fetchone()
+        if row:
+            cursor.execute(
+                """
+                UPDATE items
+                SET name=?,
+                    unit=CASE WHEN COALESCE(unit, '') = '' THEN ? ELSE unit END,
+                    status=CASE WHEN COALESCE(status, '') = '' THEN 'Active' ELSE status END
+                WHERE id=?
+                """,
+                (item_name, PREDEFINED_ITEMS[item_name], row[0])
+            )
+        else:
+            cursor.execute(
+                """
+                INSERT INTO items (name, quantity, price, raw_price, unit, status, date_added)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    item_name,
+                    0,
+                    0,
+                    0,
+                    PREDEFINED_ITEMS[item_name],
+                    "Active",
+                    datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                )
+            )
+    conn.commit()
+
+
 def normalize_predefined_units(conn, cursor):
     for item_name, item_unit in PREDEFINED_ITEMS.items():
         cursor.execute(

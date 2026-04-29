@@ -25,6 +25,118 @@ SAVE_GREEN = "#00c853"
 CANCEL_RED = "#dc2626"
 
 
+def show_inventory_error(parent, title, message):
+    popup = tk.Toplevel(parent)
+    popup.title(title)
+    popup.transient(parent)
+    popup.grab_set()
+    popup.configure(bg="#ffffff")
+    popup.resizable(False, False)
+
+    tk.Frame(popup, bg=CANCEL_RED, height=12).pack(fill="x")
+
+    content = tk.Frame(popup, bg="#ffffff", padx=48, pady=36)
+    content.pack(fill="both", expand=True)
+
+    tk.Label(
+        content,
+        text=title,
+        bg="#ffffff",
+        fg=CANCEL_RED,
+        font=("Arial", 28, "bold")
+    ).pack(pady=(0, 14))
+
+    tk.Label(
+        content,
+        text=message,
+        bg="#ffffff",
+        fg="#111827",
+        font=("Arial", 17),
+        wraplength=430,
+        justify="center"
+    ).pack(pady=(0, 28))
+
+    def close_popup():
+        popup.destroy()
+
+    ok_btn = tk.Button(
+        content,
+        text="OK",
+        command=close_popup,
+        bg=CANCEL_RED,
+        fg="white",
+        activebackground="#b91c1c",
+        font=("Arial", 15, "bold"),
+        relief="flat",
+        width=14,
+        pady=9
+    )
+    ok_btn.pack()
+    ok_btn.focus_set()
+
+    popup.bind("<Return>", lambda _event: close_popup())
+    popup.bind("<Escape>", lambda _event: close_popup())
+    popup.protocol("WM_DELETE_WINDOW", close_popup)
+    center_window(popup, 540, 290, parent)
+    parent.wait_window(popup)
+
+
+def show_inventory_success(parent, title, message):
+    popup = tk.Toplevel(parent)
+    popup.title(title)
+    popup.transient(parent)
+    popup.grab_set()
+    popup.configure(bg="#ffffff")
+    popup.resizable(False, False)
+
+    tk.Frame(popup, bg=SAVE_GREEN, height=12).pack(fill="x")
+
+    content = tk.Frame(popup, bg="#ffffff", padx=48, pady=36)
+    content.pack(fill="both", expand=True)
+
+    tk.Label(
+        content,
+        text=title,
+        bg="#ffffff",
+        fg=SAVE_GREEN,
+        font=("Arial", 28, "bold")
+    ).pack(pady=(0, 14))
+
+    tk.Label(
+        content,
+        text=message,
+        bg="#ffffff",
+        fg="#111827",
+        font=("Arial", 17),
+        wraplength=430,
+        justify="center"
+    ).pack(pady=(0, 28))
+
+    def close_popup():
+        popup.destroy()
+
+    ok_btn = tk.Button(
+        content,
+        text="OK",
+        command=close_popup,
+        bg=SAVE_GREEN,
+        fg="white",
+        activebackground="#16a34a",
+        font=("Arial", 15, "bold"),
+        relief="flat",
+        width=14,
+        pady=9
+    )
+    ok_btn.pack()
+    ok_btn.focus_set()
+
+    popup.bind("<Return>", lambda _event: close_popup())
+    popup.bind("<Escape>", lambda _event: close_popup())
+    popup.protocol("WM_DELETE_WINDOW", close_popup)
+    center_window(popup, 540, 290, parent)
+    parent.wait_window(popup)
+
+
 def status_row_tag(index, status):
     return "blue_row" if index % 2 == 0 else "white_row"
 
@@ -84,36 +196,37 @@ def open_item_form(conn, cursor, inventory_window, tree, mode, item_values=None,
     form.grab_set()
     form.configure(bg=FORM_BG)
     form.resizable(False, False)
+    form.option_add("*TCombobox*Listbox.font", ("Arial", 16))
 
     form_card = tk.Frame(form, bg=FORM_BG)
     form_card.pack(expand=True)
 
-    tk.Label(form_card, text="Item Name", font=("Arial", 12, "bold"), bg=FORM_BG).grid(row=0, column=0, padx=14, pady=8, sticky="w")
+    tk.Label(form_card, text="Item Name", font=("Arial", 16, "bold"), bg=FORM_BG).grid(row=0, column=0, padx=18, pady=10, sticky="w")
     name_var = tk.StringVar()
-    name_entry = tk.Entry(form_card, textvariable=name_var, width=28, font=("Arial", 12))
-    name_entry.grid(row=0, column=1, pady=8)
+    name_entry = tk.Entry(form_card, textvariable=name_var, width=28, font=("Arial", 16))
+    name_entry.grid(row=0, column=1, pady=10)
 
-    tk.Label(form_card, text="Measurement Unit", font=("Arial", 12, "bold"), bg=FORM_BG).grid(row=1, column=0, padx=14, pady=8, sticky="w")
+    tk.Label(form_card, text="Measurement Unit", font=("Arial", 16, "bold"), bg=FORM_BG).grid(row=1, column=0, padx=18, pady=10, sticky="w")
     unit_var = tk.StringVar()
-    unit_entry = ttk.Combobox(form_card, textvariable=unit_var, values=UNIT_OPTIONS, width=26, font=("Arial", 12))
-    unit_entry.grid(row=1, column=1, pady=8)
+    unit_entry = ttk.Combobox(form_card, textvariable=unit_var, values=UNIT_OPTIONS, width=26, font=("Arial", 16))
+    unit_entry.grid(row=1, column=1, pady=10)
 
-    tk.Label(form_card, text="Quantity", font=("Arial", 12, "bold"), bg=FORM_BG).grid(row=2, column=0, padx=14, pady=8, sticky="w")
-    quantity_entry = tk.Entry(form_card, width=28, font=("Arial", 12))
-    quantity_entry.grid(row=2, column=1, pady=8)
+    tk.Label(form_card, text="Quantity", font=("Arial", 16, "bold"), bg=FORM_BG).grid(row=2, column=0, padx=18, pady=10, sticky="w")
+    quantity_entry = tk.Entry(form_card, width=28, font=("Arial", 16))
+    quantity_entry.grid(row=2, column=1, pady=10)
 
-    tk.Label(form_card, text="Selling Price", font=("Arial", 12, "bold"), bg=FORM_BG).grid(row=3, column=0, padx=14, pady=8, sticky="w")
-    price_entry = tk.Entry(form_card, width=28, font=("Arial", 12))
-    price_entry.grid(row=3, column=1, pady=8)
+    tk.Label(form_card, text="Selling Price", font=("Arial", 16, "bold"), bg=FORM_BG).grid(row=3, column=0, padx=18, pady=10, sticky="w")
+    price_entry = tk.Entry(form_card, width=28, font=("Arial", 16))
+    price_entry.grid(row=3, column=1, pady=10)
 
-    tk.Label(form_card, text="Raw Price", font=("Arial", 12, "bold"), bg=FORM_BG).grid(row=4, column=0, padx=14, pady=8, sticky="w")
-    raw_price_entry = tk.Entry(form_card, width=28, font=("Arial", 12))
-    raw_price_entry.grid(row=4, column=1, pady=8)
+    tk.Label(form_card, text="Raw Price", font=("Arial", 16, "bold"), bg=FORM_BG).grid(row=4, column=0, padx=18, pady=10, sticky="w")
+    raw_price_entry = tk.Entry(form_card, width=28, font=("Arial", 16))
+    raw_price_entry.grid(row=4, column=1, pady=10)
 
-    tk.Label(form_card, text="Status", font=("Arial", 12, "bold"), bg=FORM_BG).grid(row=5, column=0, padx=14, pady=8, sticky="w")
+    tk.Label(form_card, text="Status", font=("Arial", 16, "bold"), bg=FORM_BG).grid(row=5, column=0, padx=18, pady=10, sticky="w")
     status_var = tk.StringVar(value="Active")
-    status_entry = ttk.Combobox(form_card, textvariable=status_var, values=["Active", "Inactive"], width=26, font=("Arial", 12), state="readonly")
-    status_entry.grid(row=5, column=1, pady=8)
+    status_entry = ttk.Combobox(form_card, textvariable=status_var, values=["Active", "Inactive"], width=26, font=("Arial", 16), state="readonly")
+    status_entry.grid(row=5, column=1, pady=10)
 
     def sync_unit_from_name(event=None):
         selected_item = name_var.get().strip()
@@ -140,7 +253,7 @@ def open_item_form(conn, cursor, inventory_window, tree, mode, item_values=None,
             raw_price_entry.config(state="disabled")
             unit_entry.config(state="disabled")
             unit_var.set(CHB_DEFAULT_UNIT)
-            tk.Label(form_card, text="Quantity is auto from CHB production. Only price and status can be updated.", fg="#dc2626", bg=FORM_BG, font=("Arial", 10, "italic")).grid(row=7, column=0, columnspan=2, pady=(4, 0))
+            tk.Label(form_card, text="Quantity is auto from CHB production. Only price and status can be updated.", fg="#dc2626", bg=FORM_BG, font=("Arial", 12, "italic")).grid(row=7, column=0, columnspan=2, pady=(4, 0))
 
     def submit():
         name = name_var.get().strip()
@@ -151,14 +264,14 @@ def open_item_form(conn, cursor, inventory_window, tree, mode, item_values=None,
         status = status_var.get().strip() or "Active"
 
         if not name or not unit or not quantity:
-            messagebox.showerror("Error", "All fields are required!", parent=form)
+            show_inventory_error(form, "Error", "All fields are required!")
             return
         if status not in ("Active", "Inactive"):
-            messagebox.showerror("Error", "Status must be Active or Inactive.", parent=form)
+            show_inventory_error(form, "Error", "Status must be Active or Inactive.")
             return
 
         if mode == "add" and name == CHB_ITEM_NAME:
-            messagebox.showerror("Error", "CHB quantity is auto-generated. Edit price only via the existing CHB item.", parent=form)
+            show_inventory_error(form, "Error", "CHB quantity is auto-generated. Edit price only via the existing CHB item.")
             return
 
         try:
@@ -168,7 +281,7 @@ def open_item_form(conn, cursor, inventory_window, tree, mode, item_values=None,
             price_val = float(price)
             raw_val = float(raw)
         except ValueError:
-            messagebox.showerror("Error", "Quantity must be a whole number and prices must be numeric.", parent=form)
+            show_inventory_error(form, "Error", "Quantity must be a whole number and prices must be numeric.")
             return
 
         if mode == "edit" and item_values and item_values[1] == CHB_ITEM_NAME:
@@ -207,16 +320,16 @@ def open_item_form(conn, cursor, inventory_window, tree, mode, item_values=None,
                 log_restock(conn, cursor, name, quantity_val - previous_qty, price_val, raw_val)
 
         conn.commit()
-        messagebox.showinfo("Success", success_msg, parent=form)
+        show_inventory_success(form, "Success", success_msg)
         form.destroy()
         if callable(refresh_view):
             refresh_view()
         else:
             view_items(conn, cursor, tree)
 
-    tk.Button(form_card, text="Save", width=18, bg=SAVE_GREEN, fg="white", font=("Arial", 13, "bold"), bd=2, relief="solid", highlightbackground="black", highlightcolor="black", highlightthickness=1, command=submit).grid(row=6, column=0, padx=8, pady=22)
-    tk.Button(form_card, text="Cancel", width=18, bg=CANCEL_RED, fg="white", font=("Arial", 13, "bold"), bd=2, relief="solid", highlightbackground="black", highlightcolor="black", highlightthickness=1, command=form.destroy).grid(row=6, column=1, padx=8, pady=22)
-    center_window(form, 560, 500, inventory_window)
+    tk.Button(form_card, text="Save", width=18, bg=SAVE_GREEN, fg="white", font=("Arial", 16, "bold"), bd=2, relief="solid", highlightbackground="black", highlightcolor="black", highlightthickness=1, padx=8, pady=8, command=submit).grid(row=6, column=0, padx=10, pady=26)
+    tk.Button(form_card, text="Cancel", width=18, bg=CANCEL_RED, fg="white", font=("Arial", 16, "bold"), bd=2, relief="solid", highlightbackground="black", highlightcolor="black", highlightthickness=1, padx=8, pady=8, command=form.destroy).grid(row=6, column=1, padx=10, pady=26)
+    center_window(form, 720, 620, inventory_window)
 
 
 def add_item(conn, cursor, inventory_window, tree, refresh_view=None):
@@ -226,7 +339,7 @@ def add_item(conn, cursor, inventory_window, tree, refresh_view=None):
 def update_item(conn, cursor, inventory_window, tree, refresh_view=None):
     selected = tree.focus()
     if not selected:
-        messagebox.showerror("Error", "Select an item to update", parent=inventory_window)
+        show_inventory_error(inventory_window, "Error", "Select an item to update.")
         return
     values = tree.item(selected, "values")
     open_item_form(conn, cursor, inventory_window, tree, "edit", values, refresh_view)
@@ -235,11 +348,11 @@ def update_item(conn, cursor, inventory_window, tree, refresh_view=None):
 def delete_item(conn, cursor, inventory_window, tree, refresh_view=None):
     selected = tree.focus()
     if not selected:
-        messagebox.showerror("Error", "Select an item to delete", parent=inventory_window)
+        show_inventory_error(inventory_window, "Error", "Select an item to delete.")
         return
     values = tree.item(selected, "values")
     if values[1] == CHB_ITEM_NAME:
-        messagebox.showerror("Error", "CHB item cannot be deleted. Its stock is managed separately.", parent=inventory_window)
+        show_inventory_error(inventory_window, "Error", "CHB item cannot be deleted. Its stock is managed separately.")
         return
 
     confirm = tk.Toplevel(inventory_window)
@@ -252,8 +365,8 @@ def delete_item(conn, cursor, inventory_window, tree, refresh_view=None):
     confirm_card = tk.Frame(confirm, bg=FORM_BG)
     confirm_card.pack(expand=True)
 
-    tk.Label(confirm_card, text="Delete Item", font=("Arial", 16, "bold"), bg=FORM_BG, fg="#991b1b").pack(pady=(0, 12))
-    tk.Label(confirm_card, text=f"Are you sure you want to delete {values[1]}?", font=("Arial", 12, "bold"), bg=FORM_BG).pack(pady=8)
+    tk.Label(confirm_card, text="Delete Item", font=("Arial", 24, "bold"), bg=FORM_BG, fg="#991b1b").pack(pady=(0, 16))
+    tk.Label(confirm_card, text=f"Are you sure you want to delete {values[1]}?", font=("Arial", 17, "bold"), bg=FORM_BG, wraplength=560, justify="center").pack(pady=10)
 
     button_frame = tk.Frame(confirm_card, bg=FORM_BG)
     button_frame.pack(pady=22)
@@ -262,7 +375,7 @@ def delete_item(conn, cursor, inventory_window, tree, refresh_view=None):
         item_id = values[0]
         delete_item_record(conn, cursor, item_id)
         confirm.destroy()
-        messagebox.showinfo("Success", "Item Deleted Successfully!", parent=inventory_window)
+        show_inventory_success(inventory_window, "Success", "Item deleted successfully!")
         inventory_window.lift()
         inventory_window.focus_force()
         if callable(refresh_view):
@@ -270,9 +383,9 @@ def delete_item(conn, cursor, inventory_window, tree, refresh_view=None):
         else:
             view_items(conn, cursor, tree)
 
-    tk.Button(button_frame, text="Delete", width=16, bg="#ff1744", fg="white", font=("Arial", 13, "bold"), bd=2, relief="solid", highlightbackground="black", highlightcolor="black", highlightthickness=1, command=confirm_delete).grid(row=0, column=0, padx=10)
-    tk.Button(button_frame, text="Cancel", width=16, bg="#ff5252", fg="white", font=("Arial", 13, "bold"), bd=2, relief="solid", highlightbackground="black", highlightcolor="black", highlightthickness=1, command=confirm.destroy).grid(row=0, column=1, padx=10)
-    center_window(confirm, 520, 260, inventory_window)
+    tk.Button(button_frame, text="Delete", width=16, bg="#ff1744", fg="white", font=("Arial", 16, "bold"), bd=2, relief="solid", highlightbackground="black", highlightcolor="black", highlightthickness=1, padx=8, pady=8, command=confirm_delete).grid(row=0, column=0, padx=12)
+    tk.Button(button_frame, text="Cancel", width=16, bg="#ff5252", fg="white", font=("Arial", 16, "bold"), bd=2, relief="solid", highlightbackground="black", highlightcolor="black", highlightthickness=1, padx=8, pady=8, command=confirm.destroy).grid(row=0, column=1, padx=12)
+    center_window(confirm, 680, 340, inventory_window)
 
 
 def search_items(event, conn, cursor, tree, search_entry, sort_var=None, total_var=None):

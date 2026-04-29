@@ -11,6 +11,7 @@ from reportlab.lib.units import inch
 from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
 
 from .inventory_database import DB_NAME
+from .inventory_functions import show_inventory_error
 
 
 def center_window(window, width=None, height=None, parent=None):
@@ -321,7 +322,7 @@ def open_inventory_summary(parent):
                 messagebox.showinfo("Success", f"PDF exported successfully!\n{file_path}", parent=preview)
                 preview.destroy()
             except Exception as exc:
-                messagebox.showerror("Error", f"Failed to export PDF:\n{exc}", parent=preview)
+                show_inventory_error(preview, "Error", f"Failed to export PDF:\n{exc}")
 
         tk.Button(button_frame, text="Convert to PDF", bg="#00c853", fg="white", font=("Arial", 10, "bold"), bd=2, relief="solid", command=choose_file_and_export, padx=10, pady=5).pack(side="right", padx=5)
         tk.Button(button_frame, text="Close", bg="#ff5252", fg="white", font=("Arial", 10, "bold"), bd=2, relief="solid", command=preview.destroy, padx=10, pady=5).pack(side="right", padx=5)
@@ -338,7 +339,7 @@ def open_inventory_summary(parent):
     tk.Label(top_frame, text="Date:", bg="#f4f6f9", font=("Arial", 13, "bold")).pack(side="left", padx=(24, 8))
     date_entry = tk.Entry(top_frame, textvariable=date_var, width=14, font=("Arial", 12), relief="solid", bd=1)
     date_entry.pack(side="left", padx=4)
-    tk.Button(top_frame, text="Cal", bg="#2196f3", fg="white", font=("Arial", 10, "bold"), relief="flat", command=lambda: open_date_calendar(summary_win, date_var, load_summary), padx=8, pady=4).pack(side="left", padx=4)
+    tk.Button(top_frame, text="Calendar", bg="#2196f3", fg="white", font=("Arial", 10, "bold"), relief="flat", command=lambda: open_date_calendar(summary_win, date_var, load_summary), padx=8, pady=4).pack(side="left", padx=4)
     tk.Button(top_frame, text="Apply", bg="#2563eb", fg="white", font=("Arial", 10, "bold"), relief="flat", command=load_summary, padx=10, pady=4).pack(side="left", padx=8)
 
     pdf_button_frame = tk.Frame(summary_win, bg="#f4f6f9")

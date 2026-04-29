@@ -130,8 +130,9 @@ def open_period_summary(win, cursor, BG_MAIN, TEXT):
             end = start + timedelta(days=6)
         elif p == 'month':
             try:
-                m = months.index(month_var.get()) + 1
-                y = int(year_var.get())
+                d = datetime.strptime(date_sel.get(), "%Y-%m-%d")
+                m = d.month
+                y = d.year
             except Exception:
                 m = datetime.now().month
                 y = datetime.now().year
@@ -252,14 +253,14 @@ def open_period_summary(win, cursor, BG_MAIN, TEXT):
 
             preview_win = tk.Toplevel(summary_win)
             preview_win.title('Summary Preview')
-            preview_win.geometry('900x560')
+            preview_win.geometry('980x620')
             preview_win.configure(bg=BG_MAIN)
             preview_win.transient(summary_win)
 
             preview_win.update_idletasks()
-            x = (preview_win.winfo_screenwidth() // 2) - (900 // 2)
-            y = (preview_win.winfo_screenheight() // 2) - (560 // 2)
-            preview_win.geometry(f'900x560+{x}+{y}')
+            x = (preview_win.winfo_screenwidth() // 2) - (980 // 2)
+            y = (preview_win.winfo_screenheight() // 2) - (620 // 2)
+            preview_win.geometry(f'980x620+{x}+{y}')
 
             header_frame = tk.Frame(preview_win, bg=BG_MAIN)
             header_frame.pack(fill='x', padx=16, pady=(14, 8))
@@ -269,7 +270,7 @@ def open_period_summary(win, cursor, BG_MAIN, TEXT):
                 text=title_text,
                 bg=BG_MAIN,
                 fg='#1e40af',
-                font=('Arial', 16, 'bold')
+                font=('Arial', 22, 'bold')
             ).pack(anchor='w')
 
             cols = ('date', 'worker', 'blocks', 'pay')
@@ -283,8 +284,8 @@ def open_period_summary(win, cursor, BG_MAIN, TEXT):
             preview_tree.column('blocks', width=170, anchor='center')
             preview_tree.column('pay', width=170, anchor='center')
             preview_tree.pack(fill='both', expand=True, padx=16, pady=8)
-            preview_tree.tag_configure('oddrow', background='#ffffff', font=('Arial', 12))
-            preview_tree.tag_configure('evenrow', background='#93c5fd', font=('Arial', 12))
+            preview_tree.tag_configure('oddrow', background='#ffffff', font=('Arial', 15))
+            preview_tree.tag_configure('evenrow', background='#93c5fd', font=('Arial', 15))
 
             for index, row in enumerate(table_data[1:-1]):
                 tag = 'evenrow' if index % 2 == 0 else 'oddrow'
@@ -295,7 +296,7 @@ def open_period_summary(win, cursor, BG_MAIN, TEXT):
                 text=f"TOTAL: {total_blocks:,} blocks | ₱{total_pay:,.2f}",
                 bg=BG_MAIN,
                 fg='#1e40af',
-                font=('Arial', 13, 'bold')
+                font=('Arial', 17, 'bold')
             ).pack(fill='x', padx=16, pady=(0, 10))
 
             action_frame = tk.Frame(preview_win, bg=BG_MAIN)
@@ -326,7 +327,7 @@ def open_period_summary(win, cursor, BG_MAIN, TEXT):
                 command=choose_file_and_save,
                 bg='#059669',
                 fg='white',
-                font=('Arial', 11, 'bold'),
+                font=('Arial', 14, 'bold'),
                 width=16,
                 padx=12,
                 pady=8,
@@ -339,7 +340,7 @@ def open_period_summary(win, cursor, BG_MAIN, TEXT):
                 command=preview_win.destroy,
                 bg='#64748b',
                 fg='white',
-                font=('Arial', 11, 'bold'),
+                font=('Arial', 14, 'bold'),
                 width=16,
                 padx=12,
                 pady=8,
@@ -351,61 +352,44 @@ def open_period_summary(win, cursor, BG_MAIN, TEXT):
 
     summary_win = tk.Toplevel(win)
     summary_win.title('Production Summary')
-    summary_win.geometry('950x550')
+    summary_win.geometry('1100x650')
     summary_win.configure(bg=BG_MAIN)
 
     summary_win.update_idletasks()
-    x = (summary_win.winfo_screenwidth() // 2) - (950 // 2)
-    y = (summary_win.winfo_screenheight() // 2) - (550 // 2)
-    summary_win.geometry(f'950x550+{x}+{y}')
+    x = (summary_win.winfo_screenwidth() // 2) - (1100 // 2)
+    y = (summary_win.winfo_screenheight() // 2) - (650 // 2)
+    summary_win.geometry(f'1100x650+{x}+{y}')
 
     top_frame = tk.Frame(summary_win, bg=BG_MAIN)
     top_frame.pack(fill='x', pady=12, padx=10)
 
     period_var = tk.StringVar(value='day')
 
-    tk.Label(top_frame, text='Period:', bg=BG_MAIN, font=('Arial', 11, 'bold'), fg=TEXT).pack(side='left', padx=6)
-    tk.Radiobutton(top_frame, text='Day', variable=period_var, value='day', bg=BG_MAIN, font=('Arial', 10), command=load_summary).pack(side='left', padx=8)
-    tk.Radiobutton(top_frame, text='Week', variable=period_var, value='week', bg=BG_MAIN, font=('Arial', 10), command=load_summary).pack(side='left', padx=8)
-    tk.Radiobutton(top_frame, text='Month', variable=period_var, value='month', bg=BG_MAIN, font=('Arial', 10), command=load_summary).pack(side='left', padx=8)
+    tk.Label(top_frame, text='Period:', bg=BG_MAIN, font=('Arial', 15, 'bold'), fg=TEXT).pack(side='left', padx=6)
+    tk.Radiobutton(top_frame, text='Day', variable=period_var, value='day', bg=BG_MAIN, font=('Arial', 13), command=load_summary).pack(side='left', padx=8)
+    tk.Radiobutton(top_frame, text='Week', variable=period_var, value='week', bg=BG_MAIN, font=('Arial', 13), command=load_summary).pack(side='left', padx=8)
+    tk.Radiobutton(top_frame, text='Month', variable=period_var, value='month', bg=BG_MAIN, font=('Arial', 13), command=load_summary).pack(side='left', padx=8)
 
     date_frame = tk.Frame(top_frame, bg=BG_MAIN)
     date_frame.pack(side='left', padx=(30, 10))
 
-    tk.Label(date_frame, text='Date:', bg=BG_MAIN, font=('Arial', 11, 'bold'), fg=TEXT).pack(side='left', padx=(0, 6))
+    tk.Label(date_frame, text='Date:', bg=BG_MAIN, font=('Arial', 15, 'bold'), fg=TEXT).pack(side='left', padx=(0, 6))
     date_sel = tk.StringVar(value=default_date.strftime('%Y-%m-%d'))
-    date_entry2 = tk.Entry(date_frame, textvariable=date_sel, width=15, font=('Arial', 11), relief='solid', bd=1)
+    date_entry2 = tk.Entry(date_frame, textvariable=date_sel, width=15, font=('Arial', 14), relief='solid', bd=1)
     date_entry2.pack(side='left', padx=4)
-    tk.Button(date_frame, text='📅', command=lambda: open_date_calendar(summary_win, date_sel, load_summary), bg='#3b82f6', fg='white', font=('Arial', 10, 'bold'), relief='flat', padx=8, pady=3).pack(side='left', padx=4)
-
-    month_year_frame = tk.Frame(top_frame, bg=BG_MAIN)
-    month_year_frame.pack(side='left', padx=10)
-
-    months = ["January", "February", "March", "April", "May", "June",
-              "July", "August", "September", "October", "November", "December"]
-    month_var = tk.StringVar(value=default_date.strftime('%B'))
-    month_cb = ttk.Combobox(month_year_frame, values=months, textvariable=month_var, width=12, state='readonly', font=('Arial', 10))
-    month_cb.pack(side='left', padx=4)
-
-    year_var = tk.StringVar(value=str(default_date.year))
-    years = [str(y) for y in range(datetime.now().year - 5, datetime.now().year + 1)]
-    if str(default_date.year) not in years:
-        years.append(str(default_date.year))
-        years.sort(key=int)
-    year_cb = ttk.Combobox(month_year_frame, values=years, textvariable=year_var, width=8, state='readonly', font=('Arial', 10))
-    year_cb.pack(side='left', padx=4)
-    tk.Button(month_year_frame, text='Apply', command=load_summary, bg='#3b82f6', fg='white', font=('Arial', 10, 'bold'), width=10, padx=8, pady=5, relief='flat').pack(side='left', padx=4)
+    tk.Button(date_frame, text='Calendar', command=lambda: open_date_calendar(summary_win, date_sel, load_summary), bg='#3b82f6', fg='white', font=('Arial', 13, 'bold'), relief='flat', padx=10, pady=5).pack(side='left', padx=4)
+    tk.Button(date_frame, text='Apply', command=load_summary, bg='#2563eb', fg='white', font=('Arial', 13, 'bold'), relief='flat', padx=12, pady=5).pack(side='left', padx=4)
 
     btn_frame = tk.Frame(summary_win, bg=BG_MAIN)
     btn_frame.pack(fill='x', padx=12, pady=(0, 8))
 
-    tk.Button(btn_frame, text='Preview / Convert PDF', command=open_pdf_preview, bg='#059669', fg='white', font=('Arial', 10, 'bold'), width=22, padx=14, pady=6, relief='flat').pack(side='left', padx=4)
+    tk.Button(btn_frame, text='Preview / Convert PDF', command=open_pdf_preview, bg='#059669', fg='white', font=('Arial', 13, 'bold'), width=22, padx=14, pady=8, relief='flat').pack(side='left', padx=4)
 
     cols = ('date', 'worker', 'blocks', 'pay')
 
     style = ttk.Style()
-    style.configure('Summary.Treeview', font=('Arial', 12), rowheight=32)
-    style.configure('Summary.Treeview.Heading', font=('Arial', 13, 'bold'))
+    style.configure('Summary.Treeview', font=('Arial', 15), rowheight=40)
+    style.configure('Summary.Treeview.Heading', font=('Arial', 16, 'bold'))
 
     summary_tree = ttk.Treeview(summary_win, columns=cols, show='headings', style='Summary.Treeview')
     summary_tree.heading('date', text='Production Date')
@@ -417,11 +401,11 @@ def open_period_summary(win, cursor, BG_MAIN, TEXT):
     summary_tree.column('blocks', width=180, anchor='center')
     summary_tree.column('pay', width=180, anchor='center')
     summary_tree.pack(fill='both', expand=True, padx=12, pady=12)
-    summary_tree.tag_configure('oddrow', background='#ffffff', font=('Arial', 12))
-    summary_tree.tag_configure('evenrow', background='#93c5fd', font=('Arial', 12))
+    summary_tree.tag_configure('oddrow', background='#ffffff', font=('Arial', 15))
+    summary_tree.tag_configure('evenrow', background='#93c5fd', font=('Arial', 15))
 
     totals_var = tk.StringVar(value='')
-    totals_lbl = tk.Label(summary_win, textvariable=totals_var, bg=BG_MAIN, font=('Arial', 13, 'bold'), fg='#1e40af')
+    totals_lbl = tk.Label(summary_win, textvariable=totals_var, bg=BG_MAIN, font=('Arial', 17, 'bold'), fg='#1e40af')
     totals_lbl.pack(fill='x', padx=12, pady=(0, 12))
 
     load_summary()
