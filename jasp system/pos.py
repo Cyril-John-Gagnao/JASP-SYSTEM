@@ -1,3 +1,4 @@
+<<<<<<< Updated upstream
 from logging import root
 import sqlite3
 import tkinter as tk
@@ -255,3 +256,11 @@ def open_pos():
 
     load_inventory()
     root.mainloop()
+=======
+from pos_module import open_pos
+
+
+if __name__ == "__main__":
+    open_pos()
+
+>>>>>>> Stashed changes
