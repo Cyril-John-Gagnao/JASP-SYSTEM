@@ -2,7 +2,7 @@ import hashlib
 import os
 import sqlite3
 
-DB_NAME = os.path.join(os.path.dirname(os.path.dirname(__file__)), "jasp.db")
+DB_NAME = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "jasp.db")
 SECURITY_QUESTION = "What is your username?"
 
 

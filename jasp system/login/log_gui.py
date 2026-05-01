@@ -1,5 +1,6 @@
 import tkinter as tk
 from tkinter import messagebox
+from window_utils import enable_centered_toplevels
 
 from .database import (
     get_authenticated_user,
@@ -12,6 +13,8 @@ from .functions import (
     is_valid_username,
     validate_common_inputs,
 )
+
+enable_centered_toplevels()
 
 BG_BLUE = "#1950a3"
 CARD_BG = "#ffffff"
@@ -49,8 +52,8 @@ def open_main_in_place(user_role):
 
 def open_pos_for_cashier():
     try:
-        import pos
-        pos.open_pos()
+        from pos_module import open_pos
+        open_pos()
     except Exception as e:
         messagebox.showerror("Error Loading POS", f"Failed to load POS:\n\n{str(e)}")
 

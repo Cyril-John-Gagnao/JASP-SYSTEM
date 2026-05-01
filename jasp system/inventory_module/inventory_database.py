@@ -2,7 +2,7 @@ import sqlite3
 from datetime import datetime
 import os
 
-DB_NAME = os.path.join(os.path.dirname(os.path.dirname(__file__)), "jasp.db")
+DB_NAME = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "jasp.db")
 CHB_ITEM_NAME = "CHB Blocks"
 CHB_STATE_ID = 1
 CHB_DEFAULT_UNIT = "pieces"

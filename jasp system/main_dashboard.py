@@ -4,13 +4,15 @@ import sqlite3
 import os
 from datetime import datetime
 from inventory_module import open_inventory
-from pos import open_pos
+from pos_module import open_pos
 from chb_module import open_chb_dashboard
 from reports_module import open_reports
 from User_management.user_gui import open_user_management
+from window_utils import enable_centered_toplevels
 
+enable_centered_toplevels()
 
-DB_NAME = os.path.join(os.path.dirname(__file__), "jasp.db")
+DB_NAME = os.path.join(os.path.dirname(__file__), "data", "jasp.db")
 BG_PAGE = "#edeff3"
 BG_SIDEBAR = "#273142"
 BG_CARD = "#ffffff"
