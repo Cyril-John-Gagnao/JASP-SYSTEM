@@ -13,7 +13,7 @@ inventory_refresh_job = None
 CHB_SECTION_ITEMS = ("Cement", "Fine Sand", "CHB Blocks")
 
 
-def open_inventory():
+def open_inventory(parent=None):
     global inventory_window, inventory_refresh_callback, inventory_refresh_job
     if inventory_window and inventory_window.winfo_exists():
         inventory_window.focus()
@@ -26,21 +26,26 @@ def open_inventory():
     normalize_predefined_units(conn, cursor)
 
     # ---------- GUI ----------
-    inventory_window = tk.Toplevel()
+    if parent is not None and parent.winfo_exists():
+        inventory_window = tk.Toplevel(parent)
+    else:
+        inventory_window = tk.Toplevel()
     inventory_window.title("Inventory Management")
     inventory_window.state("zoomed")
     inventory_window.configure(bg="#f4f6f9")
     inventory_window.option_add("*TCombobox*Listbox.font", ("Arial", 18))
 
-    header_frame = tk.Frame(inventory_window, bg="#f4f6f9")
+    header_frame = tk.Frame(inventory_window, bg="#dbeafe", padx=14, pady=10, highlightthickness=1, highlightbackground="#93c5fd")
     header_frame.pack(fill="x", padx=30, pady=(15, 8))
 
     tk.Label(
         header_frame,
-        text="Inventory Management",
+        text="INVENTORY MANAGEMENT",
         font=("Arial", 22, "bold"),
-        bg="#f4f6f9",
-        fg="#2563eb"
+        bg="#dbeafe",
+        fg="#2563eb",
+        padx=12,
+        pady=4
     ).pack(side="left")
 
     header_button_options = {
@@ -57,7 +62,7 @@ def open_inventory():
         text="Back",
         bg="#2563eb",
         fg="white",
-        command=lambda: inventory_functions.back_to_main(__import__(__name__, fromlist=[''])),
+        command=lambda: close_inventory_window(),
         **header_button_options
     ).pack(side="right", padx=(6, 0))
     tk.Button(
@@ -68,7 +73,6 @@ def open_inventory():
         command=lambda: refresh_view(),
         **header_button_options
     ).pack(side="right", padx=(6, 0))
-
     main_frame = tk.Frame(inventory_window, bg="#f4f6f9")
     main_frame.pack(fill="both", expand=True, padx=20, pady=10)
 
@@ -117,8 +121,13 @@ def open_inventory():
         command=lambda: open_inventory_summary(inventory_window)
     ).pack(side="left")
 
+    stock_counts_frame = tk.Frame(left_frame, bg="#f4f6f9")
+    stock_counts_frame.pack(anchor="w", pady=(6, 8))
+
     total_items_var = tk.StringVar(value="Total Items in Inventory: 0")
-    tk.Label(left_frame, textvariable=total_items_var, font=("Arial", 14, "bold"), bg="#f4f6f9", fg="#1e40af").pack(anchor="w", pady=(4, 6))
+    low_stock_var = tk.StringVar(value="Low Stock Items: 0")
+    tk.Label(stock_counts_frame, textvariable=total_items_var, font=("Arial", 18, "bold"), bg="#f4f6f9", fg="#1e40af").pack(side="left")
+    tk.Label(stock_counts_frame, textvariable=low_stock_var, font=("Arial", 18, "bold"), bg="#f4f6f9", fg="#c2410c").pack(side="left", padx=(28, 0))
 
     # ---------- CRUD Functions ----------
     sort_state = {"column": None, "ascending": True}
@@ -174,10 +183,18 @@ def open_inventory():
     tree_frame.pack(fill="both", expand=True)
 
     # -------- Right Frame: Actions ----------
-    right_frame = tk.Frame(content_frame, bg="white", padx=24, pady=24, bd=2, relief="groove")
+    right_frame = tk.Frame(
+        content_frame,
+        bg="#dbeafe",
+        padx=14,
+        pady=20,
+        bd=0,
+        relief="flat",
+        highlightthickness=0
+    )
     right_frame.pack(side="right", fill="y", padx=(10, 0))
 
-    columns = ("ID", "Name", "Unit", "Quantity", "Price", "Raw Price", "Status")
+    columns = ("ID", "Name", "Unit", "Quantity", "Price", "Raw Price", "Status", "Restock")
     column_headings = {
         "ID": "ID",
         "Name": "Name",
@@ -186,6 +203,7 @@ def open_inventory():
         "Price": "Selling Price",
         "Raw Price": "Raw Price",
         "Status": "Status",
+        "Restock": "Restock",
     }
     chb_tree = ttk.Treeview(chb_tree_frame, columns=columns, show="headings", selectmode="browse", height=3)
     chb_v_scroll = ttk.Scrollbar(chb_tree_frame, orient="vertical", command=chb_tree.yview)
@@ -216,8 +234,10 @@ def open_inventory():
     tree.configure(style="Inventory.Treeview")
     chb_tree.tag_configure("blue_row", background="#93c5fd", foreground="#000000")
     chb_tree.tag_configure("white_row", background="#ffffff", foreground="#000000")
+    chb_tree.tag_configure(inventory_functions.LOW_STOCK_ROW, background="#fed7aa", foreground="#000000")
     tree.tag_configure("blue_row", background="#93c5fd", foreground="#000000")
     tree.tag_configure("white_row", background="#ffffff", foreground="#000000")
+    tree.tag_configure(inventory_functions.LOW_STOCK_ROW, background="#fed7aa", foreground="#000000")
 
     def configure_columns(target_tree):
         for column_id, heading_text in column_headings.items():
@@ -228,11 +248,55 @@ def open_inventory():
     configure_columns(chb_tree)
     configure_columns(tree)
 
-    status_labels = []
+    overlay_widgets = {}
+    status_render_job = {"id": None}
+    status_rendering = {"active": False}
     selected_action_tree = {"tree": tree}
     selection_syncing = {"active": False}
 
+    def close_inventory_window():
+        global inventory_window, inventory_refresh_callback, inventory_refresh_job
+        window = inventory_window
+        parent_window = window.master if window and window.winfo_exists() else parent
+
+        inventory_refresh_callback = None
+        inventory_refresh_job = None
+
+        if status_render_job["id"] is not None and window and window.winfo_exists():
+            try:
+                window.after_cancel(status_render_job["id"])
+            except Exception:
+                pass
+            status_render_job["id"] = None
+
+        clear_status_labels()
+
+        if window and window.winfo_exists():
+            try:
+                window.withdraw()
+            except Exception:
+                pass
+            try:
+                window.destroy()
+            except Exception:
+                pass
+        inventory_window = None
+
+        try:
+            conn.close()
+        except Exception:
+            pass
+
+        if parent_window and parent_window.winfo_exists():
+            try:
+                parent_window.deiconify()
+                parent_window.lift()
+                parent_window.focus_force()
+            except Exception:
+                pass
+
     def auto_adjust_columns(target_tree):
+        clear_status_labels()
         target_tree.update_idletasks()
         heading_font = tkfont.Font(font=style.lookup("Inventory.Treeview.Heading", "font"))
         extra_padding = {
@@ -243,12 +307,47 @@ def open_inventory():
             "Price": 54,
             "Raw Price": 54,
             "Status": 54,
+            "Restock": 42,
         }
 
         for col in columns:
             heading_text = column_headings[col]
             width = heading_font.measure(heading_text) + extra_padding[col]
             target_tree.column(col, width=width, minwidth=width, stretch=False)
+
+    def clear_status_labels():
+        for widget in overlay_widgets.values():
+            if widget.winfo_exists():
+                widget.destroy()
+        overlay_widgets.clear()
+
+    def schedule_status_labels(target_tree=None):
+        if status_rendering["active"]:
+            return
+
+        if status_render_job["id"] is not None:
+            inventory_window.after_cancel(status_render_job["id"])
+
+        parent = target_tree if target_tree is not None else inventory_window
+        status_render_job["id"] = parent.after_idle(render_status_labels)
+
+    def open_restock_target(row_values):
+        if row_values and len(row_values) > 1 and str(row_values[1]).strip().lower() == "chb blocks":
+            try:
+                from chb_module.gui import open_chb_dashboard
+            except Exception:
+                inventory_functions.show_inventory_error(
+                    inventory_window,
+                    "Error",
+                    "Unable to open the CHB Production form."
+                )
+                return
+
+            close_inventory_window()
+            open_chb_dashboard()
+            return
+
+        inventory_functions.open_restock_form(conn, cursor, inventory_window, row_values, refresh_view)
 
     def load_chb_items():
         for row in chb_tree.get_children():
@@ -270,8 +369,8 @@ def open_inventory():
             tuple(item_name.lower() for item_name in CHB_SECTION_ITEMS)
         )
         for index, row in enumerate(cursor.fetchall()):
-            tag = "blue_row" if index % 2 == 0 else "white_row"
-            chb_tree.insert("", tk.END, values=row, tags=(tag,))
+            tag = inventory_functions.inventory_row_tag(index, row)
+            chb_tree.insert("", tk.END, values=row + ("",), tags=(tag,))
         auto_adjust_columns(chb_tree)
 
     def remove_chb_items_from_main_table():
@@ -284,9 +383,20 @@ def open_inventory():
                 tree.delete(item)
                 continue
             status = values[6] if len(values) > 6 else "Active"
-            tree.item(item, tags=(inventory_functions.status_row_tag(remaining_index, status),))
+            tree.item(item, tags=(inventory_functions.status_row_tag(remaining_index, status, values[1], values[3]),))
             remaining_index += 1
         auto_adjust_columns(tree)
+
+    def update_low_stock_count():
+        low_stock_count = 0
+        for target_tree in (chb_tree, tree):
+            for item in target_tree.get_children():
+                values = target_tree.item(item, "values")
+                item_name = values[1] if len(values) > 1 else ""
+                quantity = values[3] if len(values) > 3 else 0
+                if inventory_functions.is_low_stock_item(item_name, quantity):
+                    low_stock_count += 1
+        low_stock_var.set(f"Low Stock Items: {low_stock_count:,}")
 
     def set_selected_action_tree(target_tree):
         if selection_syncing["active"]:
@@ -303,54 +413,207 @@ def open_inventory():
         selection_syncing["active"] = False
 
     def render_status_labels():
-        for label in status_labels:
-            label.destroy()
-        status_labels.clear()
+        status_render_job["id"] = None
+        status_rendering["active"] = True
+        try:
+            visible_keys = set()
 
-        def render_tree_status_labels(target_tree):
-            target_tree.update_idletasks()
-            for item in target_tree.get_children():
-                bbox = target_tree.bbox(item, "Status")
-                if not bbox:
-                    continue
+            def render_tree_status_labels(target_tree):
+                target_tree.update_idletasks()
+                for item in target_tree.get_children():
+                    name_bbox = target_tree.bbox(item, "Name")
+                    status_bbox = target_tree.bbox(item, "Status")
+                    restock_bbox = target_tree.bbox(item, "Restock")
+                    values = target_tree.item(item, "values")
+                    item_name = values[1] if len(values) > 1 else ""
+                    quantity = values[3] if len(values) > 3 else 0
+                    status = target_tree.set(item, "Status") or "Active"
+                    is_active = status.lower() == "active"
+                    is_low_stock = inventory_functions.is_low_stock_item(item_name, quantity)
+                    row_tags = target_tree.item(item, "tags")
+                    if row_tags and row_tags[0] == inventory_functions.LOW_STOCK_ROW:
+                        bg = "#fed7aa"
+                    else:
+                        bg = "#93c5fd" if row_tags and row_tags[0] == "blue_row" else "#ffffff"
+                    fg = "#15803d" if is_active else "#dc2626"
 
-                x, y, width, height = bbox
-                status = target_tree.set(item, "Status") or "Active"
-                is_active = status.lower() == "active"
+                    def select_row(event, row_id=item, selected_tree=target_tree):
+                        selected_tree.selection_set(row_id)
+                        selected_tree.focus(row_id)
+                        set_selected_action_tree(selected_tree)
+
+                    if name_bbox and is_low_stock:
+                        x, y, width, height = name_bbox
+                        icon = tk.Label(
+                            target_tree,
+                            text="⚠",
+                            bg=bg,
+                            fg="#c2410c",
+                            font=("Arial", 14, "bold"),
+                            anchor="center"
+                        )
+                        icon.place(x=x + max(width - 30, 4), y=y + 1, width=26, height=height - 2)
+                        icon.bind("<Button-1>", select_row)
+                        status_labels.append(icon)
+
+                    if status_bbox:
+                        x, y, width, height = status_bbox
+                        label = tk.Label(
+                            target_tree,
+                            text=status,
+                            bg=bg,
+                            fg=fg,
+                            font=("Arial", 14, "bold"),
+                            anchor="center"
+                        )
+                        label.place(x=x + 1, y=y + 1, width=width - 2, height=height - 2)
+                        label.bind("<Button-1>", select_row)
+                        status_labels.append(label)
+
+                    if restock_bbox:
+                        x, y, width, height = restock_bbox
+                        can_restock = status.lower() == "active"
+                        button = tk.Button(
+                            target_tree,
+                            text="Restock",
+                            bg="#16a34a" if can_restock else "#9ca3af",
+                            fg="white",
+                            activebackground="#15803d",
+                            font=("Arial", 10, "bold"),
+                            relief="solid",
+                            bd=1,
+                            cursor="hand2" if can_restock else "arrow",
+                            state="normal" if can_restock else "disabled",
+                            command=lambda row_values=values, selected_tree=target_tree, row_id=item: (
+                                selected_tree.selection_set(row_id),
+                                selected_tree.focus(row_id),
+                                set_selected_action_tree(selected_tree),
+                                open_restock_target(row_values)
+                            )
+                        )
+                        button.place(x=x + 4, y=y + 5, width=max(width - 8, 70), height=max(height - 10, 28))
+                        status_labels.append(button)
+
+            render_tree_status_labels(chb_tree)
+            render_tree_status_labels(tree)
+        finally:
+            status_rendering["active"] = False
+
+    def render_status_labels():
+        global inventory_refresh_job
+        if not inventory_window or not inventory_window.winfo_exists():
+            return
+        status_render_job["id"] = None
+        inventory_refresh_job = None
+        status_rendering["active"] = True
+        try:
+            visible_keys = set()
+
+            def select_row(target_tree, row_id):
+                target_tree.selection_set(row_id)
+                target_tree.focus(row_id)
+                set_selected_action_tree(target_tree)
+
+            def get_row_bg(target_tree, item):
                 row_tags = target_tree.item(item, "tags")
-                bg = "#93c5fd" if row_tags and row_tags[0] == "blue_row" else "#ffffff"
-                fg = "#15803d" if is_active else "#dc2626"
-                label = tk.Label(
-                    target_tree,
-                    text=status,
-                    bg=bg,
-                    fg=fg,
-                    font=("Arial", 14, "bold"),
-                    anchor="center"
-                )
-                label.place(x=x + 1, y=y + 1, width=width - 2, height=height - 2)
+                if row_tags and row_tags[0] == inventory_functions.LOW_STOCK_ROW:
+                    return "#fed7aa"
+                return "#93c5fd" if row_tags and row_tags[0] == "blue_row" else "#ffffff"
 
-                def select_row(event, row_id=item, selected_tree=target_tree):
-                    selected_tree.selection_set(row_id)
-                    selected_tree.focus(row_id)
-                    set_selected_action_tree(selected_tree)
+            def get_overlay(target_tree, item, kind, factory):
+                key = (str(target_tree), item, kind)
+                visible_keys.add(key)
+                widget = overlay_widgets.get(key)
+                if widget is None or not widget.winfo_exists():
+                    widget = factory()
+                    overlay_widgets[key] = widget
+                return widget
 
-                label.bind("<Button-1>", select_row)
-                status_labels.append(label)
+            def render_tree_overlays(target_tree):
+                target_tree.update_idletasks()
+                for item in target_tree.get_children():
+                    values = target_tree.item(item, "values")
+                    item_name = values[1] if len(values) > 1 else ""
+                    quantity = values[3] if len(values) > 3 else 0
+                    status = target_tree.set(item, "Status") or "Active"
+                    bg = get_row_bg(target_tree, item)
+                    fg = "#15803d" if status.lower() == "active" else "#dc2626"
 
-        render_tree_status_labels(chb_tree)
-        render_tree_status_labels(tree)
+                    name_bbox = target_tree.bbox(item, "Name")
+                    if name_bbox and inventory_functions.is_low_stock_item(item_name, quantity):
+                        x, y, width, height = name_bbox
+                        icon = get_overlay(
+                            target_tree,
+                            item,
+                            "low_stock",
+                            lambda: tk.Label(target_tree, text="!", font=("Arial", 14, "bold"), anchor="center")
+                        )
+                        icon.configure(bg=bg, fg="#c2410c")
+                        icon.bind("<Button-1>", lambda _event, t=target_tree, row=item: select_row(t, row))
+                        icon.place(x=x + max(width - 30, 4), y=y + 1, width=26, height=height - 2)
+
+                    status_bbox = target_tree.bbox(item, "Status")
+                    if status_bbox:
+                        x, y, width, height = status_bbox
+                        label = get_overlay(
+                            target_tree,
+                            item,
+                            "status",
+                            lambda: tk.Label(target_tree, font=("Arial", 14, "bold"), anchor="center")
+                        )
+                        label.configure(text=status, bg=bg, fg=fg)
+                        label.bind("<Button-1>", lambda _event, t=target_tree, row=item: select_row(t, row))
+                        label.place(x=x + 1, y=y + 1, width=width - 2, height=height - 2)
+
+                    restock_bbox = target_tree.bbox(item, "Restock")
+                    if restock_bbox:
+                        x, y, width, height = restock_bbox
+                        can_restock = status.lower() == "active"
+                        button = get_overlay(
+                            target_tree,
+                            item,
+                            "restock",
+                            lambda: tk.Button(
+                                target_tree,
+                                text="Restock",
+                                fg="white",
+                                activebackground="#15803d",
+                                font=("Arial", 10, "bold"),
+                                relief="solid",
+                                bd=1
+                            )
+                        )
+                        button.configure(
+                            bg="#16a34a" if can_restock else "#9ca3af",
+                            cursor="hand2" if can_restock else "arrow",
+                            state="normal" if can_restock else "disabled",
+                            command=lambda row_values=values, selected_tree=target_tree, row_id=item: (
+                                select_row(selected_tree, row_id),
+                                open_restock_target(row_values)
+                            )
+                        )
+                        button.place(x=x + 4, y=y + 5, width=max(width - 8, 70), height=max(height - 10, 28))
+
+            render_tree_overlays(chb_tree)
+            render_tree_overlays(tree)
+
+            for key, widget in overlay_widgets.items():
+                if key not in visible_keys and widget.winfo_exists():
+                    widget.place_forget()
+        finally:
+            status_rendering["active"] = False
 
     def refresh_view():
         inventory_functions.refresh_current_view(conn, cursor, tree, search_entry, sort_filter_var, total_items_var)
         remove_chb_items_from_main_table()
         load_chb_items()
-        render_status_labels()
+        update_low_stock_count()
+        schedule_status_labels()
 
     def sort_and_render(column, numeric=False):
         inventory_functions.sort_tree(tree, sort_state, column, numeric=numeric)
         remove_chb_items_from_main_table()
-        render_status_labels()
+        schedule_status_labels()
 
     tree.heading("ID", text="ID", command=lambda: sort_and_render("ID", numeric=True))
     tree.heading("Name", text="Name", command=lambda: sort_and_render("Name", numeric=False))
@@ -359,14 +622,28 @@ def open_inventory():
     tree.heading("Price", text="Selling Price", command=lambda: sort_and_render("Price", numeric=True))
     tree.heading("Raw Price", text="Raw Price", command=lambda: sort_and_render("Raw Price", numeric=True))
     tree.heading("Status", text="Status", command=lambda: sort_and_render("Status", numeric=False))
+    tree.heading("Restock", text="Restock")
 
-    v_scroll.config(command=lambda *args: (tree.yview(*args), render_status_labels()))
-    h_scroll.config(command=lambda *args: (tree.xview(*args), render_status_labels()))
-    tree.bind("<Configure>", lambda event: render_status_labels())
-    tree.bind("<MouseWheel>", lambda event: tree.after_idle(render_status_labels))
-    tree.bind("<ButtonRelease-1>", lambda event: tree.after_idle(render_status_labels))
-    chb_tree.bind("<Configure>", lambda event: render_status_labels())
-    chb_tree.bind("<ButtonRelease-1>", lambda event: chb_tree.after_idle(render_status_labels))
+    v_scroll.config(command=lambda *args: (tree.yview(*args), schedule_status_labels(tree)))
+    h_scroll.config(command=lambda *args: (tree.xview(*args), schedule_status_labels(tree)))
+    chb_v_scroll.config(command=lambda *args: (chb_tree.yview(*args), schedule_status_labels(chb_tree)))
+    chb_h_scroll.config(command=lambda *args: (chb_tree.xview(*args), schedule_status_labels(chb_tree)))
+    tree.configure(
+        yscrollcommand=lambda *args: (v_scroll.set(*args), schedule_status_labels(tree)),
+        xscrollcommand=lambda *args: (h_scroll.set(*args), schedule_status_labels(tree))
+    )
+    chb_tree.configure(
+        yscrollcommand=lambda *args: (chb_v_scroll.set(*args), schedule_status_labels(chb_tree)),
+        xscrollcommand=lambda *args: (chb_h_scroll.set(*args), schedule_status_labels(chb_tree))
+    )
+    tree.bind("<Configure>", lambda event: schedule_status_labels(tree))
+    tree.bind("<MouseWheel>", lambda event: schedule_status_labels(tree))
+    tree.bind("<B1-Motion>", lambda event: schedule_status_labels(tree))
+    tree.bind("<ButtonRelease-1>", lambda event: schedule_status_labels(tree))
+    chb_tree.bind("<Configure>", lambda event: schedule_status_labels(chb_tree))
+    chb_tree.bind("<MouseWheel>", lambda event: schedule_status_labels(chb_tree))
+    chb_tree.bind("<B1-Motion>", lambda event: schedule_status_labels(chb_tree))
+    chb_tree.bind("<ButtonRelease-1>", lambda event: schedule_status_labels(chb_tree))
     tree.bind("<<TreeviewSelect>>", lambda event: set_selected_action_tree(tree))
     chb_tree.bind("<<TreeviewSelect>>", lambda event: set_selected_action_tree(chb_tree))
 
@@ -376,19 +653,19 @@ def open_inventory():
 
     # ---------- Buttons ----------
     button_options = {
-        "width": 26,
-        "font": ("Arial", 14, "bold"),
+        "width": 21,
+        "font": ("Arial", 13, "bold"),
         "bd": 2,
         "relief": "solid",
         "highlightbackground": "black",
         "highlightcolor": "black",
         "highlightthickness": 1,
-        "padx": 10,
-        "pady": 14,
+        "padx": 8,
+        "pady": 12,
     }
-    tk.Button(right_frame, text="Add Item", bg="#00c853", fg="white", command=lambda: inventory_functions.add_item(conn, cursor, inventory_window, tree, refresh_view), **button_options).grid(row=0, column=0, pady=14, padx=5)
-    tk.Button(right_frame, text="Edit Item", bg="#2196f3", fg="white", command=lambda: inventory_functions.update_item(conn, cursor, inventory_window, selected_action_tree["tree"], refresh_view), **button_options).grid(row=1, column=0, pady=14, padx=5)
-    tk.Button(right_frame, text="Delete Item", bg="#ff1744", fg="white", command=lambda: inventory_functions.delete_item(conn, cursor, inventory_window, selected_action_tree["tree"], refresh_view), **button_options).grid(row=2, column=0, pady=14, padx=5)
+    tk.Button(right_frame, text="Add Item", bg="#00c853", fg="white", command=lambda: inventory_functions.add_item(conn, cursor, inventory_window, tree, refresh_view), **button_options).grid(row=0, column=0, pady=12, padx=4)
+    tk.Button(right_frame, text="Edit Item", bg="#2196f3", fg="white", command=lambda: inventory_functions.update_item(conn, cursor, inventory_window, selected_action_tree["tree"], refresh_view), **button_options).grid(row=1, column=0, pady=12, padx=4)
+    tk.Button(right_frame, text="Delete Item", bg="#ff1744", fg="white", command=lambda: inventory_functions.delete_item(conn, cursor, inventory_window, selected_action_tree["tree"], refresh_view), **button_options).grid(row=2, column=0, pady=12, padx=4)
 
-    inventory_window.protocol("WM_DELETE_WINDOW", lambda: inventory_functions.on_close(__import__(__name__, fromlist=[''])))
+    inventory_window.protocol("WM_DELETE_WINDOW", close_inventory_window)
     refresh_view()

@@ -12,6 +12,14 @@ from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, 
 
 from .chb_database import fetch_production_summary, fetch_latest_production_date
 
+SUMMARY_BUTTON_BORDER = {
+    'bd': 2,
+    'relief': 'solid',
+    'highlightthickness': 1,
+    'highlightbackground': 'black',
+    'highlightcolor': 'black',
+}
+
 
 def parse_currency(value):
     cleaned = re.sub(r"[^0-9.\-]", "", str(value))
@@ -73,15 +81,15 @@ def open_date_calendar(parent, date_var, on_select=None):
                 text=day_name,
                 bg="#ffffff",
                 fg="#1e293b",
-                font=("Arial", 9, "bold"),
-                width=5
-            ).grid(row=0, column=col, padx=1, pady=2)
+                font=("Arial", 12, "bold"),
+                width=6
+            ).grid(row=0, column=col, padx=2, pady=3)
 
         today = datetime.now()
         for row_index, week in enumerate(calendar.monthcalendar(year_var.get(), month_var.get()), start=1):
             for col_index, day in enumerate(week):
                 if day == 0:
-                    tk.Label(grid_frame, text="", bg="#ffffff", width=5).grid(row=row_index, column=col_index, padx=1, pady=1)
+                    tk.Label(grid_frame, text="", bg="#ffffff", width=6).grid(row=row_index, column=col_index, padx=2, pady=2)
                     continue
 
                 is_today = (
@@ -92,23 +100,25 @@ def open_date_calendar(parent, date_var, on_select=None):
                 tk.Button(
                     grid_frame,
                     text=str(day),
-                    width=5,
+                    width=6,
                     bg="#2563eb" if is_today else "#f8fafc",
                     fg="white" if is_today else "#1e293b",
-                    relief="flat",
+                    relief="solid",
+                    bd=1,
+                    font=("Arial", 12, "bold"),
                     command=lambda d=day: select_date(d)
-                ).grid(row=row_index, column=col_index, padx=1, pady=1)
+                ).grid(row=row_index, column=col_index, padx=2, pady=2)
 
-    tk.Button(header, text="<", command=lambda: change_month(-1), bg="#e0f2fe", relief="flat", width=4).pack(side="left")
-    tk.Label(header, textvariable=title_var, bg="#ffffff", fg="#1e293b", font=("Arial", 11, "bold"), width=18).pack(side="left", padx=8)
-    tk.Button(header, text=">", command=lambda: change_month(1), bg="#e0f2fe", relief="flat", width=4).pack(side="left")
+    tk.Button(header, text="<", command=lambda: change_month(-1), bg="#e0f2fe", relief="solid", bd=1, width=5, font=("Arial", 13, "bold")).pack(side="left")
+    tk.Label(header, textvariable=title_var, bg="#ffffff", fg="#1e293b", font=("Arial", 15, "bold"), width=20).pack(side="left", padx=10)
+    tk.Button(header, text=">", command=lambda: change_month(1), bg="#e0f2fe", relief="solid", bd=1, width=5, font=("Arial", 13, "bold")).pack(side="left")
 
     render_calendar()
 
     cal_win.update_idletasks()
     x = parent.winfo_rootx() + (parent.winfo_width() // 2) - (cal_win.winfo_width() // 2)
     y = parent.winfo_rooty() + (parent.winfo_height() // 2) - (cal_win.winfo_height() // 2)
-    cal_win.geometry(f"+{x}+{y}")
+    cal_win.geometry(f"470x390+{x}+{y}")
 
 
 def open_period_summary(win, cursor, BG_MAIN, TEXT):
@@ -331,7 +341,7 @@ def open_period_summary(win, cursor, BG_MAIN, TEXT):
                 width=16,
                 padx=12,
                 pady=8,
-                relief='flat'
+                **SUMMARY_BUTTON_BORDER
             ).pack(side='right', padx=6)
 
             tk.Button(
@@ -344,7 +354,7 @@ def open_period_summary(win, cursor, BG_MAIN, TEXT):
                 width=16,
                 padx=12,
                 pady=8,
-                relief='flat'
+                **SUMMARY_BUTTON_BORDER
             ).pack(side='right', padx=6)
 
         except Exception as e:
@@ -377,13 +387,14 @@ def open_period_summary(win, cursor, BG_MAIN, TEXT):
     date_sel = tk.StringVar(value=default_date.strftime('%Y-%m-%d'))
     date_entry2 = tk.Entry(date_frame, textvariable=date_sel, width=15, font=('Arial', 14), relief='solid', bd=1)
     date_entry2.pack(side='left', padx=4)
-    tk.Button(date_frame, text='Calendar', command=lambda: open_date_calendar(summary_win, date_sel, load_summary), bg='#3b82f6', fg='white', font=('Arial', 13, 'bold'), relief='flat', padx=10, pady=5).pack(side='left', padx=4)
-    tk.Button(date_frame, text='Apply', command=load_summary, bg='#2563eb', fg='white', font=('Arial', 13, 'bold'), relief='flat', padx=12, pady=5).pack(side='left', padx=4)
+    tk.Button(date_frame, text='Calendar', command=lambda: open_date_calendar(summary_win, date_sel, load_summary), bg='#3b82f6', fg='white', font=('Arial', 13, 'bold'), padx=10, pady=5, **SUMMARY_BUTTON_BORDER).pack(side='left', padx=4)
+    tk.Button(date_frame, text='Apply', command=load_summary, bg='#2563eb', fg='white', font=('Arial', 13, 'bold'), padx=12, pady=5, **SUMMARY_BUTTON_BORDER).pack(side='left', padx=4)
+    tk.Button(top_frame, text='Close', command=summary_win.destroy, bg='#dc2626', fg='white', font=('Arial', 13, 'bold'), padx=18, pady=5, **SUMMARY_BUTTON_BORDER).pack(side='right', padx=4)
 
     btn_frame = tk.Frame(summary_win, bg=BG_MAIN)
     btn_frame.pack(fill='x', padx=12, pady=(0, 8))
 
-    tk.Button(btn_frame, text='Preview / Convert PDF', command=open_pdf_preview, bg='#059669', fg='white', font=('Arial', 13, 'bold'), width=22, padx=14, pady=8, relief='flat').pack(side='left', padx=4)
+    tk.Button(btn_frame, text='Preview / Convert PDF', command=open_pdf_preview, bg='#059669', fg='white', font=('Arial', 13, 'bold'), width=22, padx=14, pady=8, **SUMMARY_BUTTON_BORDER).pack(side='left', padx=4)
 
     cols = ('date', 'worker', 'blocks', 'pay')
 

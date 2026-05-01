@@ -17,6 +17,91 @@ from .delivery_database import (
     fetch_latest_delivery_summary_date,
 )
 
+SUCCESS_GREEN = "#00c853"
+CANCEL_RED = "#dc2626"
+
+
+def center_window(window, width=560, height=430, parent=None):
+    window.update_idletasks()
+    if parent and parent.winfo_exists():
+        parent.update_idletasks()
+        x = parent.winfo_rootx() + (parent.winfo_width() // 2) - (width // 2)
+        y = parent.winfo_rooty() + (parent.winfo_height() // 2) - (height // 2)
+    else:
+        x = (window.winfo_screenwidth() // 2) - (width // 2)
+        y = (window.winfo_screenheight() // 2) - (height // 2)
+    window.geometry(f"{width}x{height}+{x}+{y}")
+
+
+def show_delivery_popup(parent, title, message, accent_color):
+    popup = tk.Toplevel(parent)
+    popup.title(title)
+    popup.transient(parent)
+    popup.grab_set()
+    popup.configure(bg="#ffffff")
+    popup.resizable(False, False)
+
+    tk.Frame(popup, bg=accent_color, height=12).pack(fill="x")
+    content = tk.Frame(popup, bg="#ffffff", padx=48, pady=36)
+    content.pack(fill="both", expand=True)
+
+    tk.Label(content, text=title, bg="#ffffff", fg=accent_color, font=("Arial", 28, "bold")).pack(pady=(0, 14))
+    tk.Label(content, text=message, bg="#ffffff", fg="#111827", font=("Arial", 17), wraplength=430, justify="center").pack(pady=(0, 28))
+
+    def close_popup():
+        popup.destroy()
+
+    tk.Button(content, text="OK", command=close_popup, bg=accent_color, fg="white", activebackground=accent_color, font=("Arial", 15, "bold"), relief="flat", width=14, pady=9).pack()
+    popup.bind("<Return>", lambda _event: close_popup())
+    popup.bind("<Escape>", lambda _event: close_popup())
+    popup.protocol("WM_DELETE_WINDOW", close_popup)
+    center_window(popup, 540, 290, parent)
+    parent.wait_window(popup)
+
+
+def show_delivery_error(parent, title, message):
+    show_delivery_popup(parent, title, message, CANCEL_RED)
+
+
+def show_delivery_success(parent, title, message):
+    show_delivery_popup(parent, title, message, SUCCESS_GREEN)
+
+
+def ask_delivery_confirmation(parent, title, message, confirm_text="Yes"):
+    result = {"confirmed": False}
+    popup = tk.Toplevel(parent)
+    popup.title(title)
+    popup.transient(parent)
+    popup.grab_set()
+    popup.configure(bg="#ffffff")
+    popup.resizable(False, False)
+
+    tk.Frame(popup, bg="#2563eb", height=12).pack(fill="x")
+    content = tk.Frame(popup, bg="#ffffff", padx=48, pady=36)
+    content.pack(fill="both", expand=True)
+
+    tk.Label(content, text=title, bg="#ffffff", fg="#2563eb", font=("Arial", 26, "bold")).pack(pady=(0, 14))
+    tk.Label(content, text=message, bg="#ffffff", fg="#111827", font=("Arial", 16), wraplength=470, justify="center").pack(pady=(0, 28))
+
+    button_row = tk.Frame(content, bg="#ffffff")
+    button_row.pack()
+
+    def confirm():
+        result["confirmed"] = True
+        popup.destroy()
+
+    def cancel():
+        popup.destroy()
+
+    tk.Button(button_row, text="Cancel", command=cancel, bg="#64748b", fg="white", activebackground="#475569", font=("Arial", 14, "bold"), relief="flat", width=13, pady=9).pack(side="left", padx=8)
+    tk.Button(button_row, text=confirm_text, command=confirm, bg="#2563eb", fg="white", activebackground="#1d4ed8", font=("Arial", 14, "bold"), relief="flat", width=13, pady=9).pack(side="left", padx=8)
+    popup.bind("<Return>", lambda _event: confirm())
+    popup.bind("<Escape>", lambda _event: cancel())
+    popup.protocol("WM_DELETE_WINDOW", cancel)
+    center_window(popup, 600, 330, parent)
+    parent.wait_window(popup)
+    return result["confirmed"]
+
 
 def go_back(delivery_win):
     delivery_win.destroy()
@@ -83,36 +168,38 @@ def open_date_calendar(parent, date_var):
         title_var.set(f"{calendar.month_name[month_var.get()]} {year_var.get()}")
         days = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
         for col, day_name in enumerate(days):
-            tk.Label(grid_frame, text=day_name, bg="#ffffff", fg="#1e293b", font=("Arial", 9, "bold"), width=5).grid(row=0, column=col, padx=1, pady=2)
+            tk.Label(grid_frame, text=day_name, bg="#ffffff", fg="#1e293b", font=("Arial", 12, "bold"), width=6).grid(row=0, column=col, padx=2, pady=3)
 
         today = datetime.now()
         for row_index, week in enumerate(calendar.monthcalendar(year_var.get(), month_var.get()), start=1):
             for col_index, day in enumerate(week):
                 if day == 0:
-                    tk.Label(grid_frame, text="", bg="#ffffff", width=5).grid(row=row_index, column=col_index, padx=1, pady=1)
+                    tk.Label(grid_frame, text="", bg="#ffffff", width=6).grid(row=row_index, column=col_index, padx=2, pady=2)
                     continue
 
                 is_today = day == today.day and month_var.get() == today.month and year_var.get() == today.year
                 tk.Button(
                     grid_frame,
                     text=str(day),
-                    width=5,
+                    width=6,
                     bg="#2563eb" if is_today else "#f8fafc",
                     fg="white" if is_today else "#1e293b",
-                    relief="flat",
+                    relief="solid",
+                    bd=1,
+                    font=("Arial", 12, "bold"),
                     command=lambda d=day: select_date(d)
-                ).grid(row=row_index, column=col_index, padx=1, pady=1)
+                ).grid(row=row_index, column=col_index, padx=2, pady=2)
 
-    tk.Button(header, text="<", command=lambda: change_month(-1), bg="#e0f2fe", relief="flat", width=4).pack(side="left")
-    tk.Label(header, textvariable=title_var, bg="#ffffff", fg="#1e293b", font=("Arial", 11, "bold"), width=18).pack(side="left", padx=8)
-    tk.Button(header, text=">", command=lambda: change_month(1), bg="#e0f2fe", relief="flat", width=4).pack(side="left")
+    tk.Button(header, text="<", command=lambda: change_month(-1), bg="#e0f2fe", relief="solid", bd=1, width=5, font=("Arial", 13, "bold")).pack(side="left")
+    tk.Label(header, textvariable=title_var, bg="#ffffff", fg="#1e293b", font=("Arial", 15, "bold"), width=20).pack(side="left", padx=10)
+    tk.Button(header, text=">", command=lambda: change_month(1), bg="#e0f2fe", relief="solid", bd=1, width=5, font=("Arial", 13, "bold")).pack(side="left")
 
     render_calendar()
 
     cal_win.update_idletasks()
     x = parent.winfo_rootx() + (parent.winfo_width() // 2) - (cal_win.winfo_width() // 2)
     y = parent.winfo_rooty() + (parent.winfo_height() // 2) - (cal_win.winfo_height() // 2)
-    cal_win.geometry(f"+{x}+{y}")
+    cal_win.geometry(f"470x390+{x}+{y}")
 
 
 def open_delivery_summary(parent_win, cursor, bg_main, text_color):
@@ -134,17 +221,6 @@ def open_delivery_summary(parent_win, cursor, bg_main, text_color):
 
     period_var = tk.StringVar(value="day")
     date_sel = tk.StringVar(value=default_date.strftime("%Y-%m-%d"))
-    months = [
-        "January", "February", "March", "April", "May", "June",
-        "July", "August", "September", "October", "November", "December"
-    ]
-    month_var = tk.StringVar(value=default_date.strftime("%B"))
-    year_var = tk.StringVar(value=str(default_date.year))
-    years = [str(y) for y in range(datetime.now().year - 5, datetime.now().year + 1)]
-    if str(default_date.year) not in years:
-        years.append(str(default_date.year))
-        years.sort(key=int)
-
     def compute_range():
         p = period_var.get()
         if p == "day":
@@ -157,8 +233,9 @@ def open_delivery_summary(parent_win, cursor, bg_main, text_color):
             end = start + timedelta(days=6)
         elif p == "month":
             try:
-                m = months.index(month_var.get()) + 1
-                y = int(year_var.get())
+                d = datetime.strptime(date_sel.get(), "%Y-%m-%d")
+                m = d.month
+                y = d.year
             except Exception:
                 m = datetime.now().month
                 y = datetime.now().year
@@ -378,42 +455,52 @@ def open_delivery_summary(parent_win, cursor, bg_main, text_color):
                     if not file_path:
                         return
                     save_summary_pdf(file_path, title_text, table_data)
-                    messagebox.showinfo("Success", f"PDF exported successfully!\n{file_path}", parent=preview_win)
+                    show_delivery_success(preview_win, "Success", f"PDF exported successfully!\n{file_path}")
                     preview_win.destroy()
                 except Exception as e:
-                    messagebox.showerror("Error", f"Failed to export PDF:\n{str(e)}", parent=preview_win)
+                    show_delivery_error(preview_win, "Error", f"Failed to export PDF:\n{str(e)}")
 
-            tk.Button(action_frame, text="Save as PDF", command=choose_file_and_save, bg="#059669", fg="white", font=("Arial", 11, "bold"), width=16, padx=12, pady=8, relief="flat").pack(side="right", padx=6)
-            tk.Button(action_frame, text="Close Preview", command=preview_win.destroy, bg="#64748b", fg="white", font=("Arial", 11, "bold"), width=16, padx=12, pady=8, relief="flat").pack(side="right", padx=6)
+            preview_button_border = {
+                "bd": 2,
+                "relief": "solid",
+                "highlightthickness": 1,
+                "highlightbackground": "black",
+                "highlightcolor": "black",
+            }
+            tk.Button(action_frame, text="Save as PDF", command=choose_file_and_save, bg="#059669", fg="white", font=("Arial", 11, "bold"), width=16, padx=12, pady=8, **preview_button_border).pack(side="right", padx=6)
+            tk.Button(action_frame, text="Close Preview", command=preview_win.destroy, bg="#64748b", fg="white", font=("Arial", 11, "bold"), width=16, padx=12, pady=8, **preview_button_border).pack(side="right", padx=6)
 
         except Exception as e:
-            messagebox.showerror("Error", f"Failed to preview summary:\n{str(e)}", parent=summary_win)
+            show_delivery_error(summary_win, "Error", f"Failed to preview summary:\n{str(e)}")
 
     top_frame = tk.Frame(summary_win, bg=bg_main)
     top_frame.pack(fill="x", pady=12, padx=10)
 
-    tk.Label(top_frame, text="Period:", bg=bg_main, font=("Arial", 11, "bold"), fg=text_color).pack(side="left", padx=6)
-    tk.Radiobutton(top_frame, text="Day", variable=period_var, value="day", bg=bg_main, font=("Arial", 10), command=load_summary).pack(side="left", padx=8)
-    tk.Radiobutton(top_frame, text="Week", variable=period_var, value="week", bg=bg_main, font=("Arial", 10), command=load_summary).pack(side="left", padx=8)
-    tk.Radiobutton(top_frame, text="Month", variable=period_var, value="month", bg=bg_main, font=("Arial", 10), command=load_summary).pack(side="left", padx=8)
+    button_border = {
+        "bd": 2,
+        "relief": "solid",
+        "highlightthickness": 1,
+        "highlightbackground": "black",
+        "highlightcolor": "black",
+    }
+
+    tk.Label(top_frame, text="Period:", bg=bg_main, font=("Arial", 16, "bold"), fg=text_color).pack(side="left", padx=6)
+    tk.Radiobutton(top_frame, text="Day", variable=period_var, value="day", bg=bg_main, font=("Arial", 15), command=load_summary).pack(side="left", padx=8)
+    tk.Radiobutton(top_frame, text="Week", variable=period_var, value="week", bg=bg_main, font=("Arial", 15), command=load_summary).pack(side="left", padx=8)
+    tk.Radiobutton(top_frame, text="Month", variable=period_var, value="month", bg=bg_main, font=("Arial", 15), command=load_summary).pack(side="left", padx=8)
 
     date_frame = tk.Frame(top_frame, bg=bg_main)
     date_frame.pack(side="left", padx=(30, 10))
 
-    tk.Label(date_frame, text="Date:", bg=bg_main, font=("Arial", 11, "bold"), fg=text_color).pack(side="left", padx=(0, 6))
-    tk.Entry(date_frame, textvariable=date_sel, width=15, font=("Arial", 11), relief="solid", bd=1).pack(side="left", padx=4)
-    tk.Button(date_frame, text="Cal", command=lambda: open_date_calendar(summary_win, date_sel), bg="#3b82f6", fg="white", font=("Arial", 9, "bold"), relief="flat", padx=6).pack(side="left", padx=4)
-
-    month_year_frame = tk.Frame(top_frame, bg=bg_main)
-    month_year_frame.pack(side="left", padx=10)
-
-    ttk.Combobox(month_year_frame, values=months, textvariable=month_var, width=12, state="readonly", font=("Arial", 10)).pack(side="left", padx=4)
-    ttk.Combobox(month_year_frame, values=years, textvariable=year_var, width=8, state="readonly", font=("Arial", 10)).pack(side="left", padx=4)
-    tk.Button(month_year_frame, text="Apply", command=load_summary, bg="#3b82f6", fg="white", font=("Arial", 10, "bold"), width=10, padx=8, pady=5, relief="flat").pack(side="left", padx=4)
+    tk.Label(date_frame, text="Date:", bg=bg_main, font=("Arial", 16, "bold"), fg=text_color).pack(side="left", padx=(0, 6))
+    tk.Entry(date_frame, textvariable=date_sel, width=15, font=("Arial", 15), relief="solid", bd=1).pack(side="left", padx=4)
+    tk.Button(date_frame, text="Calendar", command=lambda: open_date_calendar(summary_win, date_sel), bg="#3b82f6", fg="white", font=("Arial", 13, "bold"), padx=10, pady=6, **button_border).pack(side="left", padx=4)
+    tk.Button(date_frame, text="Apply", command=load_summary, bg="#1e3a8a", fg="white", font=("Arial", 13, "bold"), width=9, padx=8, pady=6, **button_border).pack(side="left", padx=4)
+    tk.Button(top_frame, text="Close", command=summary_win.destroy, bg="#dc2626", fg="white", font=("Arial", 13, "bold"), padx=18, pady=6, **button_border).pack(side="right", padx=4)
 
     action_frame = tk.Frame(summary_win, bg=bg_main)
     action_frame.pack(fill="x", padx=12, pady=(0, 6))
-    tk.Button(action_frame, text="Preview / Download PDF", command=open_pdf_preview, bg="#059669", fg="white", font=("Arial", 10, "bold"), width=24, padx=12, pady=6, relief="flat").pack(side="left", padx=4)
+    tk.Button(action_frame, text="Preview / Download PDF", command=open_pdf_preview, bg="#059669", fg="white", font=("Arial", 13, "bold"), width=24, padx=12, pady=8, **button_border).pack(side="left", padx=4)
 
     cols = ("transaction", "delivery", "worker", "driver", "address", "blocks", "fee", "salary")
     style = ttk.Style()
@@ -490,7 +577,7 @@ def save_delivery(conn, cursor, delivery_win, transaction_date_var, worker_entry
         payment_per = float(payment_var.get())
         total = blocks * payment_per
     except:
-        messagebox.showerror("Error", "Invalid input", parent=delivery_win)
+        show_delivery_error(delivery_win, "Error", "Invalid input")
         return
 
     worker = worker_entry.get()
@@ -500,21 +587,21 @@ def save_delivery(conn, cursor, delivery_win, transaction_date_var, worker_entry
     date = date_var.get()
 
     if not worker:
-        messagebox.showerror("Error", "Fill all fields", parent=delivery_win)
+        show_delivery_error(delivery_win, "Error", "Fill all fields")
         return
 
-    if not messagebox.askyesno("Confirm Save", f"Save delivery record for {worker}?", parent=delivery_win):
+    if not ask_delivery_confirmation(delivery_win, "Confirm Save", f"Save delivery record for {worker}?", "Save"):
         return
 
     insert_delivery(conn, cursor, transaction_date, date, worker, driver_name, address, blocks, delivery_fee, payment_per, total)
     load_data()
     clear_form()
-    messagebox.showinfo("Success", "Delivery record saved successfully!", parent=delivery_win)
+    show_delivery_success(delivery_win, "Success", "Delivery record saved successfully!")
 
 
 def update_delivery(conn, cursor, delivery_win, selected_id, transaction_date_var, worker_entry, date_var, driver_entry, address_entry, blocks_entry, delivery_fee_entry, payment_var, load_data, clear_form):
     if not selected_id.get():
-        messagebox.showerror("Error", "Select a record", parent=delivery_win)
+        show_delivery_error(delivery_win, "Error", "Select a record")
         return
 
     try:
@@ -523,29 +610,30 @@ def update_delivery(conn, cursor, delivery_win, selected_id, transaction_date_va
         payment_per = float(payment_var.get())
         total = blocks * payment_per
     except:
-        messagebox.showerror("Error", "Invalid input", parent=delivery_win)
+        show_delivery_error(delivery_win, "Error", "Invalid input")
         return
 
-    if not messagebox.askyesno("Confirm Update", f"Update record for {worker_entry.get()}?", parent=delivery_win):
+    if not ask_delivery_confirmation(delivery_win, "Confirm Update", f"Update record for {worker_entry.get()}?", "Update"):
         return
 
     update_delivery_record(conn, cursor, selected_id.get(), transaction_date_var.get(), date_var.get(), worker_entry.get(), driver_entry.get(), address_entry.get(), blocks, delivery_fee, payment_per, total)
     load_data()
     clear_form()
-    messagebox.showinfo("Success", "Record updated successfully!", parent=delivery_win)
+    show_delivery_success(delivery_win, "Success", "Record updated successfully!")
 
 
 def delete_delivery(conn, cursor, delivery_win, selected_id, worker_entry, load_data, clear_form):
     if not selected_id.get():
+        show_delivery_error(delivery_win, "Error", "Select a record")
         return
 
-    if not messagebox.askyesno("Confirm Delete", f"Delete record for {worker_entry.get()}?\n\nThis action cannot be undone.", parent=delivery_win):
+    if not ask_delivery_confirmation(delivery_win, "Confirm Delete", f"Delete record for {worker_entry.get()}?\n\nThis action cannot be undone.", "Delete"):
         return
 
     delete_delivery_record(conn, cursor, selected_id.get())
     load_data()
     clear_form()
-    messagebox.showinfo("Success", "Record deleted successfully!", parent=delivery_win)
+    show_delivery_success(delivery_win, "Success", "Record deleted successfully!")
 
 
 def on_tree_configure(event, tree):
@@ -588,7 +676,7 @@ def load_data(event, cursor, tree, search_var, sort_var, delivery_win):
             tree.insert("", "end", values=tuple(row), tags=(tag,))
             row_index += 1
     except Exception as e:
-        messagebox.showerror("Error", f"Failed to load data: {str(e)}", parent=delivery_win)
+        show_delivery_error(delivery_win, "Error", f"Failed to load data: {str(e)}")
 
 
 def on_closing(conn, delivery_win):

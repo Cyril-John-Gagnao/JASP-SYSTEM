@@ -119,6 +119,7 @@ def setup_inventory_database(conn, cursor):
             updated_ts TEXT
         )
     """)
+    create_inventory_logs_table(cursor)
     conn.commit()
 
 
@@ -243,7 +244,38 @@ def create_restocks_table(cursor):
     """)
 
 
-def log_restock(conn, cursor, name, qty_added, price, raw_price):
+def create_inventory_logs_table(cursor):
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS inventory_logs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            item_id INTEGER,
+            item_name TEXT NOT NULL,
+            qty INTEGER NOT NULL DEFAULT 0,
+            action_status TEXT NOT NULL,
+            ts TEXT NOT NULL
+        )
+    """)
+
+
+def log_inventory_action(conn, cursor, item_id, item_name, qty, action_status, ts=None):
+    create_inventory_logs_table(cursor)
+    cursor.execute(
+        """
+        INSERT INTO inventory_logs (item_id, item_name, qty, action_status, ts)
+        VALUES (?, ?, ?, ?, ?)
+        """,
+        (
+            item_id,
+            item_name,
+            int(qty or 0),
+            action_status,
+            ts or datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        )
+    )
+    conn.commit()
+
+
+def log_restock(conn, cursor, name, qty_added, price, raw_price, item_id=None, action_status="Restock"):
     ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     total_cost = raw_price * qty_added
     create_restocks_table(cursor)
@@ -251,6 +283,7 @@ def log_restock(conn, cursor, name, qty_added, price, raw_price):
         "INSERT INTO restocks (item_name, qty, price, raw_price, total_cost, ts) VALUES (?, ?, ?, ?, ?, ?)",
         (name, qty_added, price, raw_price, total_cost, ts)
     )
+    log_inventory_action(conn, cursor, item_id, name, qty_added, action_status, ts)
     conn.commit()
 
 
@@ -271,6 +304,7 @@ def insert_item(cursor, name, quantity_val, price_val, raw_val, unit, status="Ac
         "INSERT INTO items (name, quantity, price, raw_price, unit, status, date_added) VALUES (?, ?, ?, ?, ?, ?, ?)",
         (name, quantity_val, price_val, raw_val, unit, status, datetime.now().strftime("%Y-%m-%d %H:%M:%S")),
     )
+    return cursor.lastrowid
 
 
 def update_item_record(cursor, item_id, name, quantity_val, price_val, raw_val, unit, status="Active"):
@@ -278,6 +312,49 @@ def update_item_record(cursor, item_id, name, quantity_val, price_val, raw_val, 
                    (name, quantity_val, price_val, raw_val, unit, status, item_id))
 
 
+def restock_item_record(conn, cursor, item_id, qty_added):
+    ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    cursor.execute(
+        "SELECT name, quantity, price, raw_price, COALESCE(status, 'Active') FROM items WHERE id=?",
+        (item_id,)
+    )
+    row = cursor.fetchone()
+    if not row:
+        return None
+
+    name, current_qty, price, raw_price, status = row
+    if status != "Active":
+        return "inactive"
+
+    current_qty = int(current_qty or 0)
+    new_qty = current_qty + qty_added
+    cursor.execute(
+        "UPDATE items SET quantity=?, date_added=? WHERE id=?",
+        (new_qty, ts, item_id)
+    )
+
+    if name == CHB_ITEM_NAME:
+        cursor.execute(
+            """
+            UPDATE chb_inventory_state
+            SET total_produced = total_produced + ?,
+                available = available + ?,
+                updated_ts = ?
+            WHERE id = ?
+            """,
+            (qty_added, qty_added, ts, CHB_STATE_ID)
+        )
+
+    log_restock(conn, cursor, name, qty_added, float(price or 0), float(raw_price or 0), item_id, "Restock")
+    conn.commit()
+    return name, current_qty, new_qty
+
+
 def delete_item_record(conn, cursor, item_id):
+    cursor.execute("SELECT name, quantity FROM items WHERE id=?", (item_id,))
+    row = cursor.fetchone()
+    if row:
+        item_name, quantity = row
+        log_inventory_action(conn, cursor, item_id, item_name, quantity, "Remove")
     cursor.execute("DELETE FROM items WHERE id=?", (item_id,))
     conn.commit()

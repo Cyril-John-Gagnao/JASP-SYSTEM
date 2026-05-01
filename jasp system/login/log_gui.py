@@ -2,14 +2,13 @@ import tkinter as tk
 from tkinter import messagebox
 
 from .database import (
-    SECURITY_QUESTION,
     get_authenticated_user,
-    get_security_question,
-    reset_user_password,
+    get_contact_number,
+    reset_user_password_with_contact,
 )
 from .functions import (
+    is_valid_contact_number,
     is_valid_password,
-    is_valid_security_answer,
     is_valid_username,
     validate_common_inputs,
 )
@@ -351,90 +350,211 @@ def forgot_password():
     reset_window.resizable(False, False)
     reset_window.grab_set()
 
-    width, height = 430, 380
+    width, height = 620, 620
     x = (reset_window.winfo_screenwidth() // 2) - (width // 2)
     y = (reset_window.winfo_screenheight() // 2) - (height // 2)
     reset_window.geometry(f"{width}x{height}+{x}+{y}")
+
+    def show_reset_popup(title, message, color):
+        popup = tk.Toplevel(reset_window)
+        popup.title(title)
+        popup.configure(bg=CARD_BG)
+        popup.resizable(False, False)
+        popup.transient(reset_window)
+        popup.grab_set()
+
+        popup_width, popup_height = 500, 260
+        popup_x = reset_window.winfo_rootx() + (reset_window.winfo_width() // 2) - (popup_width // 2)
+        popup_y = reset_window.winfo_rooty() + (reset_window.winfo_height() // 2) - (popup_height // 2)
+        popup.geometry(f"{popup_width}x{popup_height}+{max(popup_x, 0)}+{max(popup_y, 0)}")
+
+        tk.Frame(popup, bg=color, height=12).pack(fill="x")
+        content = tk.Frame(popup, bg=CARD_BG, padx=48, pady=36)
+        content.pack(fill="both", expand=True)
+        tk.Label(content, text=title, bg=CARD_BG, fg=color, font=("Arial", 28, "bold")).pack(pady=(0, 14))
+        tk.Label(content, text=message, bg=CARD_BG, fg=TEXT_DARK, font=("Arial", 17), wraplength=400, justify="center").pack(pady=(0, 28))
+
+        def close_popup():
+            popup.destroy()
+
+        ok_btn = tk.Button(content, text="OK", command=close_popup, bg=color, fg="white", font=("Arial", 15, "bold"), relief="flat", width=14, pady=9)
+        ok_btn.pack()
+        ok_btn.focus_set()
+        popup.bind("<Return>", lambda _event: close_popup())
+        popup.bind("<Escape>", lambda _event: close_popup())
+        popup.protocol("WM_DELETE_WINDOW", close_popup)
+        reset_window.wait_window(popup)
+
+    def show_reset_error(message):
+        show_reset_popup("Error", message, RED)
+
+    def show_reset_success(message):
+        show_reset_popup("Success", message, GREEN)
+
+    def ask_reset_confirmation(message):
+        popup = tk.Toplevel(reset_window)
+        popup.title("Confirm")
+        popup.configure(bg=CARD_BG)
+        popup.resizable(False, False)
+        popup.transient(reset_window)
+        popup.grab_set()
+        confirmed = {"value": False}
+
+        popup_width, popup_height = 520, 280
+        popup_x = reset_window.winfo_rootx() + (reset_window.winfo_width() // 2) - (popup_width // 2)
+        popup_y = reset_window.winfo_rooty() + (reset_window.winfo_height() // 2) - (popup_height // 2)
+        popup.geometry(f"{popup_width}x{popup_height}+{max(popup_x, 0)}+{max(popup_y, 0)}")
+
+        tk.Frame(popup, bg=BG_BLUE, height=12).pack(fill="x")
+        content = tk.Frame(popup, bg=CARD_BG, padx=48, pady=36)
+        content.pack(fill="both", expand=True)
+        tk.Label(content, text="Confirm", bg=CARD_BG, fg=BG_BLUE, font=("Arial", 28, "bold")).pack(pady=(0, 14))
+        tk.Label(content, text=message, bg=CARD_BG, fg=TEXT_DARK, font=("Arial", 17), wraplength=420, justify="center").pack(pady=(0, 28))
+        button_row = tk.Frame(content, bg=CARD_BG)
+        button_row.pack()
+
+        def yes():
+            confirmed["value"] = True
+            popup.destroy()
+
+        def no():
+            popup.destroy()
+
+        tk.Button(button_row, text="Yes", command=yes, bg=GREEN, fg="white", font=("Arial", 14, "bold"), relief="flat", width=12, pady=8).pack(side="left", padx=8)
+        tk.Button(button_row, text="No", command=no, bg=RED, fg="white", font=("Arial", 14, "bold"), relief="flat", width=12, pady=8).pack(side="left", padx=8)
+        popup.bind("<Return>", lambda _event: yes())
+        popup.bind("<Escape>", lambda _event: no())
+        popup.protocol("WM_DELETE_WINDOW", no)
+        reset_window.wait_window(popup)
+        return confirmed["value"]
 
     tk.Label(
         reset_window,
         text="Reset Password",
         bg=CARD_BG,
         fg=BG_BLUE,
-        font=("Arial", 18, "bold")
-    ).pack(pady=(24, 6))
+        font=("Arial", 26, "bold")
+    ).pack(pady=(28, 8))
 
     tk.Label(
         reset_window,
-        text="Verify your identity using your security question.",
+        text="Verify your identity using your registered contact number.",
         bg=CARD_BG,
         fg=TEXT_MUTED,
-        font=("Arial", 10)
-    ).pack(pady=(0, 18))
+        font=("Arial", 14)
+    ).pack(pady=(0, 22))
 
     form = tk.Frame(reset_window, bg=CARD_BG)
-    form.pack(fill="x", padx=38)
+    form.pack(fill="x", padx=64)
 
     tk.Label(form, text="Username", bg=CARD_BG, fg=TEXT_DARK,
-             font=("Arial", 10, "bold")).pack(anchor="w")
-    reset_username_entry = tk.Entry(form, width=38, font=("Arial", 11), bd=1, relief="solid")
-    reset_username_entry.pack(pady=(6, 12), ipady=5)
+             font=("Arial", 14, "bold")).pack(anchor="w")
+    reset_username_entry = tk.Entry(form, width=42, font=("Arial", 15), bd=1, relief="solid")
+    reset_username_entry.pack(pady=(7, 14), ipady=6)
 
-    question_var = tk.StringVar(value="Enter username to load your security question.")
-    tk.Label(form, textvariable=question_var, bg=CARD_BG, fg=TEXT_DARK,
-             wraplength=350, justify="left", font=("Arial", 10, "bold")).pack(anchor="w", pady=(0, 4))
+    contact_hint_var = tk.StringVar(value="Enter your username and registered contact number.")
+    tk.Label(form, textvariable=contact_hint_var, bg=CARD_BG, fg=TEXT_DARK,
+             wraplength=450, justify="left", font=("Arial", 13, "bold")).pack(anchor="w", pady=(0, 5))
 
-    answer_entry = tk.Entry(form, width=38, font=("Arial", 11), bd=1, relief="solid")
-    answer_entry.pack(pady=(6, 12), ipady=5)
+    contact_entry = tk.Entry(form, width=42, font=("Arial", 15), bd=1, relief="solid")
+    contact_entry.pack(pady=(7, 14), ipady=6)
 
-    tk.Label(form, text="New Password", bg=CARD_BG, fg=TEXT_DARK,
-             font=("Arial", 10, "bold")).pack(anchor="w")
-    new_password_entry = tk.Entry(form, show="*", width=38, font=("Arial", 11), bd=1, relief="solid")
-    new_password_entry.pack(pady=(6, 14), ipady=5)
+    password_frame = tk.Frame(form, bg=CARD_BG)
+    password_verified = tk.BooleanVar(value=False)
 
-    def load_security_question():
+    tk.Label(password_frame, text="New Password", bg=CARD_BG, fg=TEXT_DARK,
+             font=("Arial", 14, "bold")).pack(anchor="w")
+    new_password_entry = tk.Entry(password_frame, show="*", width=42, font=("Arial", 15), bd=1, relief="solid")
+    new_password_entry.pack(pady=(7, 14), ipady=6)
+
+    tk.Label(password_frame, text="Confirm Password", bg=CARD_BG, fg=TEXT_DARK,
+             font=("Arial", 14, "bold")).pack(anchor="w")
+    confirm_password_entry = tk.Entry(password_frame, show="*", width=42, font=("Arial", 15), bd=1, relief="solid")
+    confirm_password_entry.pack(pady=(7, 14), ipady=6)
+
+    show_password_var = tk.BooleanVar(value=False)
+
+    def toggle_reset_password_visibility():
+        show_char = "" if show_password_var.get() else "*"
+        new_password_entry.config(show=show_char)
+        confirm_password_entry.config(show=show_char)
+
+    tk.Checkbutton(
+        password_frame,
+        text="Show Password",
+        variable=show_password_var,
+        command=toggle_reset_password_visibility,
+        bg=CARD_BG,
+        fg=TEXT_DARK,
+        activebackground=CARD_BG,
+        font=("Arial", 13, "bold")
+    ).pack(anchor="w", pady=(0, 12))
+
+    def load_contact_check():
         reset_username = reset_username_entry.get().strip()
+        contact_number = contact_entry.get().strip()
 
-        if reset_username == "":
-            messagebox.showerror("Error", "All fields are required.")
+        if reset_username == "" or contact_number == "":
+            show_reset_error("All fields are required.")
             return
-        if not validate_common_inputs(reset_username):
+        if not validate_common_inputs(reset_username, contact_number):
             return
-        if not is_valid_username(reset_username):
-            messagebox.showerror("Error", "Invalid input detected.")
+        if not is_valid_username(reset_username) or not is_valid_contact_number(contact_number):
+            show_reset_error("Invalid input detected.")
             return
 
-        question = get_security_question(reset_username)
+        saved_contact = get_contact_number(reset_username)
+        if not saved_contact:
+            show_reset_error("The details are incorrect.")
+            return
 
-        if question:
-            question_var.set(question or SECURITY_QUESTION)
-        else:
-            question_var.set("Enter username to load your security question.")
-            messagebox.showerror("Error", "Verification failed.")
+        normalize = lambda value: value.strip().replace(" ", "").replace("-", "").replace("(", "").replace(")", "")
+        if normalize(saved_contact) != normalize(contact_number):
+            show_reset_error("The details are incorrect.")
+            return
+
+        password_verified.set(True)
+        contact_hint_var.set("Details verified. Enter your new password.")
+        password_frame.pack(fill="x")
+        if not reset_password_button.winfo_manager():
+            reset_password_button.pack(side="right")
+        new_password_entry.focus_set()
+        show_reset_success("Details verified successfully.")
 
     def reset_password():
         reset_username = reset_username_entry.get().strip()
-        answer = answer_entry.get().strip()
+        contact_number = contact_entry.get().strip()
         new_password = new_password_entry.get()
+        confirm_password = confirm_password_entry.get()
 
-        if reset_username == "" or answer == "" or new_password.strip() == "":
-            messagebox.showerror("Error", "All fields are required.")
+        if not password_verified.get():
+            show_reset_error("Verify username and contact number first.")
             return
-        if not validate_common_inputs(reset_username, answer, new_password):
+
+        if reset_username == "" or contact_number == "" or new_password.strip() == "" or confirm_password.strip() == "":
+            show_reset_error("All fields are required.")
+            return
+        if not validate_common_inputs(reset_username, contact_number, new_password, confirm_password):
             return
         if (
             not is_valid_username(reset_username)
-            or not is_valid_security_answer(answer)
+            or not is_valid_contact_number(contact_number)
             or not is_valid_password(new_password)
         ):
-            messagebox.showerror("Error", "Invalid input detected.")
+            show_reset_error("Invalid input detected.")
+            return
+        if new_password != confirm_password:
+            show_reset_error("New Password and Confirm Password must match.")
             return
 
-        if not reset_user_password(reset_username, answer, new_password):
-            messagebox.showerror("Error", "Verification failed.")
+        if not ask_reset_confirmation("Are you sure you want to reset this password?"):
             return
 
-        messagebox.showinfo("Success", "Password reset successful.")
+        if not reset_user_password_with_contact(reset_username, contact_number, new_password):
+            show_reset_error("The details are incorrect.")
+            return
+
+        show_reset_success("Password reset successful.")
         reset_window.destroy()
 
     button_row = tk.Frame(form, bg=CARD_BG)
@@ -442,18 +562,18 @@ def forgot_password():
 
     tk.Button(
         button_row,
-        text="Load Question",
-        command=load_security_question,
+        text="Verify Details",
+        command=load_contact_check,
         bg="#2563eb",
         fg="white",
         activebackground="#1d4ed8",
         relief="flat",
-        font=("Arial", 10, "bold"),
-        padx=12,
-        pady=8
+        font=("Arial", 13, "bold"),
+        padx=16,
+        pady=10
     ).pack(side="left")
 
-    tk.Button(
+    reset_password_button = tk.Button(
         button_row,
         text="Reset Password",
         command=reset_password,
@@ -461,10 +581,10 @@ def forgot_password():
         fg="white",
         activebackground=GREEN_HOVER,
         relief="flat",
-        font=("Arial", 10, "bold"),
-        padx=12,
-        pady=8
-    ).pack(side="right")
+        font=("Arial", 13, "bold"),
+        padx=16,
+        pady=10
+    )
 
 
 def on_enter(e):

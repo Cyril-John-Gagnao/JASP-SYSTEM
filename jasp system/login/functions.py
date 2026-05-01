@@ -46,6 +46,13 @@ def is_valid_security_answer(answer):
     return bool(re.fullmatch(r"[A-Za-z0-9_.@#,\- ?]+", answer))
 
 
+def is_valid_contact_number(contact_number):
+    cleaned = contact_number.strip().replace(" ", "").replace("-", "").replace("(", "").replace(")", "")
+    if cleaned.startswith("+"):
+        return cleaned[1:].isdigit() and 10 <= len(cleaned[1:]) <= 15
+    return cleaned.isdigit() and 10 <= len(cleaned) <= 15
+
+
 def validate_common_inputs(*values, error_callback=None):
     for value in values:
         if contains_malicious_input(value) or has_control_characters(value):

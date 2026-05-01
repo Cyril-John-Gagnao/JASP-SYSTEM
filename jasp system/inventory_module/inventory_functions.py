@@ -12,17 +12,26 @@ from .inventory_database import (
     fetch_items,
     count_items,
     log_restock,
+    log_inventory_action,
     fetch_existing_item_for_stack,
     update_stacked_item,
     insert_item,
     update_item_record,
+    restock_item_record,
     delete_item_record,
 )
 
 
-FORM_BG = "#e0f2fe"
+FORM_BG = "#fef3c7"
 SAVE_GREEN = "#00c853"
 CANCEL_RED = "#dc2626"
+LOW_STOCK_ROW = "low_stock_row"
+LOW_STOCK_LIMITS = {
+    "cement": 20,
+    "fine sand": 20,
+    "chb blocks": 200,
+}
+DEFAULT_LOW_STOCK_LIMIT = 10
 
 
 def show_inventory_error(parent, title, message):
@@ -137,7 +146,29 @@ def show_inventory_success(parent, title, message):
     parent.wait_window(popup)
 
 
-def status_row_tag(index, status):
+def low_stock_limit(item_name):
+    return LOW_STOCK_LIMITS.get(str(item_name).strip().lower(), DEFAULT_LOW_STOCK_LIMIT)
+
+
+def is_low_stock_item(item_name, quantity):
+    try:
+        quantity_value = int(float(quantity))
+    except (TypeError, ValueError):
+        return False
+    return quantity_value <= low_stock_limit(item_name)
+
+
+def inventory_row_tag(index, values):
+    item_name = values[1] if len(values) > 1 else ""
+    quantity = values[3] if len(values) > 3 else 0
+    if is_low_stock_item(item_name, quantity):
+        return LOW_STOCK_ROW
+    return "blue_row" if index % 2 == 0 else "white_row"
+
+
+def status_row_tag(index, status, item_name="", quantity=None):
+    if item_name and quantity is not None and is_low_stock_item(item_name, quantity):
+        return LOW_STOCK_ROW
     return "blue_row" if index % 2 == 0 else "white_row"
 
 
@@ -147,7 +178,7 @@ def view_items(conn, cursor, tree, filter_text="", sort_by="Latest Date", total_
         tree.delete(row)
     rows = fetch_items(cursor, filter_text, sort_by)
     for index, row in enumerate(rows):
-        tag = status_row_tag(index, row[6] if len(row) > 6 else "Active")
+        tag = inventory_row_tag(index, row)
         tree.insert("", tk.END, values=row, tags=(tag,))
     if total_var is not None:
         total_var.set(f"Total Items in Inventory: {count_items(cursor):,}")
@@ -171,8 +202,8 @@ def sort_tree(tree, sort_state, column, numeric=False):
     data.sort(reverse=not ascending)
     for index, (_, k) in enumerate(data):
         tree.move(k, "", index)
-        status = tree.set(k, "Status")
-        tree.item(k, tags=(status_row_tag(index, status),))
+        values = tree.item(k, "values")
+        tree.item(k, tags=(inventory_row_tag(index, values),))
     sort_state["column"] = column
     sort_state["ascending"] = ascending
 
@@ -300,24 +331,27 @@ def open_item_form(conn, cursor, inventory_window, tree, mode, item_values=None,
                 item_id, current_qty = existing
                 new_qty = int(current_qty) + quantity_val
                 update_stacked_item(cursor, item_id, new_qty, raw_val, unit)
-                cursor.execute("UPDATE items SET status=? WHERE id=?", (status, item_id))
                 success_msg = "Item quantity updated successfully!"
-                log_restock(conn, cursor, name, quantity_val, price_val, raw_val)
+                log_restock(conn, cursor, name, quantity_val, price_val, raw_val, item_id, "Restock")
             else:
-                insert_item(cursor, name, quantity_val, price_val, raw_val, unit, status)
+                item_id = insert_item(cursor, name, quantity_val, price_val, raw_val, unit, status)
                 success_msg = "Item added successfully!"
-                log_restock(conn, cursor, name, quantity_val, price_val, raw_val)
+                log_inventory_action(conn, cursor, item_id, name, quantity_val, status)
         else:
             item_id = item_values[0]
             previous_qty = int(item_values[3])
+            previous_status = item_values[6] if len(item_values) > 6 and item_values[6] else "Active"
             update_item_record(cursor, item_id, name, quantity_val, price_val, raw_val, unit, status)
             success_msg = "Item updated successfully!"
-            if quantity_val > previous_qty:
+            if quantity_val != previous_qty:
                 cursor.execute(
                     "UPDATE items SET date_added=? WHERE id=?",
                     (datetime.now().strftime("%Y-%m-%d %H:%M:%S"), item_id)
                 )
-                log_restock(conn, cursor, name, quantity_val - previous_qty, price_val, raw_val)
+            if quantity_val < previous_qty:
+                log_inventory_action(conn, cursor, item_id, name, previous_qty - quantity_val, "Remove")
+            if status != previous_status:
+                log_inventory_action(conn, cursor, item_id, name, quantity_val, status)
 
         conn.commit()
         show_inventory_success(form, "Success", success_msg)
@@ -343,6 +377,92 @@ def update_item(conn, cursor, inventory_window, tree, refresh_view=None):
         return
     values = tree.item(selected, "values")
     open_item_form(conn, cursor, inventory_window, tree, "edit", values, refresh_view)
+
+
+def open_restock_form(conn, cursor, inventory_window, item_values, refresh_view=None):
+    if not item_values:
+        show_inventory_error(inventory_window, "Error", "Select an item to restock.")
+        return
+
+    item_id = item_values[0]
+    item_name = item_values[1]
+    current_qty = int(item_values[3] or 0)
+    status = item_values[6] if len(item_values) > 6 and item_values[6] else "Active"
+    if status != "Active":
+        show_inventory_error(inventory_window, "Inactive Item", "Inactive items cannot be restocked.")
+        return
+
+    form = tk.Toplevel(inventory_window)
+    form.title("Restock Item")
+    form.transient(inventory_window)
+    form.grab_set()
+    form.configure(bg=FORM_BG)
+    form.resizable(False, False)
+
+    form_card = tk.Frame(form, bg=FORM_BG, padx=34, pady=30)
+    form_card.pack(fill="both", expand=True)
+
+    tk.Label(
+        form_card,
+        text="Restock Item",
+        font=("Arial", 24, "bold"),
+        bg=FORM_BG,
+        fg="#1e40af"
+    ).grid(row=0, column=0, columnspan=3, pady=(0, 24), sticky="w")
+
+    left_info = tk.Frame(form_card, bg=FORM_BG)
+    left_info.grid(row=1, column=0, sticky="nw", padx=(0, 34))
+
+    tk.Label(left_info, text="Item Name", font=("Arial", 14, "bold"), bg=FORM_BG, fg="#374151").pack(anchor="w")
+    tk.Label(left_info, text=item_name, font=("Arial", 18, "bold"), bg=FORM_BG, fg="#111827", wraplength=250, justify="left").pack(anchor="w", pady=(4, 18))
+    tk.Label(left_info, text="Current Quantity", font=("Arial", 14, "bold"), bg=FORM_BG, fg="#374151").pack(anchor="w")
+    tk.Label(left_info, text=f"{current_qty:,}", font=("Arial", 18, "bold"), bg=FORM_BG, fg="#111827").pack(anchor="w", pady=(4, 0))
+
+    tk.Label(form_card, text="+", font=("Arial", 34, "bold"), bg=FORM_BG, fg="#16a34a").grid(row=1, column=1, padx=(4, 12), sticky="n")
+
+    input_frame = tk.Frame(form_card, bg=FORM_BG)
+    input_frame.grid(row=1, column=2, sticky="n")
+    tk.Label(input_frame, text="Quantity to Add", font=("Arial", 14, "bold"), bg=FORM_BG, fg="#374151").pack(anchor="w")
+    qty_entry = tk.Entry(input_frame, width=14, font=("Arial", 20), justify="center")
+    qty_entry.pack(anchor="w", pady=(8, 0))
+    qty_entry.focus_set()
+
+    button_frame = tk.Frame(form_card, bg=FORM_BG)
+    button_frame.grid(row=2, column=0, columnspan=3, pady=(32, 0))
+
+    def confirm_restock():
+        quantity_text = qty_entry.get().strip()
+        try:
+            qty_added = int(quantity_text)
+        except ValueError:
+            show_inventory_error(form, "Invalid Quantity", "Quantity to add must be a positive number.")
+            return
+
+        if qty_added <= 0:
+            show_inventory_error(form, "Invalid Quantity", "Quantity to add must be a positive number.")
+            return
+
+        result = restock_item_record(conn, cursor, item_id, qty_added)
+        if not result:
+            show_inventory_error(form, "Error", "Item was not found.")
+            return
+        if result == "inactive":
+            show_inventory_error(form, "Inactive Item", "Inactive items cannot be restocked.")
+            return
+
+        form.destroy()
+        show_inventory_success(inventory_window, "Success", f"{item_name} restocked successfully!")
+        inventory_window.lift()
+        inventory_window.focus_force()
+        if callable(refresh_view):
+            refresh_view()
+
+    tk.Button(button_frame, text="Confirm", width=14, bg=SAVE_GREEN, fg="white", font=("Arial", 15, "bold"), bd=2, relief="solid", highlightbackground="black", highlightcolor="black", highlightthickness=1, padx=8, pady=8, command=confirm_restock).grid(row=0, column=0, padx=10)
+    tk.Button(button_frame, text="Cancel", width=14, bg=CANCEL_RED, fg="white", font=("Arial", 15, "bold"), bd=2, relief="solid", highlightbackground="black", highlightcolor="black", highlightthickness=1, padx=8, pady=8, command=form.destroy).grid(row=0, column=1, padx=10)
+
+    form.bind("<Return>", lambda _event: confirm_restock())
+    form.bind("<Escape>", lambda _event: form.destroy())
+    center_window(form, 650, 360, inventory_window)
 
 
 def delete_item(conn, cursor, inventory_window, tree, refresh_view=None):
@@ -393,17 +513,39 @@ def search_items(event, conn, cursor, tree, search_entry, sort_var=None, total_v
     view_items(conn, cursor, tree, search_entry.get(), sort_by, total_var)
 
 
-def back_to_main(inventory_gui_module):
+def _close_inventory_window(inventory_gui_module, window=None):
+    window = window or inventory_gui_module.inventory_window
+    parent = window.master if window and window.winfo_exists() else None
+
     inventory_gui_module.inventory_refresh_callback = None
-    if inventory_gui_module.inventory_refresh_job and inventory_gui_module.inventory_window and inventory_gui_module.inventory_window.winfo_exists():
-        inventory_gui_module.inventory_window.after_cancel(inventory_gui_module.inventory_refresh_job)
+    if inventory_gui_module.inventory_refresh_job and window and window.winfo_exists():
+        try:
+            window.after_cancel(inventory_gui_module.inventory_refresh_job)
+        except Exception:
+            pass
     inventory_gui_module.inventory_refresh_job = None
-    inventory_gui_module.inventory_window.destroy()
+
+    if window and window.winfo_exists():
+        window.destroy()
+    inventory_gui_module.inventory_window = None
+
+    if parent and parent.winfo_exists():
+        try:
+            parent.deiconify()
+            parent.lift()
+            parent.focus_force()
+        except Exception:
+            pass
+    return parent
 
 
-def on_close(inventory_gui_module):
-    inventory_gui_module.inventory_refresh_callback = None
-    if inventory_gui_module.inventory_refresh_job and inventory_gui_module.inventory_window and inventory_gui_module.inventory_window.winfo_exists():
-        inventory_gui_module.inventory_window.after_cancel(inventory_gui_module.inventory_refresh_job)
-    inventory_gui_module.inventory_refresh_job = None
-    inventory_gui_module.inventory_window.destroy()
+def back_to_main(inventory_gui_module, window=None):
+    _close_inventory_window(inventory_gui_module, window)
+
+
+def direct_back_to_dashboard(inventory_gui_module, window=None):
+    _close_inventory_window(inventory_gui_module, window)
+
+
+def on_close(inventory_gui_module, window=None):
+    _close_inventory_window(inventory_gui_module, window)

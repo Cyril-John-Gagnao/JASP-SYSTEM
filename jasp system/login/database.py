@@ -30,6 +30,8 @@ def setup_database():
         cursor.execute("ALTER TABLE users ADD COLUMN security_question TEXT")
     if "security_answer" not in columns:
         cursor.execute("ALTER TABLE users ADD COLUMN security_answer TEXT")
+    if "contact_number" not in columns:
+        cursor.execute("ALTER TABLE users ADD COLUMN contact_number TEXT")
 
     cursor.execute("SELECT id FROM users WHERE username=?", ("admin",))
     if not cursor.fetchone():
@@ -101,6 +103,47 @@ def get_security_question(username):
     row = cursor.fetchone()
     conn.close()
     return row[0] if row else None
+
+
+def get_contact_number(username):
+    conn = sqlite3.connect(DB_NAME)
+    cursor = conn.cursor()
+    cursor.execute("SELECT contact_number FROM users WHERE username=?", (username,))
+    row = cursor.fetchone()
+    conn.close()
+    return row[0] if row else None
+
+
+def normalize_contact_number(contact_number):
+    return contact_number.strip().replace(" ", "").replace("-", "").replace("(", "").replace(")", "")
+
+
+def reset_user_password_with_contact(username, contact_number, new_password):
+    conn = sqlite3.connect(DB_NAME)
+    cursor = conn.cursor()
+    cursor.execute(
+        "SELECT id, contact_number FROM users WHERE username=?",
+        (username,)
+    )
+    user = cursor.fetchone()
+
+    if not user or not user[1]:
+        conn.close()
+        return False
+
+    saved_contact = normalize_contact_number(user[1])
+    entered_contact = normalize_contact_number(contact_number)
+    if saved_contact != entered_contact:
+        conn.close()
+        return False
+
+    cursor.execute(
+        "UPDATE users SET password=? WHERE id=?",
+        (hash_password(new_password), user[0])
+    )
+    conn.commit()
+    conn.close()
+    return True
 
 
 def reset_user_password(username, security_answer, new_password):

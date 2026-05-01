@@ -7,7 +7,7 @@ from inventory_module import open_inventory
 from pos import open_pos
 from chb_module import open_chb_dashboard
 from reports_dashboard import open_reports
-from user_management import open_user_management
+from User_management.user_gui import open_user_management
 
 
 DB_NAME = os.path.join(os.path.dirname(__file__), "jasp.db")
@@ -212,7 +212,7 @@ def open_main(root, logout_callback=None):
 
     sidebar_btn("Dashboard Overview", lambda: None).pack(fill="x")
     sidebar_btn("Point of Sale (POS)", open_pos).pack(fill="x")
-    sidebar_btn("Inventory Management", open_inventory).pack(fill="x")
+    sidebar_btn("Inventory Management", lambda: open_inventory(root)).pack(fill="x")
     sidebar_btn("CHB and Delivery Production", open_chb_dashboard).pack(fill="x")
     sidebar_btn("User Management", lambda: open_user_management(root)).pack(fill="x")
     sidebar_btn("Reports & Analytics", open_reports).pack(fill="x")
@@ -241,7 +241,7 @@ def open_main(root, logout_callback=None):
     tk.Button(header, text="Open Inventory", bg="#2563eb", fg="white",
               font=("Arial", 10, "bold"), relief="flat", bd=0,
               padx=12, pady=8,
-              command=open_inventory).pack(side="right", padx=6, pady=10)
+              command=lambda: open_inventory(root)).pack(side="right", padx=6, pady=10)
 
     content = tk.Frame(main_area, bg=BG_PAGE)
     content.pack(fill="both", expand=True, padx=18, pady=18)

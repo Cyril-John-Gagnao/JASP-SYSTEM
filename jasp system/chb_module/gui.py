@@ -1,4 +1,5 @@
 import tkinter as tk
+from tkinter import font as tkfont
 from tkinter import ttk
 import sqlite3
 from datetime import datetime
@@ -52,7 +53,7 @@ def open_chb_dashboard():
     selected_id = tk.StringVar()
 
     # ================= HEADER =================
-    header_frame = tk.Frame(win, bg=BG_MAIN)
+    header_frame = tk.Frame(win, bg="#dbeafe", padx=14, pady=10, highlightthickness=1, highlightbackground="#93c5fd")
     header_frame.pack(fill="x", padx=20, pady=10)
 
     header_frame.columnconfigure(0, weight=1)
@@ -62,13 +63,13 @@ def open_chb_dashboard():
         header_frame,
         text="CHB Production Management",
         font=("Arial", 26, "bold"),
-        bg=BG_MAIN,
+        bg="#dbeafe",
         fg=PRIMARY
     ).grid(row=0, column=0, sticky="w")
 
     # RIGHT: Refresh and Back Buttons
     # Button container for Refresh and Back
-    btn_container = tk.Frame(header_frame, bg=BG_MAIN)
+    btn_container = tk.Frame(header_frame, bg="#dbeafe")
     btn_container.grid(row=0, column=1, sticky="e")
 
     tk.Button(
@@ -122,6 +123,7 @@ def open_chb_dashboard():
     sort_menu.pack(side="left", pady=10)
     # Summary button (opens period summary dialog)
     tk.Button(search_frame, text='Summary', command=lambda: chb_functions.open_period_summary(win, cursor, BG_MAIN, TEXT), bg='#8b5cf6', fg='white', font=('Arial', 13, 'bold'), padx=12, pady=6, **BUTTON_BORDER).pack(side='left', padx=10)
+    tk.Button(search_frame, text='Open Delivery Form', command=lambda: open_delivery_window(win, BG_MAIN, CARD_BG, PRIMARY), bg='#f59e0b', fg='white', font=('Arial', 13, 'bold'), padx=12, pady=6, **BUTTON_BORDER, cursor='hand2').pack(side='right', padx=(10, 0), pady=10)
 
     # ================= TOTAL HOLLOW BLOCKS DISPLAY =================
     total_frame = tk.Frame(win, bg=BG_MAIN)
@@ -138,32 +140,18 @@ def open_chb_dashboard():
     )
     total_label.pack(side="left")
 
-    delivery_btn = tk.Button(
-        total_frame,
-        text="Open Delivery Form",
-        command=lambda: open_delivery_window(win, BG_MAIN, CARD_BG, PRIMARY),
-        bg="#f59e0b",
-        fg="white",
-        font=("Arial", 14, "bold"),
-        padx=15,
-        pady=8,
-        **BUTTON_BORDER,
-        cursor="hand2"
-    )
-    delivery_btn.pack(side="right")
-
     # ================= MAIN CONTAINER (60-40 Split) =================
     main_container = tk.Frame(win, bg=CARD_BG, bd=1, relief="solid")
-    main_container.pack(padx=20, pady=10, fill="both", expand=True)
+    main_container.pack(padx=20, pady=(0, 8), fill="both", expand=True)
 
-    # Configure columns: table (60%) and form (40%)
-    main_container.columnconfigure(0, weight=3)  # table - 60%
-    main_container.columnconfigure(1, weight=2)  # form - 40%
+    # Configure columns: table and form
+    main_container.columnconfigure(0, weight=5)
+    main_container.columnconfigure(1, weight=4)
     main_container.rowconfigure(0, weight=1)
 
     # ================= FORM (RIGHT SIDE - 40%) =================
     form_card = tk.Frame(main_container, bg=CARD_BG)
-    form_card.grid(row=0, column=1, sticky="nsew", padx=15, pady=15)
+    form_card.grid(row=0, column=1, sticky="nsew", padx=12, pady=(8, 12))
     form_card.columnconfigure(1, weight=1)
 
     # Form Title
@@ -175,15 +163,17 @@ def open_chb_dashboard():
 
     form = tk.Frame(form_bg, bg="#fef3c7")
     form.pack(fill="x", padx=20, pady=20)
+    form.columnconfigure(0, weight=0)
+    form.columnconfigure(1, weight=1, minsize=320)
 
     # Production Date
     tk.Label(form, text="Production Date", bg="#fef3c7", font=("Arial", 14, "bold"), fg="#1e293b").grid(row=0, column=0, sticky="w", pady=10)
     date_var = tk.StringVar(value=datetime.now().strftime("%Y-%m-%d"))
     date_frame = tk.Frame(form, bg="#fef3c7")
     date_frame.grid(row=0, column=1, sticky="ew", padx=15, pady=10)
-    date_entry = tk.Entry(date_frame, textvariable=date_var, width=17, font=("Arial", 14), bd=1, relief="solid", bg="white")
+    tk.Button(date_frame, text="📅", command=lambda: chb_functions.open_date_calendar(win, date_var), bg="#3b82f6", fg="white", font=("Arial", 12, "bold"), width=3, padx=4, pady=3, **BUTTON_BORDER).pack(side="left", padx=(0, 6))
+    date_entry = tk.Entry(date_frame, textvariable=date_var, width=20, font=("Arial", 14), bd=1, relief="solid", bg="white")
     date_entry.pack(side="left", fill="x", expand=True)
-    tk.Button(date_frame, text="📅", command=lambda: chb_functions.open_date_calendar(win, date_var), bg="#3b82f6", fg="white", font=("Arial", 12, "bold"), padx=8, pady=3, **BUTTON_BORDER).pack(side="left", padx=(4, 0))
 
     # Worker Name
     tk.Label(form, text="Worker Name", bg="#fef3c7", font=("Arial", 14, "bold"), fg="#1e293b").grid(row=1, column=0, sticky="w", pady=10)
@@ -196,14 +186,14 @@ def open_chb_dashboard():
     cement_frame.grid(row=2, column=1, sticky="ew", padx=15, pady=10)
     cement_frame.columnconfigure(0, weight=1)
     cement_stock_var = tk.StringVar()
-    cement_entry = tk.Entry(cement_frame, width=12, font=("Arial", 14), bd=1, relief="solid", bg="white")
+    cement_entry = tk.Entry(cement_frame, width=18, font=("Arial", 14), bd=1, relief="solid", bg="white")
     cement_entry.grid(row=0, column=0, sticky="ew")
     cement_stock_combo = ttk.Combobox(
         cement_frame,
         textvariable=cement_stock_var,
         values=[],
         state="readonly",
-        width=15,
+        width=18,
         font=("Arial", 13)
     )
     cement_stock_combo.grid(row=0, column=1, sticky="ew", padx=(6, 0))
@@ -214,14 +204,14 @@ def open_chb_dashboard():
     sand_frame.grid(row=3, column=1, sticky="ew", padx=15, pady=10)
     sand_frame.columnconfigure(0, weight=1)
     sand_stock_var = tk.StringVar()
-    sand_entry = tk.Entry(sand_frame, width=12, font=("Arial", 14), bd=1, relief="solid", bg="white")
+    sand_entry = tk.Entry(sand_frame, width=18, font=("Arial", 14), bd=1, relief="solid", bg="white")
     sand_entry.grid(row=0, column=0, sticky="ew")
     sand_stock_combo = ttk.Combobox(
         sand_frame,
         textvariable=sand_stock_var,
         values=[],
         state="readonly",
-        width=15,
+        width=18,
         font=("Arial", 13)
     )
     sand_stock_combo.grid(row=0, column=1, sticky="ew", padx=(6, 0))
@@ -231,9 +221,6 @@ def open_chb_dashboard():
     pay_rate_var = tk.DoubleVar(value=pay_rate_default)
     pay_rate_entry = tk.Entry(form, textvariable=pay_rate_var, width=20, font=("Arial", 14), bd=1, relief="solid", bg="white")
     pay_rate_entry.grid(row=4, column=1, sticky="ew", padx=15, pady=10)
-
-    # Configure column weight for better alignment
-    form.columnconfigure(1, weight=1)
 
     # Result Display
     result_frame = tk.Frame(form_card, bg="#e0f2fe")
@@ -313,7 +300,7 @@ def open_chb_dashboard():
 
     # ================= TABLE (LEFT SIDE - 60%) =================
     table_card = tk.Frame(main_container, bg=CARD_BG)
-    table_card.grid(row=0, column=0, sticky="nsew", padx=15, pady=15)
+    table_card.grid(row=0, column=0, sticky="nsew", padx=12, pady=(8, 12))
     table_card.columnconfigure(0, weight=1)
     table_card.rowconfigure(0, weight=1)
 
@@ -353,13 +340,58 @@ def open_chb_dashboard():
     hsb.config(command=tree.xview)
 
     column_labels = {
+        "id": "ID",
+        "date": "DATE",
+        "worker": "WORKER",
         "cement": "Bags of Cement",
         "Fine Sand": "Bags of Fine Sand",
+        "blocks": "BLOCKS",
+        "pay": "PAY",
     }
+
+    def auto_adjust_columns():
+        tree.update_idletasks()
+        heading_font = tkfont.Font(font=style.lookup("Treeview.Heading", "font"))
+        row_font = tkfont.Font(font=style.lookup("Treeview", "font"))
+        column_padding = {
+            "id": 45,
+            "date": 55,
+            "worker": 70,
+            "cement": 55,
+            "Fine Sand": 65,
+            "blocks": 55,
+            "pay": 60,
+        }
+        min_widths = {
+            "id": 65,
+            "date": 120,
+            "worker": 150,
+            "cement": 140,
+            "Fine Sand": 160,
+            "blocks": 110,
+            "pay": 120,
+        }
+        max_widths = {
+            "id": 90,
+            "date": 170,
+            "worker": 300,
+            "cement": 190,
+            "Fine Sand": 210,
+            "blocks": 160,
+            "pay": 180,
+        }
+
+        for col in columns:
+            header_text = column_labels.get(col, col.upper())
+            width = heading_font.measure(header_text) + column_padding[col]
+            for item in tree.get_children():
+                width = max(width, row_font.measure(str(tree.set(item, col))) + column_padding[col])
+            width = max(min_widths[col], min(width, max_widths[col]))
+            tree.column(col, width=width, minwidth=min_widths[col], stretch=False)
 
     for col in columns:
         tree.heading(col, text=column_labels.get(col, col.upper()))
-        tree.column(col, anchor="center", width=130, stretch=False)
+        tree.column(col, anchor="center", width=130, minwidth=80, stretch=False)
 
     # Bind to configure event to update scrollbar after column resize
     on_tree_configure = lambda event=None: chb_functions.on_tree_configure(event, tree)
@@ -375,7 +407,9 @@ def open_chb_dashboard():
     tree.bind("<ButtonRelease-1>", on_select)
 
     # ================= LOAD DATA =================
-    load_data = lambda event=None: chb_functions.load_data(event, tree, search_var, sort_var, cursor)
+    def load_data(event=None):
+        chb_functions.load_data(event, tree, search_var, sort_var, cursor)
+        auto_adjust_columns()
 
     # ✅ BINDINGS (LIVE SEARCH)
     search_entry.bind("<KeyRelease>", load_data)

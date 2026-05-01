@@ -39,6 +39,16 @@ def ensure_summary_tables(cursor):
             ts TEXT NOT NULL
         )
     """)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS inventory_logs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            item_id INTEGER,
+            item_name TEXT NOT NULL,
+            qty INTEGER NOT NULL DEFAULT 0,
+            action_status TEXT NOT NULL,
+            ts TEXT NOT NULL
+        )
+    """)
     cursor.execute("PRAGMA table_info(items)")
     item_columns = [col[1] for col in cursor.fetchall()]
     if "status" not in item_columns:
@@ -57,18 +67,27 @@ def fetch_summary_rows(cursor, start_date, end_date):
     cursor.execute(
         """
         SELECT
+            l.item_name,
+            l.qty,
+            l.ts AS date_added,
+            l.action_status AS status
+        FROM inventory_logs l
+        WHERE DATE(l.ts) BETWEEN ? AND ?
+        UNION ALL
+        SELECT
             r.item_name,
             r.qty,
             r.ts AS date_added,
-            COALESCE((
-                SELECT i.status
-                FROM items i
-                WHERE LOWER(i.name) = LOWER(r.item_name)
-                ORDER BY i.id ASC
-                LIMIT 1
-            ), 'Removed') AS status
+            'Restock' AS status
         FROM restocks r
         WHERE DATE(r.ts) BETWEEN ? AND ?
+          AND NOT EXISTS (
+              SELECT 1
+              FROM inventory_logs l2
+              WHERE LOWER(l2.item_name) = LOWER(r.item_name)
+                AND l2.qty = r.qty
+                AND l2.ts = r.ts
+          )
         UNION ALL
         SELECT
             i.name,
@@ -84,9 +103,19 @@ def fetch_summary_rows(cursor, start_date, end_date):
               WHERE LOWER(r2.item_name) = LOWER(i.name)
                 AND DATE(r2.ts) BETWEEN ? AND ?
           )
+          AND NOT EXISTS (
+              SELECT 1
+              FROM inventory_logs l3
+              WHERE LOWER(l3.item_name) = LOWER(i.name)
+                AND DATE(l3.ts) BETWEEN ? AND ?
+          )
         ORDER BY date_added DESC
         """,
         (
+            start_date.strftime("%Y-%m-%d"),
+            end_date.strftime("%Y-%m-%d"),
+            start_date.strftime("%Y-%m-%d"),
+            end_date.strftime("%Y-%m-%d"),
             start_date.strftime("%Y-%m-%d"),
             end_date.strftime("%Y-%m-%d"),
             start_date.strftime("%Y-%m-%d"),
@@ -146,32 +175,34 @@ def open_date_calendar(parent, date_var, on_select=None):
 
         title_var.set(f"{calendar.month_name[month_var.get()]} {year_var.get()}")
         for col, day_name in enumerate(["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]):
-            tk.Label(grid_frame, text=day_name, bg="#ffffff", fg="#1e293b", font=("Arial", 9, "bold"), width=5).grid(row=0, column=col, padx=1, pady=2)
+            tk.Label(grid_frame, text=day_name, bg="#ffffff", fg="#1e293b", font=("Arial", 12, "bold"), width=6).grid(row=0, column=col, padx=2, pady=3)
 
         today = datetime.now()
         for row_index, week in enumerate(calendar.monthcalendar(year_var.get(), month_var.get()), start=1):
             for col_index, day in enumerate(week):
                 if day == 0:
-                    tk.Label(grid_frame, text="", bg="#ffffff", width=5).grid(row=row_index, column=col_index, padx=1, pady=1)
+                    tk.Label(grid_frame, text="", bg="#ffffff", width=6).grid(row=row_index, column=col_index, padx=2, pady=2)
                     continue
 
                 is_today = day == today.day and month_var.get() == today.month and year_var.get() == today.year
                 tk.Button(
                     grid_frame,
                     text=str(day),
-                    width=5,
+                    width=6,
                     bg="#2563eb" if is_today else "#f8fafc",
                     fg="white" if is_today else "#1e293b",
-                    relief="flat",
+                    relief="solid",
+                    bd=1,
+                    font=("Arial", 12, "bold"),
                     command=lambda d=day: select_date(d)
-                ).grid(row=row_index, column=col_index, padx=1, pady=1)
+                ).grid(row=row_index, column=col_index, padx=2, pady=2)
 
-    tk.Button(header, text="<", command=lambda: change_month(-1), bg="#e0f2fe", relief="flat", width=4).pack(side="left")
-    tk.Label(header, textvariable=title_var, bg="#ffffff", fg="#1e293b", font=("Arial", 11, "bold"), width=18).pack(side="left", padx=8)
-    tk.Button(header, text=">", command=lambda: change_month(1), bg="#e0f2fe", relief="flat", width=4).pack(side="left")
+    tk.Button(header, text="<", command=lambda: change_month(-1), bg="#e0f2fe", relief="solid", bd=1, width=5, font=("Arial", 13, "bold")).pack(side="left")
+    tk.Label(header, textvariable=title_var, bg="#ffffff", fg="#1e293b", font=("Arial", 15, "bold"), width=20).pack(side="left", padx=10)
+    tk.Button(header, text=">", command=lambda: change_month(1), bg="#e0f2fe", relief="solid", bd=1, width=5, font=("Arial", 13, "bold")).pack(side="left")
 
     render_calendar()
-    center_window(cal_win, parent=parent)
+    center_window(cal_win, 470, 390, parent=parent)
 
 
 def open_inventory_summary(parent):
@@ -332,19 +363,32 @@ def open_inventory_summary(parent):
     top_frame = tk.Frame(summary_win, bg="#f4f6f9")
     top_frame.pack(fill="x", padx=16, pady=(14, 4))
 
-    tk.Label(top_frame, text="Period:", bg="#f4f6f9", font=("Arial", 13, "bold")).pack(side="left", padx=(0, 8))
+    tk.Label(top_frame, text="Period:", bg="#f4f6f9", font=("Arial", 16, "bold")).pack(side="left", padx=(0, 10))
     for period in ("Day", "Week", "Month"):
-        tk.Radiobutton(top_frame, text=period, variable=period_var, value=period, bg="#f4f6f9", font=("Arial", 12), command=load_summary).pack(side="left", padx=6)
+        tk.Radiobutton(top_frame, text=period, variable=period_var, value=period, bg="#f4f6f9", font=("Arial", 15), command=load_summary).pack(side="left", padx=8)
 
-    tk.Label(top_frame, text="Date:", bg="#f4f6f9", font=("Arial", 13, "bold")).pack(side="left", padx=(24, 8))
-    date_entry = tk.Entry(top_frame, textvariable=date_var, width=14, font=("Arial", 12), relief="solid", bd=1)
-    date_entry.pack(side="left", padx=4)
-    tk.Button(top_frame, text="Calendar", bg="#2196f3", fg="white", font=("Arial", 10, "bold"), relief="flat", command=lambda: open_date_calendar(summary_win, date_var, load_summary), padx=8, pady=4).pack(side="left", padx=4)
-    tk.Button(top_frame, text="Apply", bg="#2563eb", fg="white", font=("Arial", 10, "bold"), relief="flat", command=load_summary, padx=10, pady=4).pack(side="left", padx=8)
+    tk.Label(top_frame, text="Date:", bg="#f4f6f9", font=("Arial", 16, "bold")).pack(side="left", padx=(28, 10))
+    date_entry = tk.Entry(top_frame, textvariable=date_var, width=14, font=("Arial", 15), relief="solid", bd=1)
+    date_entry.pack(side="left", padx=5)
+    filter_button_options = {
+        "width": 8,
+        "font": ("Arial", 12, "bold"),
+        "fg": "white",
+        "relief": "solid",
+        "bd": 2,
+        "highlightbackground": "black",
+        "highlightcolor": "black",
+        "highlightthickness": 1,
+        "padx": 4,
+        "pady": 6,
+    }
+    tk.Button(top_frame, text="Calendar", bg="#2196f3", command=lambda: open_date_calendar(summary_win, date_var, load_summary), **filter_button_options).pack(side="left", padx=4)
+    tk.Button(top_frame, text="Apply", bg="#1e3a8a", command=load_summary, **filter_button_options).pack(side="left", padx=4)
+    tk.Button(top_frame, text="Close", bg="#dc2626", command=lambda: on_close(), **filter_button_options).pack(side="right", padx=4)
 
     pdf_button_frame = tk.Frame(summary_win, bg="#f4f6f9")
     pdf_button_frame.pack(fill="x", padx=16, pady=(0, 8))
-    tk.Button(pdf_button_frame, text="Convert to PDF", bg="#00c853", fg="white", font=("Arial", 10, "bold"), bd=2, relief="solid", command=open_preview, padx=10, pady=4).pack(side="left")
+    tk.Button(pdf_button_frame, text="Convert to PDF", bg="#00c853", fg="white", font=("Arial", 13, "bold"), bd=2, relief="solid", command=open_preview, padx=14, pady=7).pack(side="left")
 
     table_frame = tk.Frame(summary_win, bg="#f4f6f9")
     table_frame.pack(fill="both", expand=True, padx=16, pady=(0, 14))
@@ -367,7 +411,7 @@ def open_inventory_summary(parent):
     summary_tree.tag_configure("white_row", background="#ffffff", foreground="#000000")
 
     load_summary()
-    center_window(summary_win, 860, 560, parent)
+    center_window(summary_win, 1040, 560, parent)
 
     def on_close():
         conn.close()
