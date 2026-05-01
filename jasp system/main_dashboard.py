@@ -6,7 +6,7 @@ from datetime import datetime
 from inventory_module import open_inventory
 from pos import open_pos
 from chb_module import open_chb_dashboard
-from reports_dashboard import open_reports
+from reports_module import open_reports
 from User_management.user_gui import open_user_management
 
 
