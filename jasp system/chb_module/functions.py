@@ -184,9 +184,15 @@ def notify_inventory_views():
 
 
 def go_back(win):
+    parent = win.master if win.master and win.master.winfo_exists() else None
     win.destroy()
-    import main_dashboard
-    main_dashboard.open_main()
+    from main_dashboard.main_gui import open_main
+    if parent:
+        open_main(parent)
+    else:
+        root = tk.Tk()
+        open_main(root)
+        root.mainloop()
 
 
 def refresh_data(load_data, update_total_blocks):

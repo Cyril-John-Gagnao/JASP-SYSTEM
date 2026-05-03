@@ -118,6 +118,39 @@ def normalize_contact_number(contact_number):
     return contact_number.strip().replace(" ", "").replace("-", "").replace("(", "").replace(")", "")
 
 
+def get_user_id_by_contact_number(contact_number):
+    entered_contact = normalize_contact_number(contact_number)
+    if not entered_contact:
+        return None
+
+    conn = sqlite3.connect(DB_NAME)
+    cursor = conn.cursor()
+    cursor.execute("SELECT id, contact_number FROM users WHERE COALESCE(contact_number, '') != ''")
+    users = cursor.fetchall()
+    conn.close()
+
+    for user_id, saved_contact in users:
+        if normalize_contact_number(saved_contact or "") == entered_contact:
+            return user_id
+    return None
+
+
+def reset_user_password_by_contact(contact_number, new_password):
+    user_id = get_user_id_by_contact_number(contact_number)
+    if not user_id:
+        return False
+
+    conn = sqlite3.connect(DB_NAME)
+    cursor = conn.cursor()
+    cursor.execute(
+        "UPDATE users SET password=? WHERE id=?",
+        (hash_password(new_password), user_id)
+    )
+    conn.commit()
+    conn.close()
+    return True
+
+
 def reset_user_password_with_contact(username, contact_number, new_password):
     conn = sqlite3.connect(DB_NAME)
     cursor = conn.cursor()

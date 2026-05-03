@@ -5,6 +5,7 @@ from datetime import datetime
 import os
 import sys
 
+from main_dashboard import session
 from pos_module.database import DB_NAME
 from window_utils import enable_centered_toplevels
 
@@ -35,6 +36,18 @@ def notify_inventory_views():
         except Exception:
             pass
 
+
+def notify_dashboard_views():
+    """Refresh the main dashboard after a completed POS sale."""
+    for module_name in ("main_dashboard.main_gui", "Main_dashboard.main_gui"):
+        module = sys.modules.get(module_name)
+        callback = getattr(module, "dashboard_refresh_callback", None) if module else None
+        if callable(callback):
+            try:
+                callback()
+            except Exception:
+                pass
+
 # ==================== POS WINDOW ====================
 def open_pos():
     global pos_refresh_callback
@@ -63,6 +76,14 @@ def open_pos():
         ts TEXT NOT NULL
     )
     """)
+    cursor.execute("PRAGMA table_info(sales)")
+    sales_cols = [col[1] for col in cursor.fetchall()]
+    if "transaction_id" not in sales_cols:
+        cursor.execute("ALTER TABLE sales ADD COLUMN transaction_id TEXT DEFAULT ''")
+    if "cashier" not in sales_cols:
+        cursor.execute("ALTER TABLE sales ADD COLUMN cashier TEXT DEFAULT ''")
+    if "payment_status" not in sales_cols:
+        cursor.execute("ALTER TABLE sales ADD COLUMN payment_status TEXT DEFAULT 'Paid'")
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS chb_production (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -515,15 +536,19 @@ def open_pos():
             messagebox.showerror("Error", "Cart is empty", parent=root)
             return False
         now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        txn_id = datetime.now().strftime("%Y%m%d%H%M%S")
+        txn_id = datetime.now().strftime("TXN-%Y%m%d%H%M%S")
+        cashier = session.get_current_username("Admin")
         total_amount = sum(item['total'] for item in cart)
         change = money_received - total_amount if mode == "Cash" else 0
 
         for item in cart:
             cursor.execute("UPDATE items SET quantity = quantity - ? WHERE id=?", (item['qty'], item['id']))
             cursor.execute(
-                "INSERT INTO sales (item_name, qty, price, raw_price, total, ts) VALUES (?, ?, ?, ?, ?, ?)",
-                (item['name'], item['qty'], item['price'], item.get('raw_price', 0), item['total'], now)
+                """
+                INSERT INTO sales (item_name, qty, price, raw_price, total, ts, transaction_id, cashier, payment_status)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (item['name'], item['qty'], item['price'], item.get('raw_price', 0), item['total'], now, txn_id, cashier, "Paid")
             )
             if item['name'] == CHB_ITEM_NAME:
                 cursor.execute(
@@ -538,6 +563,7 @@ def open_pos():
                 )
         conn.commit()
         notify_inventory_views()
+        notify_dashboard_views()
 
         pdf_path = generate_invoice_pdf(cart, total_amount, money_received, change, mode, platform, txn_id)
         cart_items_copy = [item.copy() for item in cart]
@@ -751,3 +777,7 @@ def open_pos():
 
     load_inventory()
     root.mainloop()
+
+
+if __name__ == "__main__":
+    open_pos()

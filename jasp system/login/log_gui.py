@@ -1,5 +1,7 @@
+import os
 import tkinter as tk
 from tkinter import messagebox
+from main_dashboard import session
 from window_utils import enable_centered_toplevels
 
 from .database import (
@@ -17,6 +19,8 @@ from .functions import (
 enable_centered_toplevels()
 
 BG_BLUE = "#1950a3"
+LOGIN_HEADER_BG = "#072a4e"
+LOGIN_PAGE_BG = "#fff3e6"
 CARD_BG = "#ffffff"
 TEXT_DARK = "#1f2933"
 TEXT_MUTED = "#6b7280"
@@ -35,8 +39,8 @@ login_btn = None
 def open_main_in_place(user_role):
     try:
         if user_role == "Admin":
-            import main_dashboard
-            main_dashboard.open_main(root, show_login_screen)
+            from main_dashboard.main_gui import open_main
+            open_main(root, show_login_screen)
         elif user_role == "Cashier":
             open_cashier_dashboard()
         else:
@@ -340,6 +344,7 @@ def login():
         if role not in ("Admin", "Cashier"):
             show_error_popup("Error", "Access denied. Unauthorized role.")
             return
+        session.set_current_user(user[0], user[1], role)
         show_success_popup(role)
         open_main_in_place(role)
     else:
@@ -353,7 +358,7 @@ def forgot_password():
     reset_window.resizable(False, False)
     reset_window.grab_set()
 
-    width, height = 620, 620
+    width, height = 620, 760
     x = (reset_window.winfo_screenwidth() // 2) - (width // 2)
     y = (reset_window.winfo_screenheight() // 2) - (height // 2)
     reset_window.geometry(f"{width}x{height}+{x}+{y}")
@@ -431,13 +436,28 @@ def forgot_password():
         reset_window.wait_window(popup)
         return confirmed["value"]
 
+    top_bar = tk.Frame(reset_window, bg=CARD_BG)
+    top_bar.pack(fill="x", padx=12, pady=(10, 0))
+    tk.Button(
+        top_bar,
+        text="X",
+        command=reset_window.destroy,
+        bg=RED,
+        fg="white",
+        activebackground="#b91c1c",
+        activeforeground="white",
+        relief="flat",
+        font=("Arial", 11, "bold"),
+        width=3,
+    ).pack(side="right")
+
     tk.Label(
         reset_window,
         text="Reset Password",
         bg=CARD_BG,
         fg=BG_BLUE,
         font=("Arial", 26, "bold")
-    ).pack(pady=(28, 8))
+    ).pack(pady=(8, 8))
 
     tk.Label(
         reset_window,
@@ -455,7 +475,7 @@ def forgot_password():
     reset_username_entry = tk.Entry(form, width=42, font=("Arial", 15), bd=1, relief="solid")
     reset_username_entry.pack(pady=(7, 14), ipady=6)
 
-    contact_hint_var = tk.StringVar(value="Enter your username and registered contact number.")
+    contact_hint_var = tk.StringVar(value="Enter your registered contact number.")
     tk.Label(form, textvariable=contact_hint_var, bg=CARD_BG, fg=TEXT_DARK,
              wraplength=450, justify="left", font=("Arial", 13, "bold")).pack(anchor="w", pady=(0, 5))
 
@@ -493,6 +513,20 @@ def forgot_password():
         font=("Arial", 13, "bold")
     ).pack(anchor="w", pady=(0, 12))
 
+    reset_password_button = tk.Button(
+        password_frame,
+        text="Reset Password",
+        command=lambda: reset_password(),
+        bg=GREEN,
+        fg="white",
+        activebackground=GREEN_HOVER,
+        relief="flat",
+        font=("Arial", 13, "bold"),
+        height=2,
+        padx=16,
+        pady=12
+    )
+
     def load_contact_check():
         reset_username = reset_username_entry.get().strip()
         contact_number = contact_entry.get().strip()
@@ -510,7 +544,6 @@ def forgot_password():
         if not saved_contact:
             show_reset_error("The details are incorrect.")
             return
-
         normalize = lambda value: value.strip().replace(" ", "").replace("-", "").replace("(", "").replace(")", "")
         if normalize(saved_contact) != normalize(contact_number):
             show_reset_error("The details are incorrect.")
@@ -520,7 +553,7 @@ def forgot_password():
         contact_hint_var.set("Details verified. Enter your new password.")
         password_frame.pack(fill="x")
         if not reset_password_button.winfo_manager():
-            reset_password_button.pack(side="right")
+            reset_password_button.pack(anchor="center", fill="x", pady=(4, 10), ipady=6)
         new_password_entry.focus_set()
         show_reset_success("Details verified successfully.")
 
@@ -576,19 +609,6 @@ def forgot_password():
         pady=10
     ).pack(side="left")
 
-    reset_password_button = tk.Button(
-        button_row,
-        text="Reset Password",
-        command=reset_password,
-        bg=GREEN,
-        fg="white",
-        activebackground=GREEN_HOVER,
-        relief="flat",
-        font=("Arial", 13, "bold"),
-        padx=16,
-        pady=10
-    )
-
 
 def on_enter(e):
     e.widget["background"] = GREEN_HOVER
@@ -598,39 +618,101 @@ def on_leave(e):
     e.widget["background"] = GREEN
 
 
+def load_login_logo(size=82):
+    logo_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "images", "logo1.png"))
+    try:
+        from PIL import Image, ImageDraw, ImageTk
+
+        source = Image.open(logo_path).convert("RGBA")
+        source.thumbnail((size, size), Image.LANCZOS)
+        rounded_logo = Image.new("RGBA", (size, size), (0, 0, 0, 0))
+        x_pos = (size - source.width) // 2
+        y_pos = (size - source.height) // 2
+        rounded_logo.paste(source, (x_pos, y_pos), source)
+        mask = Image.new("L", (size, size), 0)
+        ImageDraw.Draw(mask).ellipse((0, 0, size - 1, size - 1), fill=255)
+        rounded_logo.putalpha(mask)
+        return ImageTk.PhotoImage(rounded_logo)
+    except (ImportError, OSError, AttributeError, tk.TclError):
+        try:
+            image = tk.PhotoImage(file=logo_path)
+            image = image.subsample(max(1, image.width() // size), max(1, image.height() // size))
+            return image
+        except tk.TclError:
+            return None
+
+
 def show_login_screen():
     global main_frame, login_frame, username_entry, password_entry, login_btn
+
+    session.clear_current_user()
 
     root.title("Login")
     try:
         root.state("zoomed")
     except Exception:
         pass
-    root.configure(bg=BG_BLUE)
+    root.configure(bg=LOGIN_PAGE_BG)
 
     for child in root.winfo_children():
         child.destroy()
 
-    main_frame = tk.Frame(root, bg=BG_BLUE)
+    header = tk.Frame(root, bg=LOGIN_HEADER_BG, height=112, highlightthickness=1, highlightbackground="#041d36")
+    header.pack(fill="x")
+    header.pack_propagate(False)
+
+    header_left = tk.Frame(header, bg=LOGIN_HEADER_BG)
+    header_left.pack(side="left", padx=24, pady=12)
+    logo_image = load_login_logo(86)
+    if logo_image:
+        header.logo_image = logo_image
+        tk.Label(header_left, image=logo_image, bg=LOGIN_HEADER_BG).pack(side="left", padx=(0, 16))
+    tk.Label(
+        header_left,
+        text="JASP Hardware System",
+        font=("Arial", 22, "bold"),
+        bg=LOGIN_HEADER_BG,
+        fg="white",
+    ).pack(side="left")
+
+    tk.Button(
+        header,
+        text="Exit",
+        command=confirm_exit,
+        bg=RED,
+        fg="white",
+        activebackground="#b91c1c",
+        activeforeground="white",
+        font=("Arial", 13, "bold"),
+        relief="solid",
+        bd=2,
+        highlightthickness=1,
+        highlightbackground="black",
+        highlightcolor="black",
+        padx=18,
+        pady=8
+    ).pack(side="right", padx=24, pady=18)
+
+    main_frame = tk.Frame(root, bg=LOGIN_PAGE_BG)
     main_frame.pack(expand=True)
 
     tk.Label(
         main_frame,
-        text="JASP Hardware System",
-        font=("Arial", 34, "bold"),
-        bg=BG_BLUE,
-        fg="white"
-    ).pack(pady=(0, 6))
-
-    tk.Label(
-        main_frame,
-        text="Inventory and sales management",
-        font=("Arial", 15),
-        bg=BG_BLUE,
-        fg="#dbeafe"
+        text="INVENTORY AND SALES MANAGEMENT",
+        font=("Arial", 24, "bold"),
+        bg=LOGIN_PAGE_BG,
+        fg="#9a3412"
     ).pack(pady=(0, 24))
 
-    login_frame = tk.Frame(main_frame, bg=CARD_BG, padx=50, pady=38)
+    login_frame = tk.Frame(
+        main_frame,
+        bg=CARD_BG,
+        padx=50,
+        pady=38,
+        highlightthickness=3,
+        highlightbackground=LOGIN_HEADER_BG,
+        highlightcolor=LOGIN_HEADER_BG,
+    )
     login_frame.pack()
 
     tk.Label(
@@ -712,19 +794,6 @@ def show_login_screen():
     login_btn.bind("<Enter>", on_enter)
     login_btn.bind("<Leave>", on_leave)
     root.bind("<Return>", lambda _event: login())
-
-    tk.Button(
-        root,
-        text="Exit",
-        command=confirm_exit,
-        bg=RED,
-        fg="white",
-        activebackground="#b91c1c",
-        font=("Arial", 14, "bold"),
-        relief="flat",
-        padx=18,
-        pady=8
-    ).place(x=24, y=24)
 
 
 def run_app():

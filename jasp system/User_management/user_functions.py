@@ -353,5 +353,5 @@ def open_change_password_form(conn, cursor, parent, selected_user_id):
 
 def go_back_to_dashboard(root, conn):
     conn.close()
-    from main_dashboard import open_main
+    from main_dashboard.main_gui import open_main
     open_main(root)
