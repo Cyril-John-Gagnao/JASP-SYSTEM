@@ -1,5 +1,6 @@
 import os
 import tkinter as tk
+from datetime import datetime
 
 from user_management.user_gui import open_user_management
 from chb_module import open_chb_dashboard
@@ -56,6 +57,7 @@ def open_main(root, logout_callback=None):
     nav_button_bg = "#dbeafe"
     nav_button_active_bg = "#bfdbfe"
     section_border = "black"
+    today_label = datetime.now().strftime("%B %d, %Y")
     revenue_bg = "#dbeafe"
     profit_bg = "#dcfce7"
     chb_bg = "#fef3c7"
@@ -183,8 +185,8 @@ def open_main(root, logout_callback=None):
 
     stats_row = tk.Frame(content, bg=content_bg)
     stats_row.pack(fill="x")
-    revenue_card = stat_card(stats_row, "Today's Revenue", money(data["revenue"]), "", bg=revenue_bg, header_bg=revenue_header_bg)
-    profit_card = stat_card(stats_row, "Profit", money(data["profit"]), "", bg=profit_bg, header_bg=profit_header_bg)
+    revenue_card = stat_card(stats_row, f"Today's Revenue - {today_label}", money(data["revenue"]), "", bg=revenue_bg, header_bg=revenue_header_bg)
+    profit_card = stat_card(stats_row, f"Today's Profit - {today_label}", money(data["profit"]), "", bg=profit_bg, header_bg=profit_header_bg)
     chb_card = stat_card(stats_row, "CHB Stock Available", f"{data['chb_stock']:,}", "pcs", bg=chb_bg, header_bg=chb_header_bg)
 
     analytics = data.get("analytics", {})
@@ -303,7 +305,7 @@ def open_main(root, logout_callback=None):
     top_sell_card.pack_propagate(False)
     top_items_header = tk.Frame(top_sell_card, bg=top_items_header_bg)
     top_items_header.pack(fill="x")
-    tk.Label(top_items_header, text="Most Items Sold Today (Preview)", bg=top_items_header_bg,
+    tk.Label(top_items_header, text=f"Most Items Sold Today - {today_label} (Preview)", bg=top_items_header_bg,
              fg="white", font=("Arial", 14, "bold")).pack(side="left", padx=16, pady=10)
     tk.Button(
         top_items_header,

@@ -3,11 +3,12 @@ from datetime import datetime
 from tkinter import font as tkfont
 from tkinter import filedialog, messagebox, ttk
 
+from jasp_theme import DASHBOARD_CONTENT_BG
+
 from .main_database import fetch_most_items_summary, fetch_recent_transaction_summary
 from .main_functions import (
     ACCENT,
     BG_CARD,
-    BG_PAGE,
     PRIMARY,
     TEXT_PRIMARY,
     center_window,
@@ -19,11 +20,13 @@ from .main_functions import (
     open_date_calendar,
 )
 
+SUMMARY_BG = DASHBOARD_CONTENT_BG
+
 
 def open_recent_transactions_summary(parent):
     summary_win = tk.Toplevel(parent)
     summary_win.title("Recent Transactions Summary")
-    summary_win.configure(bg=BG_PAGE)
+    summary_win.configure(bg=SUMMARY_BG)
     summary_win.transient(parent)
 
     period_var = tk.StringVar(value="Day")
@@ -162,12 +165,12 @@ def open_recent_transactions_summary(parent):
         rows = [summary_tree.item(item, "values") for item in summary_tree.get_children()]
         preview = tk.Toplevel(summary_win)
         preview.title("Sales Summary Preview")
-        preview.configure(bg=BG_PAGE)
+        preview.configure(bg=SUMMARY_BG)
         preview.transient(summary_win)
 
-        tk.Label(preview, text=title_var.get(), bg=BG_PAGE, fg=PRIMARY,
+        tk.Label(preview, text=title_var.get(), bg=SUMMARY_BG, fg=PRIMARY,
                  font=("Arial", 18, "bold")).pack(anchor="w", padx=16, pady=(14, 4))
-        tk.Label(preview, text=totals_var.get(), bg=BG_PAGE, fg=TEXT_PRIMARY,
+        tk.Label(preview, text=totals_var.get(), bg=SUMMARY_BG, fg=TEXT_PRIMARY,
                  font=("Arial", 12, "bold")).pack(anchor="w", padx=16, pady=(0, 8))
 
         preview_frame = tk.Frame(preview, bg=BG_CARD)
@@ -177,7 +180,7 @@ def open_recent_transactions_summary(parent):
             preview_tree.insert("", "end", values=row, tags=("even" if index % 2 == 0 else "odd",))
         adjust_summary_columns(preview_tree)
 
-        actions = tk.Frame(preview, bg=BG_PAGE)
+        actions = tk.Frame(preview, bg=SUMMARY_BG)
         actions.pack(fill="x", padx=16, pady=(0, 14))
 
         def save_pdf():
@@ -223,7 +226,7 @@ def open_recent_transactions_summary(parent):
         tree.tag_configure("odd", background="#ffffff")
         return tree
 
-    controls = tk.Frame(summary_win, bg=BG_PAGE)
+    controls = tk.Frame(summary_win, bg=SUMMARY_BG)
     controls.pack(fill="x", padx=16, pady=(14, 8))
     summary_button_options = {
         "fg": "white",
@@ -236,14 +239,14 @@ def open_recent_transactions_summary(parent):
         "padx": 12,
         "pady": 7,
     }
-    tk.Label(controls, text="Period:", bg=BG_PAGE, fg=TEXT_PRIMARY,
+    tk.Label(controls, text="Period:", bg=SUMMARY_BG, fg=TEXT_PRIMARY,
              font=("Arial", 15, "bold")).pack(side="left", padx=(0, 8))
     for period in ("Day", "Week", "Month"):
         tk.Radiobutton(controls, text=period, variable=period_var, value=period,
-                       bg=BG_PAGE, fg=TEXT_PRIMARY, font=("Arial", 14),
+                       bg=SUMMARY_BG, fg=TEXT_PRIMARY, font=("Arial", 14),
                        command=load_summary).pack(side="left", padx=5)
 
-    tk.Label(controls, text="Date:", bg=BG_PAGE, fg=TEXT_PRIMARY,
+    tk.Label(controls, text="Date:", bg=SUMMARY_BG, fg=TEXT_PRIMARY,
              font=("Arial", 15, "bold")).pack(side="left", padx=(24, 8))
     date_entry = tk.Entry(controls, textvariable=date_var, width=13, font=("Arial", 14), relief="solid", bd=2)
     date_entry.pack(side="left", padx=4)
@@ -254,12 +257,12 @@ def open_recent_transactions_summary(parent):
     tk.Button(controls, text="Close", command=summary_win.destroy, bg="#dc2626",
               **summary_button_options).pack(side="right")
 
-    tk.Label(summary_win, textvariable=title_var, bg=BG_PAGE, fg=PRIMARY,
+    tk.Label(summary_win, textvariable=title_var, bg=SUMMARY_BG, fg=PRIMARY,
              font=("Arial", 18, "bold")).pack(anchor="w", padx=16)
-    tk.Label(summary_win, textvariable=totals_var, bg=BG_PAGE, fg=TEXT_PRIMARY,
+    tk.Label(summary_win, textvariable=totals_var, bg=SUMMARY_BG, fg=TEXT_PRIMARY,
              font=("Arial", 12, "bold")).pack(anchor="w", padx=16, pady=(2, 8))
 
-    action_row = tk.Frame(summary_win, bg=BG_PAGE)
+    action_row = tk.Frame(summary_win, bg=SUMMARY_BG)
     action_row.pack(fill="x", padx=16, pady=(0, 8))
     tk.Button(action_row, text="Preview / Convert PDF", command=open_preview, bg="#059669", fg="white",
               font=("Arial", 11, "bold"), relief="flat", padx=14, pady=8).pack(side="left")
@@ -275,7 +278,7 @@ def open_recent_transactions_summary(parent):
 def open_most_items_summary(parent):
     summary_win = tk.Toplevel(parent)
     summary_win.title("Most Items Sold Summary")
-    summary_win.configure(bg=BG_PAGE)
+    summary_win.configure(bg=SUMMARY_BG)
     summary_win.transient(parent)
 
     period_var = tk.StringVar(value="Day")
@@ -413,11 +416,11 @@ def open_most_items_summary(parent):
         rows = [summary_tree.item(item, "values") for item in summary_tree.get_children()]
         preview = tk.Toplevel(summary_win)
         preview.title("Most Items Sold Preview")
-        preview.configure(bg=BG_PAGE)
+        preview.configure(bg=SUMMARY_BG)
         preview.transient(summary_win)
-        tk.Label(preview, text=title_var.get(), bg=BG_PAGE, fg=PRIMARY,
+        tk.Label(preview, text=title_var.get(), bg=SUMMARY_BG, fg=PRIMARY,
                  font=("Arial", 18, "bold")).pack(anchor="w", padx=16, pady=(14, 4))
-        tk.Label(preview, text=totals_var.get(), bg=BG_PAGE, fg=TEXT_PRIMARY,
+        tk.Label(preview, text=totals_var.get(), bg=SUMMARY_BG, fg=TEXT_PRIMARY,
                  font=("Arial", 12, "bold")).pack(anchor="w", padx=16, pady=(0, 8))
         preview_frame = tk.Frame(preview, bg=BG_CARD)
         preview_frame.pack(fill="both", expand=True, padx=16, pady=(0, 10))
@@ -425,7 +428,7 @@ def open_most_items_summary(parent):
         for index, row in enumerate(rows):
             preview_tree.insert("", "end", values=row, tags=("even" if index % 2 == 0 else "odd",))
         adjust_columns(preview_tree)
-        actions = tk.Frame(preview, bg=BG_PAGE)
+        actions = tk.Frame(preview, bg=SUMMARY_BG)
         actions.pack(fill="x", padx=16, pady=(0, 14))
 
         def save_pdf():
@@ -450,7 +453,7 @@ def open_most_items_summary(parent):
                   font=("Arial", 11, "bold"), relief="flat", padx=14, pady=8).pack(side="right", padx=5)
         center_window(preview, 980, 560, summary_win)
 
-    controls = tk.Frame(summary_win, bg=BG_PAGE)
+    controls = tk.Frame(summary_win, bg=SUMMARY_BG)
     controls.pack(fill="x", padx=16, pady=(14, 8))
     button_options = {
         "fg": "white",
@@ -463,13 +466,13 @@ def open_most_items_summary(parent):
         "padx": 12,
         "pady": 7,
     }
-    tk.Label(controls, text="Period:", bg=BG_PAGE, fg=TEXT_PRIMARY,
+    tk.Label(controls, text="Period:", bg=SUMMARY_BG, fg=TEXT_PRIMARY,
              font=("Arial", 15, "bold")).pack(side="left", padx=(0, 8))
     for period in ("Day", "Week", "Month"):
         tk.Radiobutton(controls, text=period, variable=period_var, value=period,
-                       bg=BG_PAGE, fg=TEXT_PRIMARY, font=("Arial", 14),
+                       bg=SUMMARY_BG, fg=TEXT_PRIMARY, font=("Arial", 14),
                        command=load_summary).pack(side="left", padx=5)
-    tk.Label(controls, text="Date:", bg=BG_PAGE, fg=TEXT_PRIMARY,
+    tk.Label(controls, text="Date:", bg=SUMMARY_BG, fg=TEXT_PRIMARY,
              font=("Arial", 15, "bold")).pack(side="left", padx=(24, 8))
     tk.Entry(controls, textvariable=date_var, width=13, font=("Arial", 14), relief="solid", bd=2).pack(side="left", padx=4)
     tk.Button(controls, text="Calendar", command=lambda: open_date_calendar(summary_win, date_var),
@@ -479,11 +482,11 @@ def open_most_items_summary(parent):
     tk.Button(controls, text="Close", command=summary_win.destroy, bg="#dc2626",
               **button_options).pack(side="right")
 
-    tk.Label(summary_win, textvariable=title_var, bg=BG_PAGE, fg=PRIMARY,
+    tk.Label(summary_win, textvariable=title_var, bg=SUMMARY_BG, fg=PRIMARY,
              font=("Arial", 18, "bold")).pack(anchor="w", padx=16)
-    tk.Label(summary_win, textvariable=totals_var, bg=BG_PAGE, fg=TEXT_PRIMARY,
+    tk.Label(summary_win, textvariable=totals_var, bg=SUMMARY_BG, fg=TEXT_PRIMARY,
              font=("Arial", 12, "bold")).pack(anchor="w", padx=16, pady=(2, 8))
-    action_row = tk.Frame(summary_win, bg=BG_PAGE)
+    action_row = tk.Frame(summary_win, bg=SUMMARY_BG)
     action_row.pack(fill="x", padx=16, pady=(0, 8))
     tk.Button(action_row, text="Preview / Convert PDF", command=open_preview, bg="#059669", fg="white",
               font=("Arial", 11, "bold"), relief="flat", padx=14, pady=8).pack(side="left")

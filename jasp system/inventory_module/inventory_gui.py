@@ -5,6 +5,13 @@ from tkinter import ttk
 from .inventory_database import open_inventory_connection, setup_inventory_database, ensure_chb_item, ensure_chb_material_items, normalize_predefined_units
 from . import inventory_functions
 from .summary import open_inventory_summary
+from jasp_theme import (
+    DASHBOARD_CONTENT_BG,
+    DASHBOARD_HEADER_BG,
+    DASHBOARD_HEADER_BORDER,
+    DASHBOARD_HEADER_FG,
+    add_header_logo,
+)
 
 inventory_window = None
 inventory_refresh_callback = None
@@ -32,18 +39,22 @@ def open_inventory(parent=None):
         inventory_window = tk.Toplevel()
     inventory_window.title("Inventory Management")
     inventory_window.state("zoomed")
-    inventory_window.configure(bg="#f4f6f9")
+    inventory_window.configure(bg=DASHBOARD_CONTENT_BG)
     inventory_window.option_add("*TCombobox*Listbox.font", ("Arial", 18))
 
-    header_frame = tk.Frame(inventory_window, bg="#dbeafe", padx=14, pady=10, highlightthickness=1, highlightbackground="#93c5fd")
+    header_frame = tk.Frame(inventory_window, bg=DASHBOARD_HEADER_BG, padx=14, pady=10, highlightthickness=1, highlightbackground=DASHBOARD_HEADER_BORDER)
     header_frame.pack(fill="x", padx=30, pady=(15, 8))
 
+    title_frame = tk.Frame(header_frame, bg=DASHBOARD_HEADER_BG)
+    title_frame.pack(side="left")
+    add_header_logo(title_frame, DASHBOARD_HEADER_BG, size=52)
+
     tk.Label(
-        header_frame,
+        title_frame,
         text="INVENTORY MANAGEMENT",
         font=("Arial", 22, "bold"),
-        bg="#dbeafe",
-        fg="#2563eb",
+        bg=DASHBOARD_HEADER_BG,
+        fg=DASHBOARD_HEADER_FG,
         padx=12,
         pady=4
     ).pack(side="left")
@@ -73,17 +84,17 @@ def open_inventory(parent=None):
         command=lambda: refresh_view(),
         **header_button_options
     ).pack(side="right", padx=(6, 0))
-    main_frame = tk.Frame(inventory_window, bg="#f4f6f9")
+    main_frame = tk.Frame(inventory_window, bg=DASHBOARD_CONTENT_BG)
     main_frame.pack(fill="both", expand=True, padx=20, pady=10)
 
     # -------- Left Frame: Table + Search ----------
-    left_frame = tk.Frame(main_frame, bg="#f4f6f9", padx=10, pady=10)
+    left_frame = tk.Frame(main_frame, bg=DASHBOARD_CONTENT_BG, padx=10, pady=10)
     left_frame.pack(side="left", fill="both", expand=True, padx=(0, 10), pady=5)
 
-    controls_frame = tk.Frame(left_frame, bg="#f4f6f9")
+    controls_frame = tk.Frame(left_frame, bg=DASHBOARD_CONTENT_BG)
     controls_frame.pack(fill="x", pady=(0, 4), anchor="n")
 
-    tk.Label(controls_frame, text="Search by Item Name:", font=("Arial", 16, "bold"), bg="#f4f6f9").pack(side="left", padx=(0, 10))
+    tk.Label(controls_frame, text="Search by Item Name:", font=("Arial", 16, "bold"), bg=DASHBOARD_CONTENT_BG).pack(side="left", padx=(0, 10))
     search_entry = tk.Entry(
         controls_frame,
         font=("Arial", 16),
@@ -96,7 +107,7 @@ def open_inventory(parent=None):
     )
     search_entry.pack(side="left", padx=(0, 14))
 
-    tk.Label(controls_frame, text="Sort By:", font=("Arial", 16, "bold"), bg="#f4f6f9").pack(side="left", padx=(0, 10))
+    tk.Label(controls_frame, text="Sort By:", font=("Arial", 16, "bold"), bg=DASHBOARD_CONTENT_BG).pack(side="left", padx=(0, 10))
     sort_filter_var = tk.StringVar(value="Latest Date")
     sort_filter = ttk.Combobox(
         controls_frame,
@@ -121,21 +132,21 @@ def open_inventory(parent=None):
         command=lambda: open_inventory_summary(inventory_window)
     ).pack(side="left")
 
-    stock_counts_frame = tk.Frame(left_frame, bg="#f4f6f9")
+    stock_counts_frame = tk.Frame(left_frame, bg=DASHBOARD_CONTENT_BG)
     stock_counts_frame.pack(anchor="w", pady=(6, 8))
 
     total_items_var = tk.StringVar(value="Total Items in Inventory: 0")
     low_stock_var = tk.StringVar(value="Low Stock Items: 0")
-    tk.Label(stock_counts_frame, textvariable=total_items_var, font=("Arial", 18, "bold"), bg="#f4f6f9", fg="#1e40af").pack(side="left")
-    tk.Label(stock_counts_frame, textvariable=low_stock_var, font=("Arial", 18, "bold"), bg="#f4f6f9", fg="#c2410c").pack(side="left", padx=(28, 0))
+    tk.Label(stock_counts_frame, textvariable=total_items_var, font=("Arial", 18, "bold"), bg=DASHBOARD_CONTENT_BG, fg="#1e40af").pack(side="left")
+    tk.Label(stock_counts_frame, textvariable=low_stock_var, font=("Arial", 18, "bold"), bg=DASHBOARD_CONTENT_BG, fg="#c2410c").pack(side="left", padx=(28, 0))
 
     # ---------- CRUD Functions ----------
     sort_state = {"column": None, "ascending": True}
 
-    content_frame = tk.Frame(left_frame, bg="#f4f6f9")
+    content_frame = tk.Frame(left_frame, bg=DASHBOARD_CONTENT_BG)
     content_frame.pack(fill="both", expand=True, pady=10)
 
-    table_area = tk.Frame(content_frame, bg="#f4f6f9")
+    table_area = tk.Frame(content_frame, bg=DASHBOARD_CONTENT_BG)
     table_area.pack(side="left", fill="both", expand=True, padx=(0, 10))
 
     chb_section = tk.Frame(

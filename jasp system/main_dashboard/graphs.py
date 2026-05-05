@@ -122,7 +122,7 @@ def draw_chb_stock(canvas, chb_state):
             canvas.create_rectangle(bar_x, y, bar_x + max_bar_w, y + 14, fill="#e5e7eb", outline=LINE)
             fill_w = max_bar_w * (value / total)
             canvas.create_rectangle(bar_x, y, bar_x + fill_w, y + 14, fill=color, outline=color)
-            canvas.create_text(value_x, y + 7, text=f"{value:,}", fill=AMOUNT_TEXT, anchor="e", font=("Arial", 10, "bold"))
+            canvas.create_text(value_x, y + 7, text=f"{value:,} pcs", fill=AMOUNT_TEXT, anchor="e", font=("Arial", 10, "bold"))
             y += 21
     bind_chart(canvas, draw)
 

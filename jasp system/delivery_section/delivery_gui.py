@@ -5,9 +5,16 @@ from datetime import datetime
 
 from .delivery_database import init_delivery_db, open_delivery_connection
 from . import delivery_functions
+from jasp_theme import (
+    DASHBOARD_CONTENT_BG,
+    DASHBOARD_HEADER_BG,
+    DASHBOARD_HEADER_BORDER,
+    DASHBOARD_HEADER_FG,
+    add_header_logo,
+)
 
 # COLORS
-BG_MAIN = "#eef6ff"
+BG_MAIN = DASHBOARD_CONTENT_BG
 CARD_BG = "#ffffff"
 PRIMARY = "#2563eb"
 ACCENT = "#60a5fa"
@@ -38,22 +45,26 @@ def open_delivery_window(parent_win, bg_main, card_bg, primary):
     selected_id = tk.StringVar()
 
     # ================= HEADER =================
-    header_frame = tk.Frame(delivery_win, bg="#dbeafe", padx=14, pady=10, highlightthickness=1, highlightbackground="#93c5fd")
+    header_frame = tk.Frame(delivery_win, bg=DASHBOARD_HEADER_BG, padx=14, pady=10, highlightthickness=1, highlightbackground=DASHBOARD_HEADER_BORDER)
     header_frame.pack(fill="x", padx=20, pady=10)
 
     header_frame.columnconfigure(0, weight=1)
     header_frame.columnconfigure(1, weight=0)
 
+    title_frame = tk.Frame(header_frame, bg=DASHBOARD_HEADER_BG)
+    title_frame.grid(row=0, column=0, sticky="w")
+    add_header_logo(title_frame, DASHBOARD_HEADER_BG, size=52)
+
     tk.Label(
-        header_frame,
+        title_frame,
         text="CHB Delivery Management",
         font=("Arial", 26, "bold"),
-        bg="#dbeafe",
-        fg=primary
-    ).grid(row=0, column=0, sticky="w")
+        bg=DASHBOARD_HEADER_BG,
+        fg=DASHBOARD_HEADER_FG
+    ).pack(side="left")
 
     # RIGHT: Button container for Refresh and Back
-    btn_container = tk.Frame(header_frame, bg="#dbeafe")
+    btn_container = tk.Frame(header_frame, bg=DASHBOARD_HEADER_BG)
     btn_container.grid(row=0, column=1, sticky="e")
 
     tk.Button(

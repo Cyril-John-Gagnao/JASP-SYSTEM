@@ -12,6 +12,7 @@ from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, 
 
 from .inventory_database import DB_NAME
 from .inventory_functions import show_inventory_error
+from jasp_theme import DASHBOARD_CONTENT_BG
 
 
 def center_window(window, width=None, height=None, parent=None):
@@ -213,7 +214,7 @@ def open_inventory_summary(parent):
 
     summary_win = tk.Toplevel(parent)
     summary_win.title("Inventory Summary")
-    summary_win.configure(bg="#f4f6f9")
+    summary_win.configure(bg=DASHBOARD_CONTENT_BG)
     summary_win.transient(parent)
 
     period_var = tk.StringVar(value="Day")
@@ -308,10 +309,10 @@ def open_inventory_summary(parent):
 
         preview = tk.Toplevel(summary_win)
         preview.title("Summary Preview")
-        preview.configure(bg="#ffffff")
+        preview.configure(bg=DASHBOARD_CONTENT_BG)
         preview.transient(summary_win)
 
-        tk.Label(preview, text=title, bg="#ffffff", fg="#1e40af", font=("Arial", 18, "bold")).pack(anchor="w", padx=16, pady=(14, 6))
+        tk.Label(preview, text=title, bg=DASHBOARD_CONTENT_BG, fg="#1e40af", font=("Arial", 18, "bold")).pack(anchor="w", padx=16, pady=(14, 6))
 
         preview_frame = tk.Frame(preview, bg="#ffffff")
         preview_frame.pack(fill="both", expand=True, padx=16, pady=8)
@@ -336,7 +337,7 @@ def open_inventory_summary(parent):
             tag = "blue_row" if index % 2 == 0 else "white_row"
             preview_tree.insert("", "end", values=row, tags=(tag,))
 
-        button_frame = tk.Frame(preview, bg="#ffffff")
+        button_frame = tk.Frame(preview, bg=DASHBOARD_CONTENT_BG)
         button_frame.pack(fill="x", padx=16, pady=(4, 14))
 
         def choose_file_and_export():
@@ -360,14 +361,14 @@ def open_inventory_summary(parent):
 
         center_window(preview, 760, 520, summary_win)
 
-    top_frame = tk.Frame(summary_win, bg="#f4f6f9")
+    top_frame = tk.Frame(summary_win, bg=DASHBOARD_CONTENT_BG)
     top_frame.pack(fill="x", padx=16, pady=(14, 4))
 
-    tk.Label(top_frame, text="Period:", bg="#f4f6f9", font=("Arial", 16, "bold")).pack(side="left", padx=(0, 10))
+    tk.Label(top_frame, text="Period:", bg=DASHBOARD_CONTENT_BG, font=("Arial", 16, "bold")).pack(side="left", padx=(0, 10))
     for period in ("Day", "Week", "Month"):
-        tk.Radiobutton(top_frame, text=period, variable=period_var, value=period, bg="#f4f6f9", font=("Arial", 15), command=load_summary).pack(side="left", padx=8)
+        tk.Radiobutton(top_frame, text=period, variable=period_var, value=period, bg=DASHBOARD_CONTENT_BG, font=("Arial", 15), command=load_summary).pack(side="left", padx=8)
 
-    tk.Label(top_frame, text="Date:", bg="#f4f6f9", font=("Arial", 16, "bold")).pack(side="left", padx=(28, 10))
+    tk.Label(top_frame, text="Date:", bg=DASHBOARD_CONTENT_BG, font=("Arial", 16, "bold")).pack(side="left", padx=(28, 10))
     date_entry = tk.Entry(top_frame, textvariable=date_var, width=14, font=("Arial", 15), relief="solid", bd=1)
     date_entry.pack(side="left", padx=5)
     filter_button_options = {
@@ -386,11 +387,11 @@ def open_inventory_summary(parent):
     tk.Button(top_frame, text="Apply", bg="#1e3a8a", command=load_summary, **filter_button_options).pack(side="left", padx=4)
     tk.Button(top_frame, text="Close", bg="#dc2626", command=lambda: on_close(), **filter_button_options).pack(side="right", padx=4)
 
-    pdf_button_frame = tk.Frame(summary_win, bg="#f4f6f9")
+    pdf_button_frame = tk.Frame(summary_win, bg=DASHBOARD_CONTENT_BG)
     pdf_button_frame.pack(fill="x", padx=16, pady=(0, 8))
     tk.Button(pdf_button_frame, text="Convert to PDF", bg="#00c853", fg="white", font=("Arial", 13, "bold"), bd=2, relief="solid", command=open_preview, padx=14, pady=7).pack(side="left")
 
-    table_frame = tk.Frame(summary_win, bg="#f4f6f9")
+    table_frame = tk.Frame(summary_win, bg=DASHBOARD_CONTENT_BG)
     table_frame.pack(fill="both", expand=True, padx=16, pady=(0, 14))
 
     columns = ("Item Name", "Quantity Added", "Date Added", "Status")

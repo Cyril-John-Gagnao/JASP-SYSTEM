@@ -3,16 +3,23 @@ from tkinter import ttk
 
 from . import user_database
 from . import user_functions
+from jasp_theme import (
+    DASHBOARD_CONTENT_BG,
+    DASHBOARD_HEADER_BG,
+    DASHBOARD_HEADER_BORDER,
+    DASHBOARD_HEADER_FG,
+    add_header_logo,
+)
 
 
-BG = "#eaf4ff"
+BG = DASHBOARD_CONTENT_BG
 CARD = "#ffffff"
 PRIMARY = "#2563eb"
 SUCCESS = "#16a34a"
 WARNING = "#f59e0b"
 DANGER = "#dc2626"
 TEXT = "#0f172a"
-HEADER_BG = "#dbeafe"
+HEADER_BG = DASHBOARD_HEADER_BG
 FORM_BG = "#fef3c7"
 
 BUTTON_BORDER = {
@@ -47,18 +54,22 @@ def open_user_management(root):
     selected_row_id = tk.StringVar()
     table_buttons = []
 
-    header = tk.Frame(root, bg=HEADER_BG, padx=14, pady=10, highlightthickness=1, highlightbackground="#93c5fd")
+    header = tk.Frame(root, bg=HEADER_BG, padx=14, pady=10, highlightthickness=1, highlightbackground=DASHBOARD_HEADER_BORDER)
     header.pack(fill="x", padx=20, pady=10)
     header.columnconfigure(0, weight=1)
     header.columnconfigure(1, weight=0)
 
+    title_frame = tk.Frame(header, bg=HEADER_BG)
+    title_frame.grid(row=0, column=0, sticky="w")
+    add_header_logo(title_frame, HEADER_BG, size=52)
+
     tk.Label(
-        header,
+        title_frame,
         text="USER MANAGEMENT",
         font=("Arial", 22, "bold"),
         bg=HEADER_BG,
-        fg=PRIMARY
-    ).grid(row=0, column=0, sticky="w")
+        fg=DASHBOARD_HEADER_FG
+    ).pack(side="left")
 
     header_buttons = tk.Frame(header, bg=HEADER_BG)
     header_buttons.grid(row=0, column=1, sticky="e")
