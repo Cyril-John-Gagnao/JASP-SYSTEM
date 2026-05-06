@@ -28,6 +28,13 @@ from .functions import (
     generate_inventory_status,
     generate_weekly_sales,
 )
+from jasp_theme import (
+    DASHBOARD_HEADER_BG,
+    DASHBOARD_HEADER_BORDER,
+    DASHBOARD_HEADER_FG,
+    DASHBOARD_HEADER_SUBTLE_FG,
+    add_header_logo,
+)
 
 _ACTIVE_DATE_PICKER = None
 
@@ -440,35 +447,53 @@ def open_reports():
         if callback:
             callback()
 
-    header = tk.Frame(reports_window, bg=BG_PAGE)
+    header = tk.Frame(
+        reports_window,
+        bg=DASHBOARD_HEADER_BG,
+        padx=14,
+        pady=10,
+        highlightthickness=1,
+        highlightbackground=DASHBOARD_HEADER_BORDER,
+    )
     header.pack(fill="x", padx=30, pady=(15, 8))
 
+    title_frame = tk.Frame(header, bg=DASHBOARD_HEADER_BG)
+    title_frame.pack(side="left")
+    add_header_logo(title_frame, DASHBOARD_HEADER_BG, size=52)
+
     tk.Label(
-        header,
-        text="Reports & Analytics",
-        bg=BG_PAGE,
-        fg=REPORT_TITLE_FG,
+        title_frame,
+        text="REPORTS & ANALYTICS",
+        bg=DASHBOARD_HEADER_BG,
+        fg=DASHBOARD_HEADER_FG,
         font=("Arial", 22, "bold"),
+        padx=12,
+        pady=4,
     ).pack(side="left")
     tk.Label(
-        header,
+        title_frame,
         text="Financials | Sales | Production | Inventory",
-        bg=BG_PAGE,
-        fg=TEXT_MUTED,
+        bg=DASHBOARD_HEADER_BG,
+        fg=DASHBOARD_HEADER_SUBTLE_FG,
         font=("Arial", 12, "bold"),
-    ).pack(side="left", padx=18)
+    ).pack(side="left", padx=(18, 0))
+
+    header_button_options = {
+        "width": 10,
+        "font": ("Arial", 10, "bold"),
+        "bd": 2,
+        "relief": "solid",
+        "padx": 6,
+        "pady": 5,
+    }
+
     tk.Button(
         header,
         text="Back",
         bg=ACTION_BG,
         fg="white",
         command=reports_window.destroy,
-        width=10,
-        font=("Arial", 10, "bold"),
-        bd=2,
-        relief="solid",
-        padx=6,
-        pady=5,
+        **header_button_options,
     ).pack(side="right", padx=(6, 0))
     tk.Button(
         header,
@@ -476,12 +501,7 @@ def open_reports():
         bg=ACTION_SECONDARY,
         fg="white",
         command=refresh_current_tab,
-        width=10,
-        font=("Arial", 10, "bold"),
-        bd=2,
-        relief="solid",
-        padx=6,
-        pady=5,
+        **header_button_options,
     ).pack(side="right", padx=(6, 0))
 
     content = tk.Frame(reports_window, bg=BG_PAGE)
