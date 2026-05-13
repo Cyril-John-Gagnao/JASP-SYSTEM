@@ -2,7 +2,7 @@ import os
 import tkinter as tk
 from datetime import datetime
 
-from User_management.user_gui import open_user_management
+from user_management.user_gui import open_user_management
 from chb_module import open_chb_dashboard
 from inventory_module import open_inventory
 from pos_module import open_pos

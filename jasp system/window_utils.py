@@ -20,7 +20,11 @@ class _CenteredToplevel(_OriginalToplevel):
     def _center(self):
         if not self.winfo_exists():
             return
-        if self.winfo_state() != "normal":
+        try:
+            state = self.state()
+        except tk.TclError:
+            return
+        if state != "normal":
             return
         self.update_idletasks()
         width = max(self.winfo_width(), self.winfo_reqwidth())
