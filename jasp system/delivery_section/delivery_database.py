@@ -105,7 +105,7 @@ def delete_delivery_record(conn, cursor, selected_id):
     conn.commit()
 
 
-def fetch_delivery_rows(cursor, keyword, sort_option):
+def fetch_delivery_rows(cursor, keyword, sort_option, delivery_date=None):
     query = """
         SELECT id,
                COALESCE(transaction_date, ''),
@@ -120,15 +120,23 @@ def fetch_delivery_rows(cursor, keyword, sort_option):
     """
 
     params = []
+    where_clauses = []
+
+    if delivery_date:
+        where_clauses.append("DATE(COALESCE(NULLIF(delivery_date, ''), transaction_date, ts)) = ?")
+        params.append(delivery_date)
 
     if keyword:
-        query += " WHERE LOWER(worker_name) LIKE ? OR delivery_date LIKE ? OR transaction_date LIKE ? OR LOWER(driver_name) LIKE ? OR LOWER(address) LIKE ?"
+        where_clauses.append("(LOWER(worker_name) LIKE ? OR delivery_date LIKE ? OR transaction_date LIKE ? OR LOWER(driver_name) LIKE ? OR LOWER(address) LIKE ?)")
         params.extend([f"%{keyword}%", f"%{keyword}%", f"%{keyword}%", f"%{keyword}%", f"%{keyword}%"])
+
+    if where_clauses:
+        query += " WHERE " + " AND ".join(where_clauses)
 
     if sort_option == "Worker Name":
         query += " ORDER BY worker_name ASC"
     else:
-        query += " ORDER BY delivery_date DESC, ts DESC"
+        query += " ORDER BY DATE(COALESCE(NULLIF(delivery_date, ''), transaction_date, ts)) DESC, ts DESC"
 
     cursor.execute(query, params)
     return cursor.fetchall()
@@ -148,11 +156,11 @@ def fetch_delivery_summary(cursor, start=None, end=None):
     """
     params = []
     if start and end:
-        q += " WHERE DATE(COALESCE(transaction_date, delivery_date)) BETWEEN ? AND ?"
+        q += " WHERE DATE(COALESCE(NULLIF(delivery_date, ''), transaction_date, ts)) BETWEEN ? AND ?"
         params = [start.strftime("%Y-%m-%d"), end.strftime("%Y-%m-%d")]
     q += """
         GROUP BY COALESCE(transaction_date, delivery_date, ''), delivery_date, worker_name, driver_name, address
-        ORDER BY DATE(COALESCE(transaction_date, delivery_date)) DESC, delivery_date DESC, worker_name ASC
+        ORDER BY DATE(COALESCE(NULLIF(delivery_date, ''), transaction_date, ts)) DESC, delivery_date DESC, worker_name ASC
     """
     cursor.execute(q, params)
     return cursor.fetchall()
@@ -160,10 +168,10 @@ def fetch_delivery_summary(cursor, start=None, end=None):
 
 def fetch_latest_delivery_summary_date(cursor):
     cursor.execute("""
-        SELECT COALESCE(transaction_date, delivery_date)
+        SELECT COALESCE(NULLIF(delivery_date, ''), transaction_date, ts)
         FROM chb_delivery
-        WHERE COALESCE(transaction_date, delivery_date) IS NOT NULL
-        ORDER BY DATE(COALESCE(transaction_date, delivery_date)) DESC, ts DESC
+        WHERE COALESCE(NULLIF(delivery_date, ''), transaction_date, ts) IS NOT NULL
+        ORDER BY DATE(COALESCE(NULLIF(delivery_date, ''), transaction_date, ts)) DESC, ts DESC
         LIMIT 1
     """)
     row = cursor.fetchone()

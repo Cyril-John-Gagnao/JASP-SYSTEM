@@ -227,15 +227,15 @@ def fetch_production_summary(cursor, start=None, end=None):
     """
     params = []
     if start and end:
-        q += " WHERE DATE(production_date) BETWEEN ? AND ?"
+        q += " WHERE DATE(COALESCE(NULLIF(production_date, ''), ts)) BETWEEN ? AND ?"
         params = [start.strftime("%Y-%m-%d"), end.strftime("%Y-%m-%d")]
-    q += " GROUP BY production_date, worker_name ORDER BY production_date DESC, worker_name ASC"
+    q += " GROUP BY production_date, worker_name ORDER BY DATE(COALESCE(NULLIF(production_date, ''), ts)) DESC, worker_name ASC"
     cursor.execute(q, params)
     return cursor.fetchall()
 
 
 def fetch_latest_production_date(cursor):
-    cursor.execute("SELECT production_date FROM chb_production ORDER BY DATE(production_date) DESC, ts DESC LIMIT 1")
+    cursor.execute("SELECT COALESCE(NULLIF(production_date, ''), ts) FROM chb_production ORDER BY DATE(COALESCE(NULLIF(production_date, ''), ts)) DESC, ts DESC LIMIT 1")
     row = cursor.fetchone()
     return row[0] if row else None
 

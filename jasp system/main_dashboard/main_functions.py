@@ -195,6 +195,13 @@ def parse_dashboard_date(date_text):
 
 def open_date_calendar(parent, date_var, on_select=None):
     selected_date = parse_dashboard_date(date_var.get())
+    large_calendar = bool(getattr(parent, "_large_calendar", False))
+    day_width = 7 if large_calendar else 5
+    day_font = ("Arial", 13, "bold") if large_calendar else ("Arial", 9, "bold")
+    title_font = ("Arial", 16, "bold") if large_calendar else ("Arial", 11, "bold")
+    nav_font = ("Arial", 14, "bold") if large_calendar else ("Arial", 10, "bold")
+    title_width = 20 if large_calendar else 18
+    nav_width = 5 if large_calendar else 4
 
     cal_win = tk.Toplevel(parent)
     cal_win.title("Select Date")
@@ -238,7 +245,7 @@ def open_date_calendar(parent, date_var, on_select=None):
 
         for col, day_name in enumerate(("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")):
             tk.Label(grid, text=day_name, bg=BG_CARD, fg=TEXT_MUTED,
-                     font=("Arial", 9, "bold"), width=5).grid(row=0, column=col, padx=2, pady=3)
+                     font=day_font, width=day_width).grid(row=0, column=col, padx=3, pady=4)
 
         today = datetime.now()
         for row_index, week in enumerate(calendar.monthcalendar(year_var.get(), month_var.get()), start=1):
@@ -250,28 +257,30 @@ def open_date_calendar(parent, date_var, on_select=None):
                 tk.Button(
                     grid,
                     text=str(day),
-                    width=5,
+                    width=day_width,
                     bg=PRIMARY if is_today else "#f8fafc",
                     fg="white" if is_today else TEXT_PRIMARY,
                     activebackground=ACCENT,
                     relief="solid",
                     bd=1,
-                    font=("Arial", 9, "bold"),
+                    font=day_font,
                     command=lambda d=day: select_date(d),
-                ).grid(row=row_index, column=col_index, padx=2, pady=2)
+                ).grid(row=row_index, column=col_index, padx=3, pady=3)
 
     tk.Button(header, text="<", command=lambda: change_month(-1), bg=ACCENT,
-              fg=TEXT_PRIMARY, relief="flat", width=4, font=("Arial", 10, "bold")).pack(side="left")
+              fg=TEXT_PRIMARY, relief="flat", width=nav_width, font=nav_font).pack(side="left")
     tk.Label(header, textvariable=title_var, bg=BG_CARD, fg=TEXT_PRIMARY,
-             font=("Arial", 11, "bold"), width=18).pack(side="left", padx=10)
+             font=title_font, width=title_width).pack(side="left", padx=10)
     tk.Button(header, text=">", command=lambda: change_month(1), bg=ACCENT,
-              fg=TEXT_PRIMARY, relief="flat", width=4, font=("Arial", 10, "bold")).pack(side="left")
+              fg=TEXT_PRIMARY, relief="flat", width=nav_width, font=nav_font).pack(side="left")
 
     render_calendar()
     cal_win.update_idletasks()
-    x_pos = parent.winfo_rootx() + (parent.winfo_width() // 2) - 190
-    y_pos = parent.winfo_rooty() + (parent.winfo_height() // 2) - 150
-    cal_win.geometry(f"380x300+{max(x_pos, 0)}+{max(y_pos, 0)}")
+    cal_width = 540 if large_calendar else 380
+    cal_height = 430 if large_calendar else 300
+    x_pos = parent.winfo_rootx() + (parent.winfo_width() // 2) - (cal_width // 2)
+    y_pos = parent.winfo_rooty() + (parent.winfo_height() // 2) - (cal_height // 2)
+    cal_win.geometry(f"{cal_width}x{cal_height}+{max(x_pos, 0)}+{max(y_pos, 0)}")
 
 
 def compute_summary_range(period, date_text):

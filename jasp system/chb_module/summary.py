@@ -122,11 +122,7 @@ def open_date_calendar(parent, date_var, on_select=None):
 
 
 def open_period_summary(win, cursor, BG_MAIN, TEXT):
-    latest_date = fetch_latest_production_date(cursor)
-    try:
-        default_date = datetime.strptime(latest_date[:10], "%Y-%m-%d") if latest_date else datetime.now()
-    except Exception:
-        default_date = datetime.now()
+    default_date = datetime.now()
 
     def compute_range():
         p = period_var.get()
@@ -164,6 +160,9 @@ def open_period_summary(win, cursor, BG_MAIN, TEXT):
         rows = fetch_production_summary(cursor, start, end)
         total_blocks = 0
         total_pay = 0
+        if not rows:
+            empty_text = "No production today" if period_var.get() == "day" else "No production in this period"
+            summary_tree.insert('', 'end', values=(start.strftime("%Y-%m-%d"), empty_text, "", ""), tags=('oddrow',))
         for i, row in enumerate(rows):
             date, worker, blocks, pay = row
             total_blocks += blocks
@@ -196,6 +195,8 @@ def open_period_summary(win, cursor, BG_MAIN, TEXT):
 
         for row in tree_data:
             date, worker, blocks, pay = row
+            if not blocks or not pay:
+                continue
             blocks_int = int(str(blocks).replace(',', ''))
             pay_float = parse_currency(pay)
 

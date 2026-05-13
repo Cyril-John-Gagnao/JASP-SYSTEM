@@ -493,7 +493,7 @@ def on_select(event, tree, selected_id, date_var, worker_entry, cement_entry, sa
     selected = tree.focus()
     values = tree.item(selected, "values")
 
-    if values:
+    if values and values[0]:
         selected_id.set(values[0])
         date_var.set(values[1])
 
@@ -521,16 +521,18 @@ def load_data(event, tree, search_var, sort_var, cursor):
 
     keyword = search_var.get().lower()
     sort_option = sort_var.get()
+    today = datetime.now().strftime("%Y-%m-%d")
 
     query = """
         SELECT id, production_date, worker_name, cement_bags, fine_sand, total_blocks, pay
         FROM chb_production
+        WHERE DATE(COALESCE(NULLIF(production_date, ''), ts)) = ?
     """
 
-    params = []
+    params = [today]
 
     if keyword:
-        query += " WHERE LOWER(worker_name) LIKE ? OR production_date LIKE ?"
+        query += " AND (LOWER(worker_name) LIKE ? OR production_date LIKE ?)"
         params.extend([f"%{keyword}%", f"%{keyword}%"])
 
     if sort_option == "Worker Name":
@@ -541,7 +543,11 @@ def load_data(event, tree, search_var, sort_var, cursor):
     cursor.execute(query, params)
 
     row_index = 0
-    for row in cursor.fetchall():
+    rows = cursor.fetchall()
+    if not rows:
+        tree.insert("", "end", values=("", today, "No production today", "", "", "", ""), tags=('oddrow',))
+        return
+    for row in rows:
         tag = 'evenrow' if row_index % 2 == 0 else 'oddrow'
         tree.insert("", "end", values=row, tags=(tag,))
         row_index += 1

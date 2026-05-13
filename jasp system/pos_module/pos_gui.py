@@ -3,6 +3,7 @@ from tkinter import ttk
 
 from pos_module import pos_functions
 from pos_module.pos_database import initialize_pos_database
+from pos_module.pos_summary import open_pos_summary
 from window_utils import enable_centered_toplevels
 from jasp_theme import (
     DASHBOARD_CONTENT_BG,
@@ -86,9 +87,9 @@ def open_pos():
         font=("Arial", 22, "bold"),
     ).pack(side=tk.LEFT)
 
-    tk.Button(header_frame, text="Back", bg="#dc3545", fg="white", font=("Arial", 13, "bold"),
+    tk.Button(header_frame, text="← Back", bg="#dc3545", fg="white", font=("Arial", 13, "bold"),
               command=lambda: (globals().__setitem__("pos_refresh_callback", None), root.destroy()), padx=12, pady=8, **BUTTON_BORDER).pack(side=tk.RIGHT, padx=6)
-    tk.Button(header_frame, text="Refresh", bg="#16a34a", fg="white", font=("Arial", 13, "bold"),
+    tk.Button(header_frame, text="🔄 Refresh", bg="#16a34a", fg="white", font=("Arial", 13, "bold"),
               command=lambda: pos_functions.load_inventory(ctx, search_entry.get()), padx=12, pady=8, **BUTTON_BORDER).pack(side=tk.RIGHT, padx=6)
 
     # ====== Main Frame ======
@@ -105,7 +106,7 @@ def open_pos():
 
     cart_frame = tk.Frame(left_frame, bg=DASHBOARD_CONTENT_BG)
     cart_frame.pack(pady=5)
-    tk.Label(cart_frame, text="Double-click an inventory item to add it to cart.", font=("Arial", 13),
+    tk.Label(cart_frame, text=" You can also Double-click an item to select it.", font=("Arial", 13),
              bg=DASHBOARD_CONTENT_BG).pack()
     # Cart Treeview
     cart_table_frame = tk.Frame(left_frame, bg=DASHBOARD_CONTENT_BG)
@@ -116,7 +117,7 @@ def open_pos():
     cart_table_frame.grid_rowconfigure(0, weight=1)
 
     global cart_tree
-    cart_tree = ttk.Treeview(cart_table_frame, columns=("ID","Name","Qty","Selling Price","Total","Edit"), show="headings", style="Pos.Treeview")
+    cart_tree = ttk.Treeview(cart_table_frame, columns=("ID","Name","Unit","Qty","Selling Price","Total","Edit"), show="headings", style="Pos.Treeview")
     ctx["cart_tree"] = cart_tree
     cart_y_scroll = ttk.Scrollbar(cart_table_frame, orient="vertical", command=cart_tree.yview)
     cart_x_scroll = ttk.Scrollbar(cart_table_frame, orient="horizontal", command=cart_tree.xview)
@@ -132,10 +133,11 @@ def open_pos():
     tk.Frame(cart_table_frame, bg=DASHBOARD_CONTENT_BG, width=16, height=16).grid(row=1, column=1, sticky="nsew")
     cart_column_specs = {
         "ID": (60, 55, 0.8),
-        "Name": (185, 140, 2.7),
+        "Name": (170, 130, 2.4),
+        "Unit": (90, 75, 1.0),
         "Qty": (65, 60, 0.8),
-        "Selling Price": (120, 110, 1.5),
-        "Total": (105, 95, 1.3),
+        "Selling Price": (115, 105, 1.4),
+        "Total": (100, 90, 1.2),
         "Edit": (80, 75, 1.0),
     }
     ctx["cart_column_specs"] = cart_column_specs
@@ -144,7 +146,10 @@ def open_pos():
         cart_tree.column(col, width=width, minwidth=minwidth, anchor="center", stretch=False)
     cart_tree.tag_configure("oddrow", background="#ffffff", foreground="#000000")
     cart_tree.tag_configure("evenrow", background="#e0f2fe", foreground="#000000")
-    cart_tree.bind("<Configure>", lambda event: pos_functions.schedule_cart_buttons(ctx))
+    cart_tree.bind("<Configure>", lambda event: (
+        pos_functions.auto_fit_tree_columns(cart_tree, cart_column_specs),
+        pos_functions.schedule_cart_buttons(ctx),
+    ))
     cart_tree.bind("<MouseWheel>", lambda event: pos_functions.schedule_cart_buttons(ctx))
     cart_tree.bind("<ButtonRelease-1>", lambda event: pos_functions.schedule_cart_buttons(ctx))
     root.after_idle(lambda: (
@@ -175,10 +180,10 @@ def open_pos():
     controls_frame.pack(fill="x", pady=(0, 6))
 
     tk.Label(controls_frame, text="Search Inventory:", bg=DASHBOARD_CONTENT_BG, font=("Arial", 14, "bold")).pack(side=tk.LEFT, padx=(0, 8))
-    search_entry = ttk.Combobox(controls_frame, width=22, font=("Arial", 15))
+    search_entry = tk.Entry(controls_frame, width=22, font=("Arial", 15), bd=2, relief="solid")
     ctx["search_entry"] = search_entry
     search_entry.pack(side=tk.LEFT, padx=(0, 8), ipady=3)
-    search_entry.bind("<KeyRelease>", lambda e: (pos_functions.update_search_suggestions(ctx), pos_functions.load_inventory(ctx, search_entry.get())))
+    search_entry.bind("<KeyRelease>", lambda e: pos_functions.load_inventory(ctx, search_entry.get()))
 
     tk.Label(controls_frame, text="Sort By:", bg=DASHBOARD_CONTENT_BG, font=("Arial", 14, "bold")).pack(side=tk.LEFT, padx=(0, 8))
 
@@ -193,6 +198,20 @@ def open_pos():
         font=("Arial", 15)
     )
     sort_menu.pack(side=tk.LEFT, ipady=3)
+
+    tk.Button(
+        controls_frame,
+        text="Summary",
+        bg="#8b5cf6",
+        fg="white",
+        activebackground="#7c3aed",
+        activeforeground="white",
+        font=("Arial", 13, "bold"),
+        command=lambda: open_pos_summary(root),
+        padx=14,
+        pady=6,
+        **BUTTON_BORDER,
+    ).pack(side=tk.RIGHT, padx=(10, 0))
 
     sort_menu.bind("<<ComboboxSelected>>", lambda e: pos_functions.load_inventory(ctx, search_entry.get()))
     pos_refresh_callback = lambda: pos_functions.load_inventory(ctx, search_entry.get())
@@ -239,12 +258,16 @@ def open_pos():
     for col, (width, minwidth, _weight) in inventory_columns.items():
         heading_text = "Selling Price" if col == "Price" else col
         heading_text = "Add to Cart" if col == "Add" else heading_text
+        heading_text = "Quantity Available" if col == "Quantity" else heading_text
         inv_tree.heading(col, text=heading_text)
         inv_tree.column(col, width=width, minwidth=minwidth, anchor="center", stretch=False)
     inv_tree.tag_configure("oddrow", background="#ffffff", foreground="#000000")
     inv_tree.tag_configure("evenrow", background="#bfdbfe", foreground="#000000")
     inv_tree.tag_configure("emptyrow", background="#f8fafc", foreground="#64748b")
-    inv_tree.bind("<Configure>", lambda event: pos_functions.schedule_inventory_buttons(ctx))
+    inv_tree.bind("<Configure>", lambda event: (
+        pos_functions.auto_fit_tree_columns(inv_tree, inventory_columns),
+        pos_functions.schedule_inventory_buttons(ctx),
+    ))
     inv_tree.bind("<MouseWheel>", lambda event: pos_functions.schedule_inventory_buttons(ctx))
     inv_tree.bind("<B1-Motion>", lambda event: pos_functions.schedule_inventory_buttons(ctx))
     inv_tree.bind("<ButtonRelease-1>", lambda event: pos_functions.schedule_inventory_buttons(ctx))

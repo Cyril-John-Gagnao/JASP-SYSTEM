@@ -60,17 +60,17 @@ def open_inventory(parent=None):
     ).pack(side="left")
 
     header_button_options = {
-        "width": 10,
-        "font": ("Arial", 10, "bold"),
+        "width": 12,
+        "font": ("Arial", 13, "bold"),
         "bd": 2,
         "relief": "solid",
-        "padx": 6,
-        "pady": 5,
+        "padx": 10,
+        "pady": 7,
     }
 
     tk.Button(
         header_frame,
-        text="Back",
+        text="← Back",
         bg="#2563eb",
         fg="white",
         command=lambda: close_inventory_window(),
@@ -78,7 +78,7 @@ def open_inventory(parent=None):
     ).pack(side="right", padx=(6, 0))
     tk.Button(
         header_frame,
-        text="Refresh",
+        text="🔄 Refresh",
         bg="#16a34a",
         fg="white",
         command=lambda: refresh_view(),
@@ -138,10 +138,40 @@ def open_inventory(parent=None):
     total_items_var = tk.StringVar(value="Total Items in Inventory: 0")
     low_stock_var = tk.StringVar(value="Low Stock Items: 0")
     tk.Label(stock_counts_frame, textvariable=total_items_var, font=("Arial", 18, "bold"), bg=DASHBOARD_CONTENT_BG, fg="#1e40af").pack(side="left")
-    tk.Label(stock_counts_frame, textvariable=low_stock_var, font=("Arial", 18, "bold"), bg=DASHBOARD_CONTENT_BG, fg="#c2410c").pack(side="left", padx=(28, 0))
+    tk.Button(
+        stock_counts_frame,
+        textvariable=low_stock_var,
+        font=("Arial", 16, "bold"),
+        bg="#fed7aa",
+        fg="#9a3412",
+        activebackground="#fdba74",
+        activeforeground="#7c2d12",
+        cursor="hand2",
+        bd=2,
+        relief="solid",
+        padx=12,
+        pady=4,
+        command=lambda: show_low_stock_items()
+    ).pack(side="left", padx=(28, 0))
+    tk.Button(
+        stock_counts_frame,
+        text="Show All Items",
+        font=("Arial", 12, "bold"),
+        bg="#16a34a",
+        fg="white",
+        activebackground="#15803d",
+        activeforeground="white",
+        cursor="hand2",
+        bd=2,
+        relief="solid",
+        padx=10,
+        pady=4,
+        command=lambda: show_all_items()
+    ).pack(side="left", padx=(10, 0))
 
     # ---------- CRUD Functions ----------
     sort_state = {"column": None, "ascending": True}
+    low_stock_filter = {"active": False}
 
     content_frame = tk.Frame(left_frame, bg=DASHBOARD_CONTENT_BG)
     content_frame.pack(fill="both", expand=True, pady=10)
@@ -400,14 +430,42 @@ def open_inventory(parent=None):
 
     def update_low_stock_count():
         low_stock_count = 0
-        for target_tree in (chb_tree, tree):
-            for item in target_tree.get_children():
+        for row in inventory_functions.fetch_items(cursor, "", "Latest Date"):
+            item_name = row[1] if len(row) > 1 else ""
+            quantity = row[3] if len(row) > 3 else 0
+            if inventory_functions.is_low_stock_item(item_name, quantity):
+                low_stock_count += 1
+        prefix = "Showing Low Stock" if low_stock_filter["active"] else "Low Stock Items"
+        low_stock_var.set(f"{prefix}: {low_stock_count:,}")
+
+    def apply_low_stock_filter():
+        if not low_stock_filter["active"]:
+            return
+
+        for target_tree in (tree,):
+            visible_index = 0
+            for item in list(target_tree.get_children()):
                 values = target_tree.item(item, "values")
                 item_name = values[1] if len(values) > 1 else ""
                 quantity = values[3] if len(values) > 3 else 0
-                if inventory_functions.is_low_stock_item(item_name, quantity):
-                    low_stock_count += 1
-        low_stock_var.set(f"Low Stock Items: {low_stock_count:,}")
+                if not inventory_functions.is_low_stock_item(item_name, quantity):
+                    target_tree.delete(item)
+                    continue
+                target_tree.item(item, tags=(inventory_functions.LOW_STOCK_ROW,))
+                visible_index += 1
+            auto_adjust_columns(target_tree)
+
+    def show_low_stock_items():
+        low_stock_filter["active"] = True
+        search_entry.delete(0, tk.END)
+        refresh_view()
+
+    def show_all_items():
+        if not low_stock_filter["active"] and search_entry.get() == "":
+            return
+        low_stock_filter["active"] = False
+        search_entry.delete(0, tk.END)
+        refresh_view()
 
     def set_selected_action_tree(target_tree):
         if selection_syncing["active"]:
@@ -618,6 +676,7 @@ def open_inventory(parent=None):
         inventory_functions.refresh_current_view(conn, cursor, tree, search_entry, sort_filter_var, total_items_var)
         remove_chb_items_from_main_table()
         load_chb_items()
+        apply_low_stock_filter()
         update_low_stock_count()
         schedule_status_labels()
 

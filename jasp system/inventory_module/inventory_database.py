@@ -209,7 +209,7 @@ def normalize_predefined_units(conn, cursor):
 
 def fetch_items(cursor, filter_text="", sort_by="Latest Date"):
     order_clause = "ORDER BY datetime(COALESCE(NULLIF(date_added, ''), '1970-01-01 00:00:00')) DESC, id DESC"
-    if sort_by == "Name":
+    if sort_by in ("Name", "Item Name"):
         order_clause = "ORDER BY LOWER(name) ASC, id DESC"
 
     if filter_text:
@@ -252,17 +252,27 @@ def create_inventory_logs_table(cursor):
             item_name TEXT NOT NULL,
             qty INTEGER NOT NULL DEFAULT 0,
             action_status TEXT NOT NULL,
-            ts TEXT NOT NULL
+            ts TEXT NOT NULL,
+            responsible_user TEXT DEFAULT ''
         )
     """)
+    cursor.execute("PRAGMA table_info(inventory_logs)")
+    columns = [col[1] for col in cursor.fetchall()]
+    if "responsible_user" not in columns:
+        cursor.execute("ALTER TABLE inventory_logs ADD COLUMN responsible_user TEXT DEFAULT ''")
 
 
 def log_inventory_action(conn, cursor, item_id, item_name, qty, action_status, ts=None):
     create_inventory_logs_table(cursor)
+    try:
+        from main_dashboard import session
+        responsible_user = session.get_current_username("Admin")
+    except Exception:
+        responsible_user = "Admin"
     cursor.execute(
         """
-        INSERT INTO inventory_logs (item_id, item_name, qty, action_status, ts)
-        VALUES (?, ?, ?, ?, ?)
+        INSERT INTO inventory_logs (item_id, item_name, qty, action_status, ts, responsible_user)
+        VALUES (?, ?, ?, ?, ?, ?)
         """,
         (
             item_id,
@@ -270,6 +280,7 @@ def log_inventory_action(conn, cursor, item_id, item_name, qty, action_status, t
             int(qty or 0),
             action_status,
             ts or datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            responsible_user,
         )
     )
     conn.commit()

@@ -162,7 +162,7 @@ def open_main(root, logout_callback=None):
 
     tk.Button(
         header,
-        text="Refresh Data",
+        text="🔄 Refresh Data",
         bg="#16a34a",
         fg="white",
         activebackground="#15803d",

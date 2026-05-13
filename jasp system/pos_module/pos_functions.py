@@ -169,7 +169,8 @@ def fit_tree_columns_to_width(tree, column_weights, padding=26):
 
 def auto_fit_tree_columns(tree, column_specs, padding=26, sample_limit=80):
     tree.update_idletasks()
-    available_width = max(tree.winfo_width() - padding, 1)
+    min_total = sum(min_width for _base_width, min_width, _weight in column_specs.values())
+    available_width = max(tree.winfo_width() - padding, min_total)
     body_font = tkfont.Font(font=("Arial", 15))
     heading_font = tkfont.Font(font=("Arial", 15, "bold"))
     measured_widths = {}
@@ -195,6 +196,27 @@ def auto_fit_tree_columns(tree, column_specs, padding=26, sample_limit=80):
                 min_width,
                 measured_widths[column] + int(extra_width * (weight / total_weight)),
             )
+    elif total_measured > available_width and total_measured > min_total:
+        overflow = total_measured - available_width
+        shrinkable_total = sum(
+            max(measured_widths[column] - min_width, 0)
+            for column, (_base_width, min_width, _weight) in column_specs.items()
+        ) or 1
+        for column, (_base_width, min_width, _weight) in column_specs.items():
+            shrinkable = max(measured_widths[column] - min_width, 0)
+            measured_widths[column] = max(
+                min_width,
+                measured_widths[column] - int(overflow * (shrinkable / shrinkable_total)),
+            )
+
+    width_delta = available_width - sum(measured_widths.values())
+    if width_delta:
+        flexible_columns = [
+            column for column, (_base_width, min_width, _weight) in column_specs.items()
+            if width_delta > 0 or measured_widths[column] > min_width
+        ]
+        if flexible_columns:
+            measured_widths[flexible_columns[-1]] += width_delta
 
     for column, width in measured_widths.items():
         tree.column(column, width=width, minwidth=column_specs[column][1], stretch=False)
@@ -234,7 +256,23 @@ def load_inventory(ctx, search_query=""):
     cursor.execute(query, params)
     rows = cursor.fetchall()
     if not rows:
-        inv_tree.insert("", tk.END, values=("", "No items found", "", "", "", ""), tags=("emptyrow",))
+        empty_message = "No items found"
+        if search_query:
+            cursor.execute(
+                """
+                SELECT COUNT(*)
+                FROM items
+                WHERE COALESCE(status, 'Active') <> 'Active'
+                  AND name LIKE ?
+                """,
+                ("%" + search_query + "%",)
+            )
+            inactive_count = int(cursor.fetchone()[0] or 0)
+            if inactive_count == 1:
+                empty_message = "Matching item is currently unavailable"
+            elif inactive_count > 1:
+                empty_message = "Matching items are currently unavailable"
+        inv_tree.insert("", tk.END, values=("", empty_message, "", "", "", ""), tags=("emptyrow",))
         refresh_inventory_names(ctx)
         if ctx.get("inventory_column_specs"):
             auto_fit_tree_columns(inv_tree, ctx["inventory_column_specs"])
@@ -321,7 +359,7 @@ def render_inventory_buttons(ctx):
                 button.place_forget()
 
 
-def add_item_to_cart(ctx, product_id, name, quantity, price, qty):
+def add_item_to_cart(ctx, product_id, name, unit, quantity, price, qty):
     cursor = ctx["cursor"]
     cart = ctx["cart"]
     root = ctx["root"]
@@ -350,6 +388,7 @@ def add_item_to_cart(ctx, product_id, name, quantity, price, qty):
         cart.append({
             "id": product_id,
             "name": name,
+            "unit": unit,
             "qty": qty,
             "price": price,
             "raw_price": raw_price,
@@ -371,7 +410,15 @@ def update_cart(ctx):
         cart_tree.insert(
             "",
             tk.END,
-            values=(item["id"], item["name"], item["qty"], f"{item['price']:.2f}", f"{item['total']:.2f}", ""),
+            values=(
+                item["id"],
+                item["name"],
+                item.get("unit", "pcs"),
+                item["qty"],
+                f"{item['price']:.2f}",
+                f"{item['total']:.2f}",
+                "",
+            ),
             tags=(tag,),
         )
         total += item["total"]
@@ -569,7 +616,7 @@ def open_add_to_cart_modal(ctx, _event=None):
         if not qty_text.isdigit():
             show_pos_error(modal, "Error", "Enter a valid quantity.")
             return
-        if add_item_to_cart(ctx, product_id, name, quantity, price, int(qty_text)):
+        if add_item_to_cart(ctx, product_id, name, unit, quantity, price, int(qty_text)):
             modal.destroy()
 
     btns = tk.Frame(body, bg=PANEL_BG)
@@ -795,7 +842,7 @@ def open_invoice_window(ctx, cart_items, total_amount, money_received, change, m
     tk.Label(title_block, text="Official POS Receipt", font=("Arial", 13, "bold"), bg=DASHBOARD_HEADER_BG, fg=DASHBOARD_HEADER_SUBTLE_FG).pack(anchor="w")
 
     content_frame = tk.Frame(inv_window, bg=PANEL_BG, padx=22, pady=18, highlightthickness=1, highlightbackground="black")
-    content_frame.pack(fill="both", expand=True, padx=28, pady=22)
+    content_frame.pack(fill="both", expand=True, padx=28, pady=(22, 12))
 
     meta_frame = tk.Frame(content_frame, bg=PANEL_BG)
     meta_frame.pack(fill="x", pady=(0, 14))
@@ -843,18 +890,127 @@ def open_invoice_window(ctx, cart_items, total_amount, money_received, change, m
     payment_label = "Money Received" if mode == "Cash" else "Amount Paid"
     tk.Label(total_panel, text=f"{payment_label}: {money_received:.2f}", font=("Arial", 14, "bold"), bg=DASHBOARD_CONTENT_BG).pack(anchor="w", pady=2)
     tk.Label(total_panel, text=f"Mode of Payment: {mode}" + (f" ({platform})" if platform else ""), font=("Arial", 14, "bold"), bg=DASHBOARD_CONTENT_BG).pack(anchor="w", pady=2)
+    status_var = tk.StringVar(value="Status: Paid")
+    status_label = tk.Label(total_panel, textvariable=status_var, font=("Arial", 14, "bold"), bg=DASHBOARD_CONTENT_BG, fg="#15803d")
+    status_label.pack(anchor="w", pady=2)
     if mode == "Cash":
         tk.Label(total_panel, text=f"Change: {change:.2f}", font=("Arial", 14, "bold"), bg=DASHBOARD_CONTENT_BG, fg="#15803d").pack(anchor="w", pady=2)
 
     def print_receipt():
         pdf_path = generate_invoice_pdf(cart_items, total_amount, money_received, change, mode, platform, txn_id)
         if pdf_path:
+            ctx["cursor"].execute(
+                "UPDATE sales SET receipt_path=? WHERE transaction_id=?",
+                (pdf_path, txn_id),
+            )
+            ctx["conn"].commit()
             show_pos_success(inv_window, "Receipt Downloaded", f"Receipt saved to:\n{pdf_path}")
 
+    def void_transaction():
+        if not ask_pos_confirmation(
+            inv_window,
+            "Void Transaction",
+            "Void this transaction and return the sold items to inventory?",
+            confirm_text="Void",
+            accent_color=CANCEL_RED,
+        ):
+            return
+
+        cursor = ctx["cursor"]
+        conn = ctx["conn"]
+        cursor.execute(
+            """
+            SELECT COUNT(*)
+            FROM sales
+            WHERE transaction_id = ?
+              AND COALESCE(payment_status, 'Paid') <> 'Void'
+            """,
+            (txn_id,),
+        )
+        active_rows = int(cursor.fetchone()[0] or 0)
+        if active_rows == 0:
+            status_var.set("Status: Void")
+            status_label.config(fg=CANCEL_RED)
+            void_button.config(state="disabled", bg="#9ca3af", cursor="arrow")
+            show_pos_warning(inv_window, "Already Void", "This transaction has already been voided.")
+            return
+
+        now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        for item in cart_items:
+            cursor.execute(
+                "UPDATE items SET quantity = quantity + ? WHERE id = ?",
+                (item["qty"], item["id"]),
+            )
+            if item["name"] == CHB_ITEM_NAME:
+                cursor.execute(
+                    """
+                    UPDATE chb_inventory_state
+                    SET total_sold = MAX(total_sold - ?, 0),
+                        available = available + ?,
+                        updated_ts = ?
+                    WHERE id = ?
+                    """,
+                    (item["qty"], item["qty"], now, CHB_STATE_ID),
+                )
+
+        cursor.execute(
+            """
+            UPDATE sales
+            SET payment_status = 'Void'
+            WHERE transaction_id = ?
+            """,
+            (txn_id,),
+        )
+        conn.commit()
+        notify_inventory_views()
+        load_inventory(ctx, ctx["search_entry"].get())
+        if ctx["root"].winfo_exists():
+            ctx["root"].deiconify()
+            ctx["root"].lift()
+            ctx["root"].focus_force()
+        status_var.set("Status: Void")
+        status_label.config(fg=CANCEL_RED)
+        print_button.config(state="disabled", bg="#9ca3af", cursor="arrow")
+        void_button.config(state="disabled", bg="#9ca3af", cursor="arrow")
+        show_pos_success(inv_window, "Transaction Voided", "Items were returned to inventory and the sale was marked as void.")
+
     btn_frame = tk.Frame(inv_window, bg=DASHBOARD_CONTENT_BG)
-    btn_frame.pack(pady=(0, 20))
-    tk.Button(btn_frame, text="Print / Download Receipt", bg="#16a34a", fg="white", font=("Arial", 14, "bold"), width=24, padx=12, pady=10, command=print_receipt, **button_border).pack(side="left", padx=6)
-    tk.Button(btn_frame, text="Close", bg="#ef4444", fg="white", font=("Arial", 14, "bold"), width=18, padx=12, pady=10, command=inv_window.destroy, **button_border).pack(side="left", padx=6)
+    btn_frame.pack(pady=(0, 8))
+    for col_index in range(3):
+        btn_frame.grid_columnconfigure(col_index, weight=1, uniform="receipt_actions")
+    action_button_options = {
+        "font": ("Arial", 13, "bold"),
+        "width": 22,
+        "padx": 10,
+        "pady": 10,
+        **button_border,
+    }
+    print_button = tk.Button(
+        btn_frame,
+        text="Print / Download",
+        bg="#16a34a",
+        fg="white",
+        command=print_receipt,
+        **action_button_options,
+    )
+    print_button.grid(row=0, column=0, sticky="ew", padx=6)
+    void_button = tk.Button(
+        btn_frame,
+        text="Void Transaction",
+        bg="#f97316",
+        fg="white",
+        command=void_transaction,
+        **action_button_options,
+    )
+    void_button.grid(row=0, column=1, sticky="ew", padx=6)
+    tk.Button(
+        btn_frame,
+        text="Close",
+        bg="#ef4444",
+        fg="white",
+        command=inv_window.destroy,
+        **action_button_options,
+    ).grid(row=0, column=2, sticky="ew", padx=6)
     center_receipt_window(inv_window, pos_root)
     inv_window.grab_set()
     inv_window.lift()

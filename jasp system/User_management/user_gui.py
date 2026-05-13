@@ -76,7 +76,7 @@ def open_user_management(root):
 
     tk.Button(
         header_buttons,
-        text="Refresh",
+        text="🔄 Refresh",
         command=lambda: refresh_display(),
         bg=SUCCESS,
         fg="white",
@@ -88,7 +88,7 @@ def open_user_management(root):
 
     tk.Button(
         header_buttons,
-        text="Back",
+        text="← Back",
         command=lambda: user_functions.go_back_to_dashboard(root, conn),
         bg=PRIMARY,
         fg="white",

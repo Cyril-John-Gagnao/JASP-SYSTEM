@@ -156,8 +156,8 @@ def open_chb_dashboard():
     main_container.pack(padx=20, pady=(0, 8), fill="both", expand=True)
 
     # Configure columns: table and form
-    main_container.columnconfigure(0, weight=5)
-    main_container.columnconfigure(1, weight=4)
+    main_container.columnconfigure(0, weight=7)
+    main_container.columnconfigure(1, weight=3)
     main_container.rowconfigure(0, weight=1)
 
     # ================= FORM (RIGHT SIDE - 40%) =================
@@ -319,14 +319,13 @@ def open_chb_dashboard():
     
     # Configure Treeview with larger fonts
     style = ttk.Style()
-    style.configure('Treeview', font=('Arial', 14), rowheight=36)
-    style.configure('Treeview.Heading', font=('Arial', 15, 'bold'))
+    tree_style_name = "CHBProduction.Treeview"
+    style.configure(tree_style_name, font=('Arial', 13), rowheight=44)
+    style.configure(f'{tree_style_name}.Heading', font=('Arial', 16, 'bold'), padding=(6, 10, 6, 10))
     
     # Configure alternating row colors
-    style.configure('Treeview', background="white", fieldbackground="white")
-    style.map('Treeview', background=[('selected', '#2563eb')])
-    style.configure('oddrow.Treeview', background='#ffffff')
-    style.configure('evenrow.Treeview', background='#e0f2fe')
+    style.configure(tree_style_name, background="white", fieldbackground="white")
+    style.map(tree_style_name, background=[('selected', '#2563eb')])
     
     # Create frame for tree and scrollbars
     tree_frame = tk.Frame(table_card, bg=CARD_BG)
@@ -343,7 +342,7 @@ def open_chb_dashboard():
     hsb.grid(row=1, column=0, sticky="ew")
     
     # Create treeview with scrollbar commands
-    tree = ttk.Treeview(tree_frame, columns=columns, show="headings", style='Treeview', yscrollcommand=vsb.set, xscrollcommand=hsb.set)
+    tree = ttk.Treeview(tree_frame, columns=columns, show="headings", style=tree_style_name, yscrollcommand=vsb.set, xscrollcommand=hsb.set)
     tree.grid(row=0, column=0, sticky="nsew")
     
     # Configure scrollbars
@@ -351,61 +350,91 @@ def open_chb_dashboard():
     hsb.config(command=tree.xview)
 
     column_labels = {
-        "id": "ID",
-        "date": "DATE",
-        "worker": "WORKER",
-        "cement": "Bags of Cement",
-        "Fine Sand": "Bags of Fine Sand",
-        "blocks": "BLOCKS",
-        "pay": "PAY",
+        "id": "Id",
+        "date": "Prod. Date",
+        "worker": "Worker Name",
+        "cement": "Cement Bags",
+        "Fine Sand": "Fine Sand Bags",
+        "blocks": "Blocks",
+        "pay": "Pay",
     }
 
     def auto_adjust_columns():
         tree.update_idletasks()
-        heading_font = tkfont.Font(font=style.lookup("Treeview.Heading", "font"))
-        row_font = tkfont.Font(font=style.lookup("Treeview", "font"))
+        heading_font = tkfont.Font(font=style.lookup(f"{tree_style_name}.Heading", "font"))
+        row_font = tkfont.Font(font=style.lookup(tree_style_name, "font"))
+        available_width = max(tree.winfo_width() - 28, 1)
         column_padding = {
+            "id": 50,
+            "date": 65,
+            "worker": 85,
+            "cement": 70,
+            "Fine Sand": 80,
+            "blocks": 70,
+            "pay": 75,
+        }
+        base_min_widths = {
             "id": 45,
-            "date": 55,
-            "worker": 70,
-            "cement": 55,
-            "Fine Sand": 65,
-            "blocks": 55,
-            "pay": 60,
+            "date": 95,
+            "worker": 115,
+            "cement": 105,
+            "Fine Sand": 120,
+            "blocks": 85,
+            "pay": 95,
         }
-        min_widths = {
-            "id": 65,
-            "date": 120,
-            "worker": 150,
-            "cement": 140,
-            "Fine Sand": 160,
-            "blocks": 110,
-            "pay": 120,
+        weights = {
+            "id": 0.6,
+            "date": 1.2,
+            "worker": 2.2,
+            "cement": 1.4,
+            "Fine Sand": 1.5,
+            "blocks": 1.1,
+            "pay": 1.2,
         }
-        max_widths = {
-            "id": 90,
-            "date": 170,
-            "worker": 300,
-            "cement": 190,
-            "Fine Sand": 210,
-            "blocks": 160,
-            "pay": 180,
-        }
+        measured_widths = {}
+        min_widths = {}
 
         for col in columns:
             header_text = column_labels.get(col, col.upper())
-            width = heading_font.measure(header_text) + column_padding[col]
+            header_width = heading_font.measure(header_text) + column_padding[col]
+            min_widths[col] = max(base_min_widths[col], header_width)
+            width = header_width
             for item in tree.get_children():
                 width = max(width, row_font.measure(str(tree.set(item, col))) + column_padding[col])
-            width = max(min_widths[col], min(width, max_widths[col]))
-            tree.column(col, width=width, minwidth=min_widths[col], stretch=False)
+            measured_widths[col] = max(min_widths[col], width)
+
+        min_total = sum(min_widths.values())
+        total_measured = sum(measured_widths.values())
+        available_width = max(available_width, min_total)
+
+        if total_measured < available_width:
+            extra_width = available_width - total_measured
+            total_weight = sum(weights.values()) or 1
+            for col in columns:
+                measured_widths[col] += int(extra_width * (weights[col] / total_weight))
+        elif total_measured > available_width and total_measured > min_total:
+            overflow = total_measured - available_width
+            shrinkable_total = sum(max(measured_widths[col] - min_widths[col], 0) for col in columns) or 1
+            for col in columns:
+                shrinkable = max(measured_widths[col] - min_widths[col], 0)
+                measured_widths[col] = max(
+                    min_widths[col],
+                    measured_widths[col] - int(overflow * (shrinkable / shrinkable_total))
+                )
+
+        width_delta = available_width - sum(measured_widths.values())
+        if width_delta:
+            measured_widths["worker"] += width_delta
+
+        for col in columns:
+            tree.column(col, width=measured_widths[col], minwidth=min_widths[col], stretch=False)
 
     for col in columns:
         tree.heading(col, text=column_labels.get(col, col.upper()))
         tree.column(col, anchor="center", width=130, minwidth=80, stretch=False)
 
     # Bind to configure event to update scrollbar after column resize
-    on_tree_configure = lambda event=None: chb_functions.on_tree_configure(event, tree)
+    on_tree_configure = lambda event=None: (chb_functions.on_tree_configure(event, tree), auto_adjust_columns())
     
     tree.bind('<Configure>', on_tree_configure)
     

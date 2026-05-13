@@ -69,7 +69,7 @@ def open_delivery_window(parent_win, bg_main, card_bg, primary):
 
     tk.Button(
         btn_container,
-        text="Refresh",
+        text="🔄 Refresh",
         command=lambda: delivery_functions.refresh_data(load_data),
         bg="#16a34a",
         fg="white",
@@ -81,7 +81,7 @@ def open_delivery_window(parent_win, bg_main, card_bg, primary):
 
     tk.Button(
         btn_container,
-        text="Back",
+        text="← Back",
         command=lambda: delivery_functions.go_back(delivery_win),
         bg=primary,
         fg="white",
@@ -266,8 +266,10 @@ def open_delivery_window(parent_win, bg_main, card_bg, primary):
     vsb.config(command=tree.yview)
     hsb.config(command=tree.xview)
 
+    column_headings = {col: col.title() for col in columns}
+
     for col in columns:
-        tree.heading(col, text=col.upper())
+        tree.heading(col, text=column_headings[col])
         tree.column(col, anchor="center", width=130, minwidth=80, stretch=False)
 
     def auto_adjust_columns():
@@ -309,7 +311,7 @@ def open_delivery_window(parent_win, bg_main, card_bg, primary):
         }
 
         for col in columns:
-            width = heading_font.measure(col.upper()) + padding[col]
+            width = heading_font.measure(column_headings[col]) + padding[col]
             for item in tree.get_children():
                 width = max(width, row_font.measure(str(tree.set(item, col))) + padding[col])
             width = max(min_widths[col], min(width, max_widths[col]))

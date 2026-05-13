@@ -47,9 +47,14 @@ def ensure_summary_tables(cursor):
             item_name TEXT NOT NULL,
             qty INTEGER NOT NULL DEFAULT 0,
             action_status TEXT NOT NULL,
-            ts TEXT NOT NULL
+            ts TEXT NOT NULL,
+            responsible_user TEXT DEFAULT ''
         )
     """)
+    cursor.execute("PRAGMA table_info(inventory_logs)")
+    log_columns = [col[1] for col in cursor.fetchall()]
+    if "responsible_user" not in log_columns:
+        cursor.execute("ALTER TABLE inventory_logs ADD COLUMN responsible_user TEXT DEFAULT ''")
     cursor.execute("PRAGMA table_info(items)")
     item_columns = [col[1] for col in cursor.fetchall()]
     if "status" not in item_columns:
@@ -71,7 +76,8 @@ def fetch_summary_rows(cursor, start_date, end_date):
             l.item_name,
             l.qty,
             l.ts AS date_added,
-            l.action_status AS status
+            l.action_status AS status,
+            COALESCE(NULLIF(l.responsible_user, ''), 'Admin') AS responsible_user
         FROM inventory_logs l
         WHERE DATE(l.ts) BETWEEN ? AND ?
         UNION ALL
@@ -79,7 +85,8 @@ def fetch_summary_rows(cursor, start_date, end_date):
             r.item_name,
             r.qty,
             r.ts AS date_added,
-            'Restock' AS status
+            'Restock' AS status,
+            'Admin' AS responsible_user
         FROM restocks r
         WHERE DATE(r.ts) BETWEEN ? AND ?
           AND NOT EXISTS (
@@ -94,7 +101,8 @@ def fetch_summary_rows(cursor, start_date, end_date):
             i.name,
             COALESCE(i.quantity, 0),
             COALESCE(NULLIF(i.date_added, ''), '') AS date_added,
-            COALESCE(i.status, 'Active') AS status
+            COALESCE(i.status, 'Active') AS status,
+            'Admin' AS responsible_user
         FROM items i
         WHERE COALESCE(i.status, 'Active') = 'Inactive'
           AND DATE(COALESCE(NULLIF(i.date_added, ''), '1970-01-01')) BETWEEN ? AND ?
@@ -262,9 +270,9 @@ def open_inventory_summary(parent):
 
         start, end = compute_range()
         rows = fetch_summary_rows(cursor, start, end)
-        for index, (item_name, qty, ts, status) in enumerate(rows):
+        for index, (item_name, qty, ts, status, responsible_user) in enumerate(rows):
             tag = "blue_row" if index % 2 == 0 else "white_row"
-            summary_tree.insert("", "end", values=(item_name, qty, ts, status), tags=(tag,))
+            summary_tree.insert("", "end", values=(item_name, qty, ts, status, responsible_user), tags=(tag,))
 
     def export_pdf(file_path, rows, title):
         doc = SimpleDocTemplate(file_path, pagesize=letter, topMargin=0.5*inch, bottomMargin=0.5*inch)
@@ -278,10 +286,10 @@ def open_inventory_summary(parent):
             spaceAfter=12,
         )
 
-        table_data = [["Item Name", "Quantity Added", "Date Added", "Status"]]
-        table_data.extend(rows if rows else [["No records", "", "", ""]])
+        table_data = [["Item Name", "Quantity Added", "Date Added", "Status", "User"]]
+        table_data.extend(rows if rows else [["No records", "", "", "", ""]])
 
-        table = Table(table_data, colWidths=[2.2*inch, 1.35*inch, 2.0*inch, 1.1*inch])
+        table = Table(table_data, colWidths=[1.8*inch, 1.15*inch, 1.65*inch, 1.0*inch, 1.1*inch])
         table.setStyle(TableStyle([
             ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#2563eb")),
             ("TEXTCOLOR", (0, 0), (-1, 0), colors.whitesmoke),
@@ -317,7 +325,7 @@ def open_inventory_summary(parent):
         preview_frame = tk.Frame(preview, bg="#ffffff")
         preview_frame.pack(fill="both", expand=True, padx=16, pady=8)
 
-        cols = ("Item Name", "Quantity Added", "Date Added", "Status")
+        cols = ("Item Name", "Quantity Added", "Date Added", "Status", "User")
         preview_tree = ttk.Treeview(preview_frame, columns=cols, show="headings")
         preview_style = ttk.Style()
         preview_style.configure("InventorySummaryPreview.Treeview", font=("Arial", 13), rowheight=36)
@@ -327,7 +335,7 @@ def open_inventory_summary(parent):
         scroll = ttk.Scrollbar(preview_frame, orient="vertical", command=preview_tree.yview)
         scroll.pack(side="right", fill="y")
         preview_tree.configure(yscrollcommand=scroll.set)
-        for col, width in (("Item Name", 250), ("Quantity Added", 140), ("Date Added", 180), ("Status", 110)):
+        for col, width in (("Item Name", 220), ("Quantity Added", 130), ("Date Added", 170), ("Status", 100), ("User", 130)):
             preview_tree.heading(col, text=col)
             preview_tree.column(col, width=width, anchor="center")
         preview_tree.tag_configure("blue_row", background="#dbeafe", foreground="#000000")
@@ -394,7 +402,7 @@ def open_inventory_summary(parent):
     table_frame = tk.Frame(summary_win, bg=DASHBOARD_CONTENT_BG)
     table_frame.pack(fill="both", expand=True, padx=16, pady=(0, 14))
 
-    columns = ("Item Name", "Quantity Added", "Date Added", "Status")
+    columns = ("Item Name", "Quantity Added", "Date Added", "Status", "User")
     summary_tree = ttk.Treeview(table_frame, columns=columns, show="headings")
     style = ttk.Style()
     style.configure("InventorySummary.Treeview", font=("Arial", 13), rowheight=36)
@@ -405,7 +413,7 @@ def open_inventory_summary(parent):
     table_scroll.pack(side="right", fill="y")
     summary_tree.configure(yscrollcommand=table_scroll.set)
 
-    for col, width in (("Item Name", 260), ("Quantity Added", 150), ("Date Added", 190), ("Status", 120)):
+    for col, width in (("Item Name", 240), ("Quantity Added", 140), ("Date Added", 180), ("Status", 110), ("User", 140)):
         summary_tree.heading(col, text=col)
         summary_tree.column(col, width=width, anchor="center")
     summary_tree.tag_configure("blue_row", background="#93c5fd", foreground="#000000")

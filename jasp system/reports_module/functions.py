@@ -58,6 +58,7 @@ def generate_financial_summary(start_date, end_date):
         WHERE ts IS NOT NULL
           AND qty > 0
           AND total >= 0
+          AND COALESCE(payment_status, 'Paid') <> 'Void'
           AND DATE(ts) BETWEEN ? AND ?
     """, (start_date, end_date))
     total_sales = cursor.fetchone()[0] or 0
@@ -113,6 +114,7 @@ def generate_financial_summary(start_date, end_date):
                 WHERE ts IS NOT NULL
                     AND qty > 0
                     AND total >= 0
+                    AND COALESCE(payment_status, 'Paid') <> 'Void'
                     AND DATE(ts) BETWEEN ? AND ?
         ORDER BY ts ASC, id ASC
     """, (start_date, end_date))
@@ -125,6 +127,7 @@ def generate_financial_summary(start_date, end_date):
         WHERE ts IS NOT NULL
           AND qty > 0
           AND total >= 0
+          AND COALESCE(payment_status, 'Paid') <> 'Void'
           AND DATE(ts) BETWEEN ? AND ?
         GROUP BY item_name
         ORDER BY amount_sold DESC, item_name ASC
@@ -204,6 +207,7 @@ def generate_weekly_sales(end_date_str):
         cursor.execute("""
             SELECT COALESCE(SUM(total), 0) FROM sales
             WHERE DATE(ts) = ?
+              AND COALESCE(payment_status, 'Paid') <> 'Void'
         """, (date_str,))
         daily_revenue = cursor.fetchone()[0] or 0
         weekly_data.append((day_name, date_str, daily_revenue))
@@ -211,6 +215,7 @@ def generate_weekly_sales(end_date_str):
     cursor.execute("""
         SELECT COUNT(*) FROM sales
         WHERE DATE(ts) BETWEEN ? AND ?
+          AND COALESCE(payment_status, 'Paid') <> 'Void'
     """, (start_date.strftime("%Y-%m-%d"), end_date.strftime("%Y-%m-%d")))
     has_period_data = (cursor.fetchone()[0] or 0) > 0
 

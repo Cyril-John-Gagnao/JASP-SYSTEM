@@ -489,7 +489,7 @@ def open_reports():
 
     tk.Button(
         header,
-        text="Back",
+        text="← Back",
         bg=ACTION_BG,
         fg="white",
         command=reports_window.destroy,
@@ -497,7 +497,7 @@ def open_reports():
     ).pack(side="right", padx=(6, 0))
     tk.Button(
         header,
-        text="Refresh",
+        text="🔄 Refresh",
         bg=ACTION_SECONDARY,
         fg="white",
         command=refresh_current_tab,

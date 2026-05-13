@@ -135,7 +135,7 @@ def validate_user_form(parent, username, password, confirm_password, role, conta
             show_user_error(parent, "Error", "Password too weak.")
             return None
         if password != confirm_password:
-            show_user_error(parent, "Error", "Password and Confirm Password must match.")
+            show_user_error(parent, "Error", "Confirm password is incorrect.")
             return None
     elif require_password:
         show_user_error(parent, "Error", "Password and Confirm Password are required.")
@@ -333,7 +333,7 @@ def open_change_password_form(conn, cursor, parent, selected_user_id):
             show_user_error(popup, "Error", "Password too weak.")
             return
         if new_password != confirm_password:
-            show_user_error(popup, "Error", "New Password and Confirm Password must match.")
+            show_user_error(popup, "Error", "Confirm password is incorrect.")
             return
 
         user_database.update_user_password(conn, cursor, selected_user_id.get(), new_password)

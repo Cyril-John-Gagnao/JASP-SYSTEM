@@ -21,6 +21,10 @@ def init_database():
             ts TEXT NOT NULL
         )
     """)
+    cursor.execute("PRAGMA table_info(sales)")
+    sales_cols = {col[1] for col in cursor.fetchall()}
+    if "payment_status" not in sales_cols:
+        cursor.execute("ALTER TABLE sales ADD COLUMN payment_status TEXT DEFAULT 'Paid'")
 
     # Expenses table
     cursor.execute("""

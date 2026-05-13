@@ -52,6 +52,7 @@ def fetch_recent_transaction_summary(start, end):
             COALESCE(NULLIF(MAX(payment_status), ''), 'Paid') AS status
         FROM sales
         WHERE DATE(ts) BETWEEN ? AND ?
+          AND COALESCE(payment_status, 'Paid') <> 'Void'
         GROUP BY CASE
             WHEN COALESCE(transaction_id, '') != '' THEN transaction_id
             ELSE ts
@@ -64,6 +65,7 @@ def fetch_recent_transaction_summary(start, end):
         SELECT item_name, COALESCE(SUM(qty), 0), COALESCE(SUM(total), 0)
         FROM sales
         WHERE DATE(ts) BETWEEN ? AND ?
+          AND COALESCE(payment_status, 'Paid') <> 'Void'
         GROUP BY item_name
         ORDER BY SUM(qty) DESC, SUM(total) DESC
         LIMIT 5
@@ -95,6 +97,7 @@ def fetch_most_items_summary(start, end):
             MAX(ts) AS latest_ts
         FROM sales
         WHERE DATE(ts) BETWEEN ? AND ?
+          AND COALESCE(payment_status, 'Paid') <> 'Void'
         GROUP BY item_name
         ORDER BY total_qty DESC, total_sales DESC, item_name ASC
     """, (start.strftime("%Y-%m-%d"), end.strftime("%Y-%m-%d")))
@@ -146,10 +149,10 @@ def fetch_dashboard_data():
 
     today = datetime.now().strftime("%Y-%m-%d")
 
-    cursor.execute("SELECT COALESCE(SUM(total),0) FROM sales WHERE DATE(ts)=?", (today,))
+    cursor.execute("SELECT COALESCE(SUM(total),0) FROM sales WHERE DATE(ts)=? AND COALESCE(payment_status, 'Paid') <> 'Void'", (today,))
     revenue = cursor.fetchone()[0] or 0
 
-    cursor.execute("SELECT COALESCE(SUM((price - raw_price) * qty),0) FROM sales WHERE DATE(ts)=?", (today,))
+    cursor.execute("SELECT COALESCE(SUM((price - raw_price) * qty),0) FROM sales WHERE DATE(ts)=? AND COALESCE(payment_status, 'Paid') <> 'Void'", (today,))
     profit = cursor.fetchone()[0] or 0
 
     cursor.execute("SELECT COALESCE(quantity,0) FROM items WHERE name=? ORDER BY id ASC LIMIT 1", ("CHB Blocks",))
@@ -171,6 +174,7 @@ def fetch_dashboard_data():
             COALESCE(NULLIF(MAX(payment_status), ''), 'Paid') AS status
         FROM sales
         WHERE DATE(ts) = ?
+          AND COALESCE(payment_status, 'Paid') <> 'Void'
         GROUP BY CASE
             WHEN COALESCE(transaction_id, '') != '' THEN transaction_id
             ELSE ts
@@ -193,6 +197,7 @@ def fetch_dashboard_data():
         SELECT item_name, SUM(qty) as total_qty
         FROM sales
         WHERE DATE(ts)=?
+          AND COALESCE(payment_status, 'Paid') <> 'Void'
         GROUP BY item_name
         ORDER BY total_qty DESC
         LIMIT 3
@@ -203,6 +208,7 @@ def fetch_dashboard_data():
         SELECT STRFTIME('%H', ts) AS sale_hour, COALESCE(SUM(total), 0)
         FROM sales
         WHERE DATE(ts)=?
+          AND COALESCE(payment_status, 'Paid') <> 'Void'
         GROUP BY sale_hour
         ORDER BY sale_hour ASC
     """, (today,))
@@ -214,6 +220,7 @@ def fetch_dashboard_data():
             COALESCE(SUM(raw_price * qty), 0)
         FROM sales
         WHERE DATE(ts)=?
+          AND COALESCE(payment_status, 'Paid') <> 'Void'
     """, (today,))
     revenue_total, cost_total = cursor.fetchone()
     revenue_total = revenue_total or 0
@@ -235,6 +242,7 @@ def fetch_dashboard_data():
         SELECT item_name, COALESCE(SUM(qty), 0)
         FROM sales
         WHERE DATE(ts)=?
+          AND COALESCE(payment_status, 'Paid') <> 'Void'
         GROUP BY item_name
         ORDER BY SUM(qty) DESC
         LIMIT 5

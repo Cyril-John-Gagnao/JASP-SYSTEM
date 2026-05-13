@@ -1,5 +1,6 @@
 import tkinter as tk
 from tkinter import ttk, messagebox, filedialog
+from tkinter import font as tkfont
 import calendar
 from datetime import datetime, timedelta
 from reportlab.lib.pagesizes import letter
@@ -14,7 +15,6 @@ from .delivery_database import (
     delete_delivery_record,
     fetch_delivery_rows,
     fetch_delivery_summary,
-    fetch_latest_delivery_summary_date,
 )
 
 SUCCESS_GREEN = "#00c853"
@@ -203,12 +203,6 @@ def open_date_calendar(parent, date_var):
 
 
 def open_delivery_summary(parent_win, cursor, bg_main, text_color):
-    latest_date = fetch_latest_delivery_summary_date(cursor)
-    try:
-        default_date = datetime.strptime(latest_date[:10], "%Y-%m-%d") if latest_date else datetime.now()
-    except Exception:
-        default_date = datetime.now()
-
     summary_win = tk.Toplevel(parent_win)
     summary_win.title("Delivery Summary")
     summary_win.geometry("1050x580")
@@ -220,7 +214,7 @@ def open_delivery_summary(parent_win, cursor, bg_main, text_color):
     summary_win.geometry(f"1050x580+{x}+{y}")
 
     period_var = tk.StringVar(value="day")
-    date_sel = tk.StringVar(value=default_date.strftime("%Y-%m-%d"))
+    date_sel = tk.StringVar(value=datetime.now().strftime("%Y-%m-%d"))
     def compute_range():
         p = period_var.get()
         if p == "day":
@@ -259,6 +253,15 @@ def open_delivery_summary(parent_win, cursor, bg_main, text_color):
         total_fee = 0
         total_salary = 0
 
+        if not rows:
+            empty_text = "No deliveries today" if period_var.get() == "day" else "No deliveries in this period"
+            summary_tree.insert(
+                "",
+                "end",
+                values=(start.strftime("%Y-%m-%d"), start.strftime("%Y-%m-%d"), empty_text, "", "", "", "", ""),
+                tags=("oddrow",)
+            )
+
         for i, row in enumerate(rows):
             transaction_date, delivery_date, worker, driver, address, blocks, fee, salary = row
             total_blocks += blocks
@@ -282,6 +285,7 @@ def open_delivery_summary(parent_win, cursor, bg_main, text_color):
             )
 
         totals_var.set(f"TOTAL: {total_blocks:,} blocks | Delivery Fee: {money(total_fee)} | Worker Salary: {money(total_salary)}")
+        auto_adjust_summary_columns(summary_tree)
 
     def get_summary_title():
         start, end = compute_range()
@@ -426,12 +430,13 @@ def open_delivery_summary(parent_win, cursor, bg_main, text_color):
             for col in cols:
                 preview_tree.heading(col, text=headings[col])
                 preview_tree.column(col, width=widths[col], anchor="w" if col in ("worker", "driver", "address") else "center", stretch=False)
-            preview_tree.tag_configure("oddrow", background="#ffffff", font=("Arial", 11))
-            preview_tree.tag_configure("evenrow", background="#93c5fd", font=("Arial", 11))
+            preview_tree.tag_configure("oddrow", background="#ffffff", font=("Arial", 13))
+            preview_tree.tag_configure("evenrow", background="#93c5fd", font=("Arial", 13))
 
             for index, row in enumerate(rows):
                 tag = "evenrow" if index % 2 == 0 else "oddrow"
                 preview_tree.insert("", "end", values=row, tags=(tag,))
+            auto_adjust_summary_columns(preview_tree)
 
             tk.Label(
                 preview_win,
@@ -484,10 +489,16 @@ def open_delivery_summary(parent_win, cursor, bg_main, text_color):
         "highlightcolor": "black",
     }
 
+    def set_period(period):
+        period_var.set(period)
+        if period == "day":
+            date_sel.set(datetime.now().strftime("%Y-%m-%d"))
+        load_summary()
+
     tk.Label(top_frame, text="Period:", bg=bg_main, font=("Arial", 16, "bold"), fg=text_color).pack(side="left", padx=6)
-    tk.Radiobutton(top_frame, text="Day", variable=period_var, value="day", bg=bg_main, font=("Arial", 15), command=load_summary).pack(side="left", padx=8)
-    tk.Radiobutton(top_frame, text="Week", variable=period_var, value="week", bg=bg_main, font=("Arial", 15), command=load_summary).pack(side="left", padx=8)
-    tk.Radiobutton(top_frame, text="Month", variable=period_var, value="month", bg=bg_main, font=("Arial", 15), command=load_summary).pack(side="left", padx=8)
+    tk.Radiobutton(top_frame, text="Day", variable=period_var, value="day", bg=bg_main, font=("Arial", 15), command=lambda: set_period("day")).pack(side="left", padx=8)
+    tk.Radiobutton(top_frame, text="Week", variable=period_var, value="week", bg=bg_main, font=("Arial", 15), command=lambda: set_period("week")).pack(side="left", padx=8)
+    tk.Radiobutton(top_frame, text="Month", variable=period_var, value="month", bg=bg_main, font=("Arial", 15), command=lambda: set_period("month")).pack(side="left", padx=8)
 
     date_frame = tk.Frame(top_frame, bg=bg_main)
     date_frame.pack(side="left", padx=(30, 10))
@@ -503,9 +514,61 @@ def open_delivery_summary(parent_win, cursor, bg_main, text_color):
     tk.Button(action_frame, text="Preview / Download PDF", command=open_pdf_preview, bg="#059669", fg="white", font=("Arial", 13, "bold"), width=24, padx=12, pady=8, **button_border).pack(side="left", padx=4)
 
     cols = ("transaction", "delivery", "worker", "driver", "address", "blocks", "fee", "salary")
+    summary_headings = {
+        "transaction": "Transaction Date",
+        "delivery": "Delivery Date",
+        "worker": "Worker Name",
+        "driver": "Driver Name",
+        "address": "Address",
+        "blocks": "Blocks",
+        "fee": "Delivery Fee",
+        "salary": "Worker Salary",
+    }
     style = ttk.Style()
-    style.configure("DeliverySummary.Treeview", font=("Arial", 11), rowheight=30)
-    style.configure("DeliverySummary.Treeview.Heading", font=("Arial", 12, "bold"))
+    style.configure("DeliverySummary.Treeview", font=("Arial", 13), rowheight=38)
+    style.configure("DeliverySummary.Treeview.Heading", font=("Arial", 14, "bold"), padding=(6, 8, 6, 8))
+
+    def auto_adjust_summary_columns(tree_widget):
+        tree_widget.update_idletasks()
+        heading_font = tkfont.Font(font=style.lookup("DeliverySummary.Treeview.Heading", "font"))
+        row_font = tkfont.Font(font=style.lookup("DeliverySummary.Treeview", "font"))
+        padding = {
+            "transaction": 42,
+            "delivery": 42,
+            "worker": 58,
+            "driver": 58,
+            "address": 70,
+            "blocks": 42,
+            "fee": 52,
+            "salary": 58,
+        }
+        min_widths = {
+            "transaction": 145,
+            "delivery": 130,
+            "worker": 145,
+            "driver": 145,
+            "address": 190,
+            "blocks": 95,
+            "fee": 130,
+            "salary": 145,
+        }
+        max_widths = {
+            "transaction": 210,
+            "delivery": 200,
+            "worker": 280,
+            "driver": 280,
+            "address": 460,
+            "blocks": 140,
+            "fee": 190,
+            "salary": 210,
+        }
+
+        for col in cols:
+            width = heading_font.measure(summary_headings[col]) + padding[col]
+            for item in tree_widget.get_children():
+                width = max(width, row_font.measure(str(tree_widget.set(item, col))) + padding[col])
+            width = max(min_widths[col], min(width, max_widths[col]))
+            tree_widget.column(col, width=width, minwidth=min_widths[col], stretch=False)
 
     tree_frame = tk.Frame(summary_win, bg=bg_main)
     tree_frame.pack(fill="both", expand=True, padx=12, pady=12)
@@ -513,33 +576,20 @@ def open_delivery_summary(parent_win, cursor, bg_main, text_color):
     tree_frame.rowconfigure(0, weight=1)
 
     summary_tree = ttk.Treeview(tree_frame, columns=cols, show="headings", style="DeliverySummary.Treeview")
-    summary_tree.heading("transaction", text="Transaction Date")
-    summary_tree.heading("delivery", text="Delivery Date")
-    summary_tree.heading("worker", text="Worker Name")
-    summary_tree.heading("driver", text="Driver Name")
-    summary_tree.heading("address", text="Address")
-    summary_tree.heading("blocks", text="Blocks")
-    summary_tree.heading("fee", text="Delivery Fee")
-    summary_tree.heading("salary", text="Worker Salary")
-    summary_tree.column("transaction", width=130, anchor="center")
-    summary_tree.column("delivery", width=120, anchor="center")
-    summary_tree.column("worker", width=150, anchor="w")
-    summary_tree.column("driver", width=150, anchor="w")
-    summary_tree.column("address", width=210, anchor="w")
-    summary_tree.column("blocks", width=100, anchor="center")
-    summary_tree.column("fee", width=120, anchor="center")
-    summary_tree.column("salary", width=130, anchor="center")
+    for col in cols:
+        summary_tree.heading(col, text=summary_headings[col])
+        summary_tree.column(col, width=140, minwidth=90, anchor="w" if col in ("worker", "driver", "address") else "center", stretch=False)
     summary_tree.grid(row=0, column=0, sticky="nsew")
     vsb = ttk.Scrollbar(tree_frame, orient="vertical", command=summary_tree.yview)
     hsb = ttk.Scrollbar(tree_frame, orient="horizontal", command=summary_tree.xview)
     summary_tree.configure(yscrollcommand=vsb.set, xscrollcommand=hsb.set)
     vsb.grid(row=0, column=1, sticky="ns")
     hsb.grid(row=1, column=0, sticky="ew")
-    summary_tree.tag_configure("oddrow", background="#ffffff", font=("Arial", 11))
-    summary_tree.tag_configure("evenrow", background="#93c5fd", font=("Arial", 11))
+    summary_tree.tag_configure("oddrow", background="#ffffff", font=("Arial", 13))
+    summary_tree.tag_configure("evenrow", background="#93c5fd", font=("Arial", 13))
 
     totals_var = tk.StringVar(value="")
-    tk.Label(summary_win, textvariable=totals_var, bg=bg_main, font=("Arial", 13, "bold"), fg="#1e40af").pack(fill="x", padx=12, pady=(0, 12))
+    tk.Label(summary_win, textvariable=totals_var, bg=bg_main, font=("Arial", 15, "bold"), fg="#1e40af").pack(fill="x", padx=12, pady=(0, 12))
 
     load_summary()
 
@@ -644,7 +694,7 @@ def on_select(event, tree, selected_id, transaction_date_var, date_var, worker_e
     selected = tree.focus()
     values = tree.item(selected, "values")
 
-    if values:
+    if values and values[0]:
         selected_id.set(values[0])
         transaction_date_var.set(values[1])
         date_var.set(values[2])
@@ -668,9 +718,14 @@ def load_data(event, cursor, tree, search_var, sort_var, delivery_win):
 
         keyword = search_var.get().lower()
         sort_option = sort_var.get()
-        rows = fetch_delivery_rows(cursor, keyword, sort_option)
+        today = datetime.now().strftime("%Y-%m-%d")
+        rows = fetch_delivery_rows(cursor, keyword, sort_option, today)
 
         row_index = 0
+        if not rows:
+            tree.insert("", "end", values=("", today, today, "No deliveries for today", "", "", "", "", ""), tags=('oddrow',))
+            return
+
         for row in rows:
             tag = 'evenrow' if row_index % 2 == 0 else 'oddrow'
             tree.insert("", "end", values=tuple(row), tags=(tag,))
