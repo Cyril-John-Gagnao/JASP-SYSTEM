@@ -26,7 +26,9 @@ from .functions import (
     generate_chb_production,
     generate_financial_summary,
     generate_inventory_status,
+    generate_sales_report,
     generate_weekly_sales,
+    get_report_date_range,
 )
 from jasp_theme import (
     DASHBOARD_HEADER_BG,
@@ -45,6 +47,7 @@ ACTION_PURPLE = "#8b5cf6"
 PANEL_PAD = 8
 SECTION_GAP = 10
 REPORT_TITLE_FG = "#2563eb"
+REPORTS_HEADER_BG = "#2D2D2D"
 PESO = "\u20b1"
 
 
@@ -265,16 +268,34 @@ def create_filter_bar(parent, title):
     return bar
 
 
-def add_date_range_controls(bar, start_default, end_default, command):
-    tk.Label(bar, text="Start Date:", bg=BG_PAGE, fg=TEXT_PRIMARY, font=("Arial", 16, "bold")).grid(row=0, column=1, sticky="e", padx=(0, 10))
-    start_entry, start_var = create_date_picker_entry(bar, start_default, width=13)
-    start_entry.grid(row=0, column=2, sticky="w", padx=(0, 20))
+def add_date_range_controls(bar, start_default, end_default, command, include_period=False):
+    next_col = 1
+    period_var = None
+    if include_period:
+        tk.Label(bar, text="Period:", bg=BG_PAGE, fg=TEXT_PRIMARY, font=("Arial", 16, "bold")).grid(row=0, column=next_col, sticky="e", padx=(0, 10))
+        period_var = tk.StringVar(value="Custom")
+        period_combo = ttk.Combobox(
+            bar,
+            textvariable=period_var,
+            values=("Custom", "Day", "Week", "Month"),
+            state="readonly",
+            width=10,
+            font=("Arial", 15),
+        )
+        period_combo.grid(row=0, column=next_col + 1, sticky="w", padx=(0, 20))
+        next_col += 2
 
-    tk.Label(bar, text="End Date:", bg=BG_PAGE, fg=TEXT_PRIMARY, font=("Arial", 16, "bold")).grid(row=0, column=3, sticky="e", padx=(0, 10))
+    tk.Label(bar, text="Start Date:", bg=BG_PAGE, fg=TEXT_PRIMARY, font=("Arial", 16, "bold")).grid(row=0, column=next_col, sticky="e", padx=(0, 10))
+    start_entry, start_var = create_date_picker_entry(bar, start_default, width=13)
+    start_entry.grid(row=0, column=next_col + 1, sticky="w", padx=(0, 20))
+
+    tk.Label(bar, text="End Date:", bg=BG_PAGE, fg=TEXT_PRIMARY, font=("Arial", 16, "bold")).grid(row=0, column=next_col + 2, sticky="e", padx=(0, 10))
     end_entry, end_var = create_date_picker_entry(bar, end_default, width=13)
-    end_entry.grid(row=0, column=4, sticky="w", padx=(0, 20))
+    end_entry.grid(row=0, column=next_col + 3, sticky="w", padx=(0, 20))
 
     make_button(bar, "Generate Report", command).grid(row=0, column=100, sticky="e")
+    if include_period:
+        return start_var, end_var, period_var
     return start_var, end_var
 
 
@@ -449,7 +470,7 @@ def open_reports():
 
     header = tk.Frame(
         reports_window,
-        bg=DASHBOARD_HEADER_BG,
+        bg=REPORTS_HEADER_BG,
         padx=14,
         pady=10,
         highlightthickness=1,
@@ -457,14 +478,14 @@ def open_reports():
     )
     header.pack(fill="x", padx=30, pady=(15, 8))
 
-    title_frame = tk.Frame(header, bg=DASHBOARD_HEADER_BG)
+    title_frame = tk.Frame(header, bg=REPORTS_HEADER_BG)
     title_frame.pack(side="left")
-    add_header_logo(title_frame, DASHBOARD_HEADER_BG, size=52)
+    add_header_logo(title_frame, REPORTS_HEADER_BG, size=52)
 
     tk.Label(
         title_frame,
         text="REPORTS & ANALYTICS",
-        bg=DASHBOARD_HEADER_BG,
+        bg=REPORTS_HEADER_BG,
         fg=DASHBOARD_HEADER_FG,
         font=("Arial", 22, "bold"),
         padx=12,
@@ -473,7 +494,7 @@ def open_reports():
     tk.Label(
         title_frame,
         text="Financials | Sales | Production | Inventory",
-        bg=DASHBOARD_HEADER_BG,
+        bg=REPORTS_HEADER_BG,
         fg=DASHBOARD_HEADER_SUBTLE_FG,
         font=("Arial", 12, "bold"),
     ).pack(side="left", padx=(18, 0))
@@ -523,9 +544,9 @@ def open_reports():
     notebook.add(fin_frame, text="Financial Summary")
     refresh_callbacks["Financial Summary"] = _build_financial_summary_tab(fin_frame)
 
-    weekly_frame = tk.Frame(notebook, bg=BG_PAGE)
-    notebook.add(weekly_frame, text="Weekly Sales")
-    refresh_callbacks["Weekly Sales"] = _build_weekly_sales_tab(weekly_frame)
+    sales_frame = tk.Frame(notebook, bg=BG_PAGE)
+    notebook.add(sales_frame, text="Sales Report")
+    refresh_callbacks["Sales Report"] = _build_sales_report_tab(sales_frame)
 
     chb_frame = tk.Frame(notebook, bg=BG_PAGE)
     notebook.add(chb_frame, text="CHB Production")
@@ -544,8 +565,15 @@ def _build_financial_summary_tab(parent):
         clear_frame(report_container)
 
     def generate_report():
-        start = start_var.get().strip()
-        end = end_var.get().strip()
+        start, end, range_error = get_report_date_range(
+            period_var.get(),
+            reference_date=end_var.get().strip(),
+            custom_start=start_var.get().strip(),
+            custom_end=end_var.get().strip(),
+        )
+        if range_error:
+            messagebox.showerror("Error", range_error)
+            return
         data, error = generate_financial_summary(start, end)
 
         if error:
@@ -666,11 +694,108 @@ def _build_financial_summary_tab(parent):
         make_button(sidebar, "Export to PDF", lambda: _handle_export("Financial Summary", data)).pack(fill="x")
 
     bar = create_filter_bar(root, "Financial Summary")
-    start_var, end_var = add_date_range_controls(
+    start_var, end_var, period_var = add_date_range_controls(
         bar,
         (datetime.now() - timedelta(days=30)).strftime("%Y-%m-%d"),
         datetime.now().strftime("%Y-%m-%d"),
         generate_report,
+        include_period=True,
+    )
+    render_empty(report_container, "No report generated.")
+    return generate_report
+
+
+def _build_sales_report_tab(parent):
+    root = create_tab_root(parent)
+    report_container = create_report_area(root)
+
+    def generate_report():
+        start, end, range_error = get_report_date_range(
+            period_var.get(),
+            reference_date=end_var.get().strip(),
+            custom_start=start_var.get().strip(),
+            custom_end=end_var.get().strip(),
+        )
+        if range_error:
+            messagebox.showerror("Error", range_error)
+            return
+
+        data, error = generate_sales_report(start, end)
+        if error:
+            messagebox.showerror("Error", error)
+            return
+
+        clear_frame(report_container)
+        if not data.get("has_period_data"):
+            render_empty(report_container)
+            return
+
+        report_container.grid_columnconfigure(0, weight=4)
+        report_container.grid_columnconfigure(1, weight=1, minsize=285)
+        report_container.grid_rowconfigure(1, weight=1)
+
+        title_bar = panel(report_container, pad=True)
+        title_bar.grid(row=0, column=0, columnspan=2, sticky="ew", pady=(0, SECTION_GAP))
+        tk.Label(title_bar, text="Sales Report", bg=BG_CARD, fg=HEADER_BG, font=("Arial", 18, "bold")).pack(side="left")
+        tk.Label(title_bar, text=f"{data['start_date']} to {data['end_date']}", bg=BG_CARD, fg=TEXT_MUTED, font=("Arial", 12, "bold")).pack(side="right")
+
+        table_panel = panel(report_container, "Completed Transactions")
+        table_panel.grid(row=1, column=0, sticky="nsew", padx=(0, SECTION_GAP))
+        wrap = tk.Frame(table_panel, bg=BG_CARD)
+        wrap.pack(fill="both", expand=True)
+        columns = ("date", "txn", "items", "qty", "total", "payment", "change")
+        headings = [
+            ("date", "DATE", 150, "w"),
+            ("txn", "TRANSACTION ID", 145, "w"),
+            ("items", "ITEMS SOLD", 240, "w"),
+            ("qty", "QUANTITIES", 120, "w"),
+            ("total", "TOTAL AMOUNT", 125, "e"),
+            ("payment", "PAYMENT RECEIVED", 145, "e"),
+            ("change", "CHANGE", 105, "e"),
+        ]
+        tree = create_tree(
+            wrap,
+            columns,
+            headings,
+            "SalesReport.Treeview",
+            height=13,
+            font=("Arial", 12),
+            heading_font=("Arial", 12, "bold"),
+            rowheight=34,
+        )
+        for idx, row in enumerate(data.get("transactions", [])):
+            insert_row(
+                tree,
+                (
+                    str(row["transaction_date"])[:19],
+                    row["transaction_id"],
+                    row["items_sold"],
+                    row["quantities"],
+                    money(row["total_amount"]),
+                    money(row["payment_received"]),
+                    money(row["change_amount"]),
+                ),
+                idx,
+            )
+
+        sidebar = panel(report_container, "Summary")
+        sidebar.grid(row=1, column=1, sticky="nsew")
+        summary_row(sidebar, "Transactions", f"{data['transaction_count']:,}")
+        summary_row(sidebar, "Start Date", data["start_date"])
+        summary_row(sidebar, "End Date", data["end_date"])
+        total = tk.Frame(sidebar, bg=HIGHLIGHT_BG, padx=8, pady=7)
+        total.pack(fill="x", pady=(8, 6))
+        tk.Label(total, text="TOTAL SALES", bg=HIGHLIGHT_BG, fg=HIGHLIGHT_FG, font=("Arial", 12, "bold")).pack(anchor="w")
+        tk.Label(total, text=money(data["total_sales"]), bg=HIGHLIGHT_BG, fg=HIGHLIGHT_FG, font=("Arial", 18, "bold")).pack(anchor="w")
+        make_button(sidebar, "Export to PDF", lambda: _handle_export("Sales Report", data)).pack(fill="x")
+
+    bar = create_filter_bar(root, "Sales Report")
+    start_var, end_var, period_var = add_date_range_controls(
+        bar,
+        (datetime.now() - timedelta(days=30)).strftime("%Y-%m-%d"),
+        datetime.now().strftime("%Y-%m-%d"),
+        generate_report,
+        include_period=True,
     )
     render_empty(report_container, "No report generated.")
     return generate_report
@@ -748,8 +873,15 @@ def _build_chb_production_tab(parent):
         clear_frame(report_container)
 
     def generate_report():
-        start = start_var.get().strip()
-        end = end_var.get().strip()
+        start, end, range_error = get_report_date_range(
+            period_var.get(),
+            reference_date=end_var.get().strip(),
+            custom_start=start_var.get().strip(),
+            custom_end=end_var.get().strip(),
+        )
+        if range_error:
+            messagebox.showerror("Error", range_error)
+            return
         data, error = generate_chb_production(start, end)
 
         if error:
@@ -792,11 +924,12 @@ def _build_chb_production_tab(parent):
         make_button(sidebar, "Export to PDF", lambda: _handle_export("CHB Production", data)).pack(fill="x", pady=(8, 0))
 
     bar = create_filter_bar(root, "CHB Production")
-    start_var, end_var = add_date_range_controls(
+    start_var, end_var, period_var = add_date_range_controls(
         bar,
         (datetime.now() - timedelta(days=30)).strftime("%Y-%m-%d"),
         datetime.now().strftime("%Y-%m-%d"),
         generate_report,
+        include_period=True,
     )
     render_empty(report_container, "No report generated.")
     return generate_report
