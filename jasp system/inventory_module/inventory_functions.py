@@ -7,6 +7,9 @@ from .inventory_database import (
     CHB_DEFAULT_UNIT,
     PREDEFINED_ITEMS,
     UNIT_OPTIONS,
+    fetch_inventory_unit_options,
+    add_inventory_unit_option,
+    delete_inventory_unit_option,
     ensure_chb_item,
     normalize_predefined_units,
     fetch_items,
@@ -15,8 +18,10 @@ from .inventory_database import (
     log_inventory_action,
     fetch_existing_item_for_stack,
     update_stacked_item,
+    fetch_fine_sand_bag_price,
     insert_item,
     update_item_record,
+    update_fine_sand_item_record,
     restock_item_record,
     delete_item_record,
 )
@@ -32,6 +37,62 @@ LOW_STOCK_LIMITS = {
     "chb blocks": 200,
 }
 DEFAULT_LOW_STOCK_LIMIT = 10
+FINE_SAND_BAGS_PER_CUBIC_METER = 40
+FINE_SAND_BASE_UNIT = "cubic meters"
+FINE_SAND_TRANSACTION_UNITS = (FINE_SAND_BASE_UNIT, "bag")
+
+
+def is_fine_sand(item_name):
+    return str(item_name or "").strip().lower() == "fine sand"
+
+
+def parse_inventory_quantity(quantity, item_name):
+    quantity_text = str(quantity).strip().split(" ", 1)[0].replace(",", "")
+    return float(quantity_text) if is_fine_sand(item_name) else int(quantity_text)
+
+
+def fine_sand_to_cubic_meters(quantity, unit):
+    quantity = float(quantity or 0)
+    return quantity / FINE_SAND_BAGS_PER_CUBIC_METER if str(unit or "").strip().lower() == "bag" else quantity
+
+
+def format_inventory_quantity(quantity):
+    try:
+        value = float(quantity or 0)
+    except (TypeError, ValueError):
+        return str(quantity)
+    return f"{value:,.3f}".rstrip("0").rstrip(".")
+
+
+def format_fine_sand_display(quantity):
+    cubic_stock = float(quantity or 0)
+    equivalent_bags = cubic_stock * FINE_SAND_BAGS_PER_CUBIC_METER
+    return f"{format_inventory_quantity(cubic_stock)} cubic meters ({format_inventory_quantity(equivalent_bags)} bags)"
+
+
+def format_money_value(value):
+    return f"{float(value or 0):.2f}"
+
+
+def format_fine_sand_prices(cubic_price, bag_price):
+    return f"Cubic: {format_money_value(cubic_price)} | Bag: {format_money_value(bag_price)}"
+
+
+def display_inventory_row(row):
+    values = list(row)
+    if len(values) > 3 and is_fine_sand(values[1]):
+        values[2] = FINE_SAND_BASE_UNIT
+        values[3] = format_fine_sand_display(values[3])
+        bag_price = values[7] if len(values) > 7 else 0
+        values[4] = format_fine_sand_prices(values[4], bag_price)
+        values = values[:7]
+    return tuple(values)
+
+
+def fetch_item_quantity(cursor, item_id):
+    cursor.execute("SELECT COALESCE(quantity, 0) FROM items WHERE id=?", (item_id,))
+    row = cursor.fetchone()
+    return float(row[0] or 0) if row else 0
 
 
 def show_inventory_error(parent, title, message):
@@ -161,6 +222,8 @@ def is_low_stock_item(item_name, quantity):
 def inventory_row_tag(index, values):
     item_name = values[1] if len(values) > 1 else ""
     quantity = values[3] if len(values) > 3 else 0
+    if is_fine_sand(item_name):
+        quantity = str(quantity).split(" ", 1)[0].replace(",", "")
     if is_low_stock_item(item_name, quantity):
         return LOW_STOCK_ROW
     return "blue_row" if index % 2 == 0 else "white_row"
@@ -178,8 +241,9 @@ def view_items(conn, cursor, tree, filter_text="", sort_by="Latest Date", total_
         tree.delete(row)
     rows = fetch_items(cursor, filter_text, sort_by)
     for index, row in enumerate(rows):
-        tag = inventory_row_tag(index, row)
-        tree.insert("", tk.END, values=row, tags=(tag,))
+        display_row = display_inventory_row(row)
+        tag = inventory_row_tag(index, display_row)
+        tree.insert("", tk.END, values=display_row, tags=(tag,))
     if total_var is not None:
         total_var.set(f"Total Items in Inventory: {count_items(cursor):,}")
 
@@ -237,32 +301,131 @@ def open_item_form(conn, cursor, inventory_window, tree, mode, item_values=None,
     name_entry = tk.Entry(form_card, textvariable=name_var, width=28, font=("Arial", 16))
     name_entry.grid(row=0, column=1, pady=10)
 
-    tk.Label(form_card, text="Measurement Unit", font=("Arial", 16, "bold"), bg=FORM_BG).grid(row=1, column=0, padx=18, pady=10, sticky="w")
+    unit_label = tk.Label(form_card, text="Measurement Unit", font=("Arial", 16, "bold"), bg=FORM_BG)
+    unit_label.grid(row=1, column=0, padx=18, pady=10, sticky="w")
     unit_var = tk.StringVar()
-    unit_entry = ttk.Combobox(form_card, textvariable=unit_var, values=UNIT_OPTIONS, width=26, font=("Arial", 16))
-    unit_entry.grid(row=1, column=1, pady=10)
+    unit_frame = tk.Frame(form_card, bg=FORM_BG)
+    unit_frame.grid(row=1, column=1, pady=10, sticky="w")
+    unit_entry = ttk.Combobox(unit_frame, textvariable=unit_var, values=fetch_inventory_unit_options(conn, cursor), width=21, font=("Arial", 16))
+    unit_entry.grid(row=0, column=0, sticky="w")
+
+    def refresh_unit_dropdown():
+        unit_entry.config(values=fetch_inventory_unit_options(conn, cursor))
+
+    def open_unit_manager():
+        manager = tk.Toplevel(form)
+        manager.title("Unit of Measurement")
+        manager.transient(form)
+        manager.grab_set()
+        manager.configure(bg="#ffffff")
+        manager.resizable(False, False)
+
+        content = tk.Frame(manager, bg="#ffffff", padx=22, pady=18)
+        content.pack(fill="both", expand=True)
+
+        tk.Label(content, text="Unit of Measurement", bg="#ffffff", fg="#2563eb", font=("Arial", 18, "bold")).pack(anchor="w", pady=(0, 12))
+
+        add_row = tk.Frame(content, bg="#ffffff")
+        add_row.pack(fill="x", pady=(0, 12))
+        new_unit_var = tk.StringVar()
+        new_unit_entry = tk.Entry(add_row, textvariable=new_unit_var, width=24, font=("Arial", 13), bd=1, relief="solid")
+        new_unit_entry.pack(side="left", fill="x", expand=True, padx=(0, 8))
+
+        list_frame = tk.Frame(content, bg="#ffffff")
+        list_frame.pack(fill="both", expand=True)
+
+        def render_units():
+            for child in list_frame.winfo_children():
+                child.destroy()
+
+            for unit in fetch_inventory_unit_options(conn, cursor):
+                row = tk.Frame(list_frame, bg="#f8fafc", bd=1, relief="solid")
+                row.pack(fill="x", pady=3)
+                tk.Label(row, text=unit, bg="#f8fafc", fg="#1e293b", font=("Arial", 12, "bold"), anchor="w").pack(side="left", fill="x", expand=True, padx=10, pady=6)
+
+                def remove_unit(unit_to_remove=unit):
+                    if unit_var.get() == unit_to_remove:
+                        unit_var.set("")
+                    delete_inventory_unit_option(conn, cursor, unit_to_remove)
+                    refresh_unit_dropdown()
+                    render_units()
+
+                tk.Button(row, text="X", command=remove_unit, bg="#dc2626", fg="white", font=("Arial", 10, "bold"), width=3, bd=1, relief="solid").pack(side="right", padx=6, pady=4)
+
+        def add_unit():
+            new_unit = new_unit_var.get().strip()
+            if not new_unit:
+                show_inventory_error(manager, "Error", "Enter a unit of measurement.")
+                return
+            add_inventory_unit_option(conn, cursor, new_unit)
+            unit_var.set(new_unit)
+            new_unit_var.set("")
+            refresh_unit_dropdown()
+            render_units()
+
+        tk.Button(add_row, text="Add", command=add_unit, bg=SAVE_GREEN, fg="white", font=("Arial", 11, "bold"), bd=1, relief="solid", padx=10, pady=5).pack(side="left")
+        tk.Button(content, text="Close", command=manager.destroy, bg=CANCEL_RED, fg="white", font=("Arial", 11, "bold"), bd=1, relief="solid", padx=12, pady=6).pack(anchor="e", pady=(12, 0))
+
+        render_units()
+        center_window(manager, 420, 460, form)
+
+    unit_manager_button = tk.Button(unit_frame, text="+ Unit", command=open_unit_manager, bg="#2563eb", fg="white", font=("Arial", 11, "bold"), bd=1, relief="solid", padx=8, pady=4)
+    unit_manager_button.grid(row=0, column=1, padx=(8, 0), sticky="w")
 
     tk.Label(form_card, text="Quantity", font=("Arial", 16, "bold"), bg=FORM_BG).grid(row=2, column=0, padx=18, pady=10, sticky="w")
     quantity_entry = tk.Entry(form_card, width=28, font=("Arial", 16))
     quantity_entry.grid(row=2, column=1, pady=10)
 
-    tk.Label(form_card, text="Selling Price", font=("Arial", 16, "bold"), bg=FORM_BG).grid(row=3, column=0, padx=18, pady=10, sticky="w")
+    price_label = tk.Label(form_card, text="Selling Price", font=("Arial", 16, "bold"), bg=FORM_BG)
+    price_label.grid(row=3, column=0, padx=18, pady=10, sticky="w")
     price_entry = tk.Entry(form_card, width=28, font=("Arial", 16))
     price_entry.grid(row=3, column=1, pady=10)
 
-    tk.Label(form_card, text="Raw Price", font=("Arial", 16, "bold"), bg=FORM_BG).grid(row=4, column=0, padx=18, pady=10, sticky="w")
+    bag_price_label = tk.Label(form_card, text="Bag Price", font=("Arial", 16, "bold"), bg=FORM_BG)
+    bag_price_entry = tk.Entry(form_card, width=28, font=("Arial", 16))
+
+    raw_price_label = tk.Label(form_card, text="Raw Price", font=("Arial", 16, "bold"), bg=FORM_BG)
+    raw_price_label.grid(row=4, column=0, padx=18, pady=10, sticky="w")
     raw_price_entry = tk.Entry(form_card, width=28, font=("Arial", 16))
     raw_price_entry.grid(row=4, column=1, pady=10)
 
-    tk.Label(form_card, text="Status", font=("Arial", 16, "bold"), bg=FORM_BG).grid(row=5, column=0, padx=18, pady=10, sticky="w")
+    status_label = tk.Label(form_card, text="Status", font=("Arial", 16, "bold"), bg=FORM_BG)
+    status_label.grid(row=5, column=0, padx=18, pady=10, sticky="w")
     status_var = tk.StringVar(value="Active")
     status_entry = ttk.Combobox(form_card, textvariable=status_var, values=["Active", "Inactive"], width=26, font=("Arial", 16), state="readonly")
     status_entry.grid(row=5, column=1, pady=10)
+
+    def sync_fine_sand_transaction_unit(*_args):
+        if is_fine_sand(name_var.get().strip()):
+            unit_label.config(text="Quantity Unit")
+            price_label.config(text="Cubic Meter Price")
+            unit_entry.config(values=FINE_SAND_TRANSACTION_UNITS, state="readonly")
+            unit_manager_button.grid_remove()
+            if unit_var.get() not in FINE_SAND_TRANSACTION_UNITS:
+                unit_var.set(FINE_SAND_BASE_UNIT)
+            bag_price_label.grid(row=4, column=0, padx=18, pady=10, sticky="w")
+            bag_price_entry.grid(row=4, column=1, pady=10)
+            raw_price_label.grid(row=5, column=0, padx=18, pady=10, sticky="w")
+            raw_price_entry.grid(row=5, column=1, pady=10)
+            status_label.grid(row=6, column=0, padx=18, pady=10, sticky="w")
+            status_entry.grid(row=6, column=1, pady=10)
+        else:
+            unit_label.config(text="Measurement Unit")
+            price_label.config(text="Selling Price")
+            unit_entry.config(values=fetch_inventory_unit_options(conn, cursor), state="normal")
+            unit_manager_button.grid(row=0, column=1, padx=(8, 0), sticky="w")
+            bag_price_label.grid_remove()
+            bag_price_entry.grid_remove()
+            raw_price_label.grid(row=4, column=0, padx=18, pady=10, sticky="w")
+            raw_price_entry.grid(row=4, column=1, pady=10)
+            status_label.grid(row=5, column=0, padx=18, pady=10, sticky="w")
+            status_entry.grid(row=5, column=1, pady=10)
 
     def sync_unit_from_name(event=None):
         selected_item = name_var.get().strip()
         if selected_item in PREDEFINED_ITEMS:
             unit_var.set(PREDEFINED_ITEMS[selected_item])
+        sync_fine_sand_transaction_unit()
 
     name_entry.bind("<KeyRelease>", sync_unit_from_name)
     name_entry.bind("<FocusOut>", sync_unit_from_name)
@@ -270,13 +433,20 @@ def open_item_form(conn, cursor, inventory_window, tree, mode, item_values=None,
     if mode == "edit" and item_values:
         name_var.set(item_values[1])
         unit_var.set(item_values[2] if len(item_values) > 2 else "")
-        quantity_entry.insert(0, item_values[3])
-        price_entry.insert(0, item_values[4])
+        quantity_entry.insert(0, format_inventory_quantity(fetch_item_quantity(cursor, item_values[0])) if is_fine_sand(item_values[1]) else item_values[3])
+        if is_fine_sand(item_values[1]):
+            cursor.execute("SELECT COALESCE(price, 0), COALESCE(fine_sand_bag_price, 0) FROM items WHERE id=?", (item_values[0],))
+            price_row = cursor.fetchone() or (0, 0)
+            price_entry.insert(0, format_money_value(price_row[0]))
+            bag_price_entry.insert(0, format_money_value(price_row[1]))
+        else:
+            price_entry.insert(0, item_values[4])
         raw_price_entry.insert(0, item_values[5])
         status_var.set(item_values[6] if len(item_values) > 6 and item_values[6] else "Active")
 
         if not unit_var.get() and item_values[1] in PREDEFINED_ITEMS:
             unit_var.set(PREDEFINED_ITEMS[item_values[1]])
+        sync_fine_sand_transaction_unit()
 
         if item_values[1] == CHB_ITEM_NAME:
             name_entry.config(state="disabled")
@@ -284,13 +454,14 @@ def open_item_form(conn, cursor, inventory_window, tree, mode, item_values=None,
             raw_price_entry.config(state="disabled")
             unit_entry.config(state="disabled")
             unit_var.set(CHB_DEFAULT_UNIT)
-            tk.Label(form_card, text="Quantity is auto from CHB production. Only price and status can be updated.", fg="#dc2626", bg=FORM_BG, font=("Arial", 12, "italic")).grid(row=7, column=0, columnspan=2, pady=(4, 0))
+            tk.Label(form_card, text="Quantity is auto from CHB production. Only price and status can be updated.", fg="#dc2626", bg=FORM_BG, font=("Arial", 12, "italic")).grid(row=8, column=0, columnspan=2, pady=(4, 0))
 
     def submit():
         name = name_var.get().strip()
         unit = unit_var.get().strip()
         quantity = quantity_entry.get().strip()
         price = price_entry.get().strip()
+        bag_price = bag_price_entry.get().strip()
         raw = raw_price_entry.get().strip()
         status = status_var.get().strip() or "Active"
 
@@ -306,13 +477,18 @@ def open_item_form(conn, cursor, inventory_window, tree, mode, item_values=None,
             return
 
         try:
-            quantity_val = int(quantity)
+            quantity_val = parse_inventory_quantity(quantity, name)
             price = price or "0"
+            bag_price = bag_price or "0"
             raw = raw or "0"
             price_val = float(price)
+            bag_price_val = float(bag_price)
             raw_val = float(raw)
         except ValueError:
-            show_inventory_error(form, "Error", "Quantity must be a whole number and prices must be numeric.")
+            show_inventory_error(form, "Error", "Quantity must be numeric and prices must be numeric.")
+            return
+        if quantity_val <= 0:
+            show_inventory_error(form, "Error", "Quantity must be greater than zero.")
             return
 
         if mode == "edit" and item_values and item_values[1] == CHB_ITEM_NAME:
@@ -324,24 +500,38 @@ def open_item_form(conn, cursor, inventory_window, tree, mode, item_values=None,
         if name in PREDEFINED_ITEMS and not unit:
             unit = PREDEFINED_ITEMS[name]
 
+        if is_fine_sand(name):
+            transaction_unit = unit
+            unit = FINE_SAND_BASE_UNIT
+            quantity_val = fine_sand_to_cubic_meters(quantity_val, transaction_unit)
+        else:
+            bag_price_val = 0
+
         if mode == "add":
             existing = fetch_existing_item_for_stack(cursor, name, price_val)
 
             if existing:
                 item_id, current_qty = existing
-                new_qty = int(current_qty) + quantity_val
+                new_qty = float(current_qty or 0) + quantity_val
                 update_stacked_item(cursor, item_id, new_qty, raw_val, unit)
+                if is_fine_sand(name):
+                    update_fine_sand_item_record(cursor, item_id, name, new_qty, price_val, bag_price_val, raw_val, unit, status)
                 success_msg = "Item quantity updated successfully!"
                 log_restock(conn, cursor, name, quantity_val, price_val, raw_val, item_id, "Restock")
             else:
                 item_id = insert_item(cursor, name, quantity_val, price_val, raw_val, unit, status)
+                if is_fine_sand(name):
+                    update_fine_sand_item_record(cursor, item_id, name, quantity_val, price_val, bag_price_val, raw_val, unit, status)
                 success_msg = "Item added successfully!"
                 log_inventory_action(conn, cursor, item_id, name, quantity_val, status)
         else:
             item_id = item_values[0]
-            previous_qty = int(item_values[3])
+            previous_qty = fetch_item_quantity(cursor, item_id)
             previous_status = item_values[6] if len(item_values) > 6 and item_values[6] else "Active"
-            update_item_record(cursor, item_id, name, quantity_val, price_val, raw_val, unit, status)
+            if is_fine_sand(name):
+                update_fine_sand_item_record(cursor, item_id, name, quantity_val, price_val, bag_price_val, raw_val, unit, status)
+            else:
+                update_item_record(cursor, item_id, name, quantity_val, price_val, raw_val, unit, status)
             success_msg = "Item updated successfully!"
             if quantity_val != previous_qty:
                 cursor.execute(
@@ -361,9 +551,9 @@ def open_item_form(conn, cursor, inventory_window, tree, mode, item_values=None,
         else:
             view_items(conn, cursor, tree)
 
-    tk.Button(form_card, text="Save", width=18, bg=SAVE_GREEN, fg="white", font=("Arial", 16, "bold"), bd=2, relief="solid", highlightbackground="black", highlightcolor="black", highlightthickness=1, padx=8, pady=8, command=submit).grid(row=6, column=0, padx=10, pady=26)
-    tk.Button(form_card, text="Cancel", width=18, bg=CANCEL_RED, fg="white", font=("Arial", 16, "bold"), bd=2, relief="solid", highlightbackground="black", highlightcolor="black", highlightthickness=1, padx=8, pady=8, command=form.destroy).grid(row=6, column=1, padx=10, pady=26)
-    center_window(form, 720, 620, inventory_window)
+    tk.Button(form_card, text="Save", width=18, bg=SAVE_GREEN, fg="white", font=("Arial", 16, "bold"), bd=2, relief="solid", highlightbackground="black", highlightcolor="black", highlightthickness=1, padx=8, pady=8, command=submit).grid(row=7, column=0, padx=10, pady=26)
+    tk.Button(form_card, text="Cancel", width=18, bg=CANCEL_RED, fg="white", font=("Arial", 16, "bold"), bd=2, relief="solid", highlightbackground="black", highlightcolor="black", highlightthickness=1, padx=8, pady=8, command=form.destroy).grid(row=7, column=1, padx=10, pady=26)
+    center_window(form, 720, 680, inventory_window)
 
 
 def add_item(conn, cursor, inventory_window, tree, refresh_view=None):
@@ -386,7 +576,7 @@ def open_restock_form(conn, cursor, inventory_window, item_values, refresh_view=
 
     item_id = item_values[0]
     item_name = item_values[1]
-    current_qty = int(item_values[3] or 0)
+    current_qty = fetch_item_quantity(cursor, item_id) if is_fine_sand(item_name) else int(item_values[3] or 0)
     status = item_values[6] if len(item_values) > 6 and item_values[6] else "Active"
     if status != "Active":
         show_inventory_error(inventory_window, "Inactive Item", "Inactive items cannot be restocked.")
@@ -416,7 +606,7 @@ def open_restock_form(conn, cursor, inventory_window, item_values, refresh_view=
     tk.Label(left_info, text="Item Name", font=("Arial", 14, "bold"), bg=FORM_BG, fg="#374151").pack(anchor="w")
     tk.Label(left_info, text=item_name, font=("Arial", 18, "bold"), bg=FORM_BG, fg="#111827", wraplength=250, justify="left").pack(anchor="w", pady=(4, 18))
     tk.Label(left_info, text="Current Quantity", font=("Arial", 14, "bold"), bg=FORM_BG, fg="#374151").pack(anchor="w")
-    tk.Label(left_info, text=f"{current_qty:,}", font=("Arial", 18, "bold"), bg=FORM_BG, fg="#111827").pack(anchor="w", pady=(4, 0))
+    tk.Label(left_info, text=format_inventory_quantity(current_qty), font=("Arial", 18, "bold"), bg=FORM_BG, fg="#111827").pack(anchor="w", pady=(4, 0))
 
     tk.Label(form_card, text="+", font=("Arial", 34, "bold"), bg=FORM_BG, fg="#16a34a").grid(row=1, column=1, padx=(4, 12), sticky="n")
 
@@ -427,13 +617,25 @@ def open_restock_form(conn, cursor, inventory_window, item_values, refresh_view=
     qty_entry.pack(anchor="w", pady=(8, 0))
     qty_entry.focus_set()
 
+    transaction_unit_var = tk.StringVar(value=FINE_SAND_BASE_UNIT)
+    if is_fine_sand(item_name):
+        tk.Label(input_frame, text="Quantity Unit", font=("Arial", 14, "bold"), bg=FORM_BG, fg="#374151").pack(anchor="w", pady=(16, 0))
+        ttk.Combobox(
+            input_frame,
+            textvariable=transaction_unit_var,
+            values=FINE_SAND_TRANSACTION_UNITS,
+            width=13,
+            font=("Arial", 16),
+            state="readonly",
+        ).pack(anchor="w", pady=(8, 0))
+
     button_frame = tk.Frame(form_card, bg=FORM_BG)
     button_frame.grid(row=2, column=0, columnspan=3, pady=(32, 0))
 
     def confirm_restock():
         quantity_text = qty_entry.get().strip()
         try:
-            qty_added = int(quantity_text)
+            qty_added = parse_inventory_quantity(quantity_text, item_name)
         except ValueError:
             show_inventory_error(form, "Invalid Quantity", "Quantity to add must be a positive number.")
             return
@@ -441,6 +643,8 @@ def open_restock_form(conn, cursor, inventory_window, item_values, refresh_view=
         if qty_added <= 0:
             show_inventory_error(form, "Invalid Quantity", "Quantity to add must be a positive number.")
             return
+        if is_fine_sand(item_name):
+            qty_added = fine_sand_to_cubic_meters(qty_added, transaction_unit_var.get())
 
         result = restock_item_record(conn, cursor, item_id, qty_added)
         if not result:
@@ -462,7 +666,7 @@ def open_restock_form(conn, cursor, inventory_window, item_values, refresh_view=
 
     form.bind("<Return>", lambda _event: confirm_restock())
     form.bind("<Escape>", lambda _event: form.destroy())
-    center_window(form, 650, 360, inventory_window)
+    center_window(form, 650, 420 if is_fine_sand(item_name) else 360, inventory_window)
 
 
 def delete_item(conn, cursor, inventory_window, tree, refresh_view=None):

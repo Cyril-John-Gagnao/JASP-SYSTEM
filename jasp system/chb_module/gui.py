@@ -156,94 +156,101 @@ def open_chb_dashboard():
     main_container.pack(padx=20, pady=(0, 8), fill="both", expand=True)
 
     # Configure columns: table and form
-    main_container.columnconfigure(0, weight=7)
-    main_container.columnconfigure(1, weight=3)
+    main_container.columnconfigure(0, weight=6, minsize=620)
+    main_container.columnconfigure(1, weight=4, minsize=420)
     main_container.rowconfigure(0, weight=1)
 
     # ================= FORM (RIGHT SIDE - 40%) =================
     form_card = tk.Frame(main_container, bg=CARD_BG)
-    form_card.grid(row=0, column=1, sticky="nsew", padx=12, pady=(8, 12))
+    form_card.grid(row=0, column=1, sticky="nsew", padx=(6, 16), pady=(8, 12))
     form_card.columnconfigure(1, weight=1)
 
     # Form Title
-    tk.Label(form_card, text="CHB Production", font=("Arial", 22, "bold"), bg=CARD_BG, fg=PRIMARY).pack(pady=(0, 20))
+    tk.Label(form_card, text="CHB Production", font=("Arial", 21, "bold"), bg=CARD_BG, fg=PRIMARY).pack(pady=(0, 8))
 
     # Form Background Frame
     form_bg = tk.Frame(form_card, bg="#fef3c7", bd=1, relief="flat")
-    form_bg.pack(fill="x", padx=5, pady=10)
+    form_bg.pack(fill="x", padx=5, pady=(4, 6))
 
     form = tk.Frame(form_bg, bg="#fef3c7")
-    form.pack(fill="x", padx=20, pady=20)
-    form.columnconfigure(0, weight=0)
-    form.columnconfigure(1, weight=1, minsize=320)
+    form.pack(fill="x", padx=16, pady=12)
+    form.columnconfigure(0, weight=0, minsize=128)
+    form.columnconfigure(1, weight=1, minsize=220)
 
     # Production Date
-    tk.Label(form, text="Production Date", bg="#fef3c7", font=("Arial", 14, "bold"), fg="#1e293b").grid(row=0, column=0, sticky="w", pady=10)
+    tk.Label(form, text="Production Date", bg="#fef3c7", font=("Arial", 13, "bold"), fg="#1e293b").grid(row=0, column=0, sticky="w", pady=6)
     date_var = tk.StringVar(value=datetime.now().strftime("%Y-%m-%d"))
     date_frame = tk.Frame(form, bg="#fef3c7")
-    date_frame.grid(row=0, column=1, sticky="ew", padx=15, pady=10)
+    date_frame.grid(row=0, column=1, sticky="ew", padx=(8, 0), pady=6)
     tk.Button(date_frame, text="📅", command=lambda: chb_functions.open_date_calendar(win, date_var), bg="#3b82f6", fg="white", font=("Arial", 12, "bold"), width=3, padx=4, pady=3, **BUTTON_BORDER).pack(side="left", padx=(0, 6))
     date_entry = tk.Entry(date_frame, textvariable=date_var, width=20, font=("Arial", 14), bd=1, relief="solid", bg="white")
     date_entry.pack(side="left", fill="x", expand=True)
 
     # Worker Name
-    tk.Label(form, text="Worker Name", bg="#fef3c7", font=("Arial", 14, "bold"), fg="#1e293b").grid(row=1, column=0, sticky="w", pady=10)
+    tk.Label(form, text="Worker Name", bg="#fef3c7", font=("Arial", 13, "bold"), fg="#1e293b").grid(row=1, column=0, sticky="w", pady=6)
     worker_entry = tk.Entry(form, width=20, font=("Arial", 14), bd=1, relief="solid", bg="white")
-    worker_entry.grid(row=1, column=1, sticky="ew", padx=15, pady=10)
+    worker_entry.grid(row=1, column=1, sticky="ew", padx=(8, 0), pady=6)
 
     # Cement Bags
-    tk.Label(form, text="Bag/s of Cement", bg="#fef3c7", font=("Arial", 14, "bold"), fg="#1e293b").grid(row=2, column=0, sticky="w", pady=10)
+    tk.Label(form, text="Bag/s of Cement", bg="#fef3c7", font=("Arial", 13, "bold"), fg="#1e293b").grid(row=2, column=0, sticky="w", pady=6)
     cement_frame = tk.Frame(form, bg="#fef3c7")
-    cement_frame.grid(row=2, column=1, sticky="ew", padx=15, pady=10)
+    cement_frame.grid(row=2, column=1, sticky="ew", padx=(8, 0), pady=6)
     cement_frame.columnconfigure(0, weight=1)
     cement_stock_var = tk.StringVar()
-    cement_entry = tk.Entry(cement_frame, width=18, font=("Arial", 14), bd=1, relief="solid", bg="white")
+    cement_entry = tk.Entry(cement_frame, width=12, font=("Arial", 14), bd=1, relief="solid", bg="white")
     cement_entry.grid(row=0, column=0, sticky="ew")
     cement_stock_combo = ttk.Combobox(
         cement_frame,
         textvariable=cement_stock_var,
         values=[],
         state="readonly",
-        width=18,
-        font=("Arial", 13)
+        width=16,
+        font=("Arial", 12)
     )
-    cement_stock_combo.grid(row=0, column=1, sticky="ew", padx=(6, 0))
+    cement_stock_combo.grid(row=1, column=0, sticky="ew", pady=(4, 0))
 
     # Bag of Fine Sand
-    tk.Label(form, text="Bag/s of Fine Sand", bg="#fef3c7", font=("Arial", 14, "bold"), fg="#1e293b").grid(row=3, column=0, sticky="w", pady=10)
+    tk.Label(form, text="Bag/s of Fine Sand", bg="#fef3c7", font=("Arial", 13, "bold"), fg="#1e293b").grid(row=3, column=0, sticky="nw", pady=6)
     sand_frame = tk.Frame(form, bg="#fef3c7")
-    sand_frame.grid(row=3, column=1, sticky="ew", padx=15, pady=10)
+    sand_frame.grid(row=3, column=1, sticky="ew", padx=(8, 0), pady=6)
     sand_frame.columnconfigure(0, weight=1)
     sand_stock_var = tk.StringVar()
-    sand_entry = tk.Entry(sand_frame, width=18, font=("Arial", 14), bd=1, relief="solid", bg="white")
-    sand_entry.grid(row=0, column=0, sticky="ew")
-    sand_stock_combo = ttk.Combobox(
+    sand_entry = tk.Entry(sand_frame, width=12, font=("Arial", 15), bd=1, relief="solid", bg="white")
+    sand_entry.grid(row=0, column=0, sticky="ew", ipady=3)
+    sand_stock_combo = tk.Label(
         sand_frame,
         textvariable=sand_stock_var,
-        values=[],
-        state="readonly",
-        width=18,
-        font=("Arial", 13)
+        bg="#fff7ed",
+        fg="#92400e",
+        font=("Arial", 11, "bold"),
+        justify="left",
+        anchor="w",
+        bd=1,
+        relief="solid",
+        padx=7,
+        pady=4,
+        width=30,
+        wraplength=245
     )
-    sand_stock_combo.grid(row=0, column=1, sticky="ew", padx=(6, 0))
+    sand_stock_combo.grid(row=1, column=0, sticky="w", pady=(4, 0))
 
     # Pay Rate
-    tk.Label(form, text="Worker Salary / 75 Blocks  (₱)", bg="#fef3c7", font=("Arial", 14, "bold"), fg="#1e293b").grid(row=4, column=0, sticky="w", pady=10)
+    tk.Label(form, text="Salary / 75 Blocks", bg="#fef3c7", font=("Arial", 13, "bold"), fg="#1e293b").grid(row=4, column=0, sticky="w", pady=6)
     pay_rate_var = tk.DoubleVar(value=pay_rate_default)
     pay_rate_entry = tk.Entry(form, textvariable=pay_rate_var, width=20, font=("Arial", 14), bd=1, relief="solid", bg="white")
-    pay_rate_entry.grid(row=4, column=1, sticky="ew", padx=15, pady=10)
+    pay_rate_entry.grid(row=4, column=1, sticky="ew", padx=(8, 0), pady=6)
 
     # Result Display
     result_frame = tk.Frame(form_card, bg="#e0f2fe")
-    result_frame.pack(pady=15, fill="x", padx=5)
+    result_frame.pack(pady=8, fill="x", padx=5)
 
     tk.Label(
         result_frame,
         text="Blocks:",
-        font=("Arial", 17, "bold"),
+        font=("Arial", 15, "bold"),
         bg="#e0f2fe",
         fg="#0369a1",
-        pady=12
+        pady=7
     ).pack(side="left", padx=(12, 6))
 
     blocks_var = tk.StringVar(value="0")
@@ -251,28 +258,28 @@ def open_chb_dashboard():
         result_frame,
         textvariable=blocks_var,
         width=10,
-        font=("Arial", 17, "bold"),
+        font=("Arial", 15, "bold"),
         bd=1,
         relief="solid",
         justify="center",
         bg="white",
         fg="#0369a1"
     )
-    blocks_entry.pack(side="left", padx=6, pady=8)
+    blocks_entry.pack(side="left", padx=6, pady=5)
 
     result_label = tk.Label(
         result_frame,
         text="| Pay: ₱0",
-        font=("Arial", 17, "bold"),
+        font=("Arial", 15, "bold"),
         bg="#e0f2fe",
         fg="#0369a1",
-        pady=12
+        pady=7
     )
     result_label.pack(side="left", padx=6)
 
     # Buttons Frame
     btn_frame = tk.Frame(form_card, bg=CARD_BG)
-    btn_frame.pack(pady=15, fill="x")
+    btn_frame.pack(side="bottom", pady=(0, 16), fill="x")
     btn_frame.columnconfigure(0, weight=1)
     btn_frame.columnconfigure(1, weight=1)
     btn_frame.columnconfigure(2, weight=1)
@@ -298,20 +305,20 @@ def open_chb_dashboard():
     # ================= BUTTONS =================
     action_button_options = {
         "fg": "white",
-        "font": ("Arial", 11, "bold"),
-        "padx": 4,
-        "pady": 8,
+        "font": ("Arial", 12, "bold"),
+        "padx": 7,
+        "pady": 9,
         "cursor": "hand2",
         **BUTTON_BORDER,
     }
-    tk.Button(btn_frame, text="✓ Save", command=save, bg="#15803d", **action_button_options).grid(row=0, column=0, sticky="ew", padx=4, pady=6)
-    tk.Button(btn_frame, text="🔁 Update", command=update, bg="#1e40af", **action_button_options).grid(row=0, column=1, sticky="ew", padx=4, pady=6)
-    tk.Button(btn_frame, text="🗑 Delete", command=delete, bg="#dc2626", **action_button_options).grid(row=0, column=2, sticky="ew", padx=4, pady=6)
-    tk.Button(btn_frame, text="✋ Clear", command=confirm_clear, bg="#64748b", **action_button_options).grid(row=0, column=3, sticky="ew", padx=4, pady=6)
+    tk.Button(btn_frame, text="✓ Save", command=save, bg="#15803d", **action_button_options).grid(row=0, column=0, sticky="ew", padx=4, pady=3)
+    tk.Button(btn_frame, text="🔁 Update", command=update, bg="#1e40af", **action_button_options).grid(row=0, column=1, sticky="ew", padx=4, pady=3)
+    tk.Button(btn_frame, text="🗑 Delete", command=delete, bg="#dc2626", **action_button_options).grid(row=0, column=2, sticky="ew", padx=4, pady=3)
+    tk.Button(btn_frame, text="✋ Clear", command=confirm_clear, bg="#64748b", **action_button_options).grid(row=0, column=3, sticky="ew", padx=4, pady=3)
 
     # ================= TABLE (LEFT SIDE - 60%) =================
     table_card = tk.Frame(main_container, bg=CARD_BG)
-    table_card.grid(row=0, column=0, sticky="nsew", padx=12, pady=(8, 12))
+    table_card.grid(row=0, column=0, sticky="nsew", padx=(10, 6), pady=(8, 12))
     table_card.columnconfigure(0, weight=1)
     table_card.rowconfigure(0, weight=1)
 
@@ -363,7 +370,6 @@ def open_chb_dashboard():
         tree.update_idletasks()
         heading_font = tkfont.Font(font=style.lookup(f"{tree_style_name}.Heading", "font"))
         row_font = tkfont.Font(font=style.lookup(tree_style_name, "font"))
-        available_width = max(tree.winfo_width() - 28, 1)
         column_padding = {
             "id": 50,
             "date": 65,
@@ -374,22 +380,22 @@ def open_chb_dashboard():
             "pay": 75,
         }
         base_min_widths = {
-            "id": 45,
-            "date": 95,
-            "worker": 115,
-            "cement": 105,
-            "Fine Sand": 120,
-            "blocks": 85,
-            "pay": 95,
+            "id": 40,
+            "date": 75,
+            "worker": 90,
+            "cement": 80,
+            "Fine Sand": 95,
+            "blocks": 70,
+            "pay": 80,
         }
-        weights = {
-            "id": 0.6,
-            "date": 1.2,
-            "worker": 2.2,
-            "cement": 1.4,
-            "Fine Sand": 1.5,
-            "blocks": 1.1,
-            "pay": 1.2,
+        max_widths = {
+            "id": 90,
+            "date": 170,
+            "worker": 260,
+            "cement": 210,
+            "Fine Sand": 230,
+            "blocks": 150,
+            "pay": 160,
         }
         measured_widths = {}
         min_widths = {}
@@ -397,41 +403,27 @@ def open_chb_dashboard():
         for col in columns:
             header_text = column_labels.get(col, col.upper())
             header_width = heading_font.measure(header_text) + column_padding[col]
-            min_widths[col] = max(base_min_widths[col], header_width)
+            min_widths[col] = max(base_min_widths[col], min(header_width, max_widths[col]))
             width = header_width
             for item in tree.get_children():
                 width = max(width, row_font.measure(str(tree.set(item, col))) + column_padding[col])
-            measured_widths[col] = max(min_widths[col], width)
-
-        min_total = sum(min_widths.values())
-        total_measured = sum(measured_widths.values())
-        available_width = max(available_width, min_total)
-
-        if total_measured < available_width:
-            extra_width = available_width - total_measured
-            total_weight = sum(weights.values()) or 1
-            for col in columns:
-                measured_widths[col] += int(extra_width * (weights[col] / total_weight))
-        elif total_measured > available_width and total_measured > min_total:
-            overflow = total_measured - available_width
-            shrinkable_total = sum(max(measured_widths[col] - min_widths[col], 0) for col in columns) or 1
-            for col in columns:
-                shrinkable = max(measured_widths[col] - min_widths[col], 0)
-                measured_widths[col] = max(
-                    min_widths[col],
-                    measured_widths[col] - int(overflow * (shrinkable / shrinkable_total))
-                )
-
-        width_delta = available_width - sum(measured_widths.values())
-        if width_delta:
-            measured_widths["worker"] += width_delta
+            measured_widths[col] = max(min_widths[col], min(width, max_widths[col]))
 
         for col in columns:
             tree.column(col, width=measured_widths[col], minwidth=min_widths[col], stretch=False)
 
+    initial_widths = {
+        "id": 45,
+        "date": 80,
+        "worker": 100,
+        "cement": 90,
+        "Fine Sand": 105,
+        "blocks": 75,
+        "pay": 90,
+    }
     for col in columns:
         tree.heading(col, text=column_labels.get(col, col.upper()))
-        tree.column(col, anchor="center", width=130, minwidth=80, stretch=False)
+        tree.column(col, anchor="center", width=initial_widths[col], minwidth=initial_widths[col], stretch=False)
 
     # Bind to configure event to update scrollbar after column resize
     on_tree_configure = lambda event=None: (chb_functions.on_tree_configure(event, tree), auto_adjust_columns())

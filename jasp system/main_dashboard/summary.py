@@ -88,6 +88,13 @@ def open_recent_transactions_summary(parent):
         data = fetch_recent_transaction_summary(start, end)
         current_rows = data["transactions"]
         clear_tree(summary_tree)
+        if not current_rows:
+            summary_tree.insert(
+                "",
+                "end",
+                values=("", "", "No transactions for the selected period.", "", "", "", ""),
+                tags=("even",),
+            )
         for index, row in enumerate(current_rows):
             txn_id, ts, item_summary, item_count, qty, total, cashier, status = row
             summary_tree.insert(
@@ -352,6 +359,13 @@ def open_most_items_summary(parent):
         start, end = compute_summary_range(period_var.get(), date_var.get())
         data = fetch_most_items_summary(start, end)
         clear_tree(summary_tree)
+        if not data["items"]:
+            summary_tree.insert(
+                "",
+                "end",
+                values=("No items sold for the selected period.", "", "", "", ""),
+                tags=("even",),
+            )
         for index, row in enumerate(data["items"]):
             item_name, qty, sales_count, total_sales, latest_ts = row
             summary_tree.insert(

@@ -9,6 +9,8 @@ CHB_STATE_ID = 1
 CEMENT_ITEM_NAME = "Cement"
 FINE_SAND_ITEM_NAME = "Fine Sand"
 RAW_MATERIAL_UNIT = "bag/sack"
+FINE_SAND_UNIT = "cubic meters"
+FINE_SAND_BAGS_PER_CUBIC_METER = 40
 
 # ================= INIT DB =================
 def init_db():
@@ -166,15 +168,23 @@ def fetch_material_stock(cursor, item_name):
         "SELECT COALESCE(SUM(quantity), 0) FROM items WHERE LOWER(name) = LOWER(?)",
         (item_name,)
     )
-    return int(cursor.fetchone()[0] or 0)
+    return float(cursor.fetchone()[0] or 0)
+
+
+def material_unit(item_name):
+    return FINE_SAND_UNIT if str(item_name).strip().lower() == FINE_SAND_ITEM_NAME.lower() else RAW_MATERIAL_UNIT
 
 
 def ensure_material_item(cursor, item_name):
     cursor.execute("SELECT id FROM items WHERE LOWER(name) = LOWER(?) ORDER BY id ASC LIMIT 1", (item_name,))
-    if not cursor.fetchone():
+    row = cursor.fetchone()
+    if row:
+        if str(item_name).strip().lower() == FINE_SAND_ITEM_NAME.lower():
+            cursor.execute("UPDATE items SET unit=? WHERE id=?", (FINE_SAND_UNIT, row[0]))
+    else:
         cursor.execute(
             "INSERT INTO items (name, quantity, price, raw_price, unit) VALUES (?, ?, ?, ?, ?)",
-            (item_name, 0, 0, 0, RAW_MATERIAL_UNIT)
+            (item_name, 0, 0, 0, material_unit(item_name))
         )
 
 
@@ -195,7 +205,7 @@ def adjust_material_inventory(cursor, item_name, quantity_delta):
                 SELECT id FROM items WHERE LOWER(name) = LOWER(?) ORDER BY id ASC LIMIT 1
             )
             """,
-            (quantity_delta, RAW_MATERIAL_UNIT, item_name)
+            (quantity_delta, material_unit(item_name), item_name)
         )
         return
 
@@ -211,7 +221,7 @@ def adjust_material_inventory(cursor, item_name, quantity_delta):
     for item_id, current_qty in cursor.fetchall():
         if needed <= 0:
             break
-        deduction = min(int(current_qty or 0), needed)
+        deduction = min(float(current_qty or 0), needed)
         if deduction:
             cursor.execute(
                 "UPDATE items SET quantity = COALESCE(quantity, 0) - ? WHERE id=?",

@@ -127,12 +127,12 @@ def draw_chb_stock(canvas, chb_state):
     bind_chart(canvas, draw)
 
 
-def draw_top_items(canvas, rows):
+def draw_top_items(canvas, rows, empty_text="No items sold yet"):
     def draw():
         canvas.delete("all")
         if not rows:
             canvas.configure(scrollregion=(0, 0, canvas.winfo_width(), canvas.winfo_height()))
-            draw_empty_chart(canvas)
+            draw_empty_chart(canvas, empty_text)
             return
         width = max(canvas.winfo_width(), 220)
         height = max(canvas.winfo_height(), (len(rows) * 30) + 18)
@@ -140,7 +140,7 @@ def draw_top_items(canvas, rows):
         max_qty = max(float(qty or 0) for _name, qty in rows)
         if max_qty <= 0:
             canvas.configure(scrollregion=(0, 0, width, height))
-            draw_empty_chart(canvas)
+            draw_empty_chart(canvas, empty_text)
             return
         y = 12
         label_w = 140

@@ -7,6 +7,7 @@ from .chb_database import (
     CHB_STATE_ID,
     CEMENT_ITEM_NAME,
     FINE_SAND_ITEM_NAME,
+    FINE_SAND_BAGS_PER_CUBIC_METER,
     ensure_chb_inventory,
     adjust_chb_inventory,
     adjust_material_inventory,
@@ -16,6 +17,15 @@ from .summary import open_date_calendar, open_period_summary
 
 SUCCESS_GREEN = "#16a34a"
 ERROR_RED = "#dc2626"
+
+
+def fine_sand_bags_to_cubic_meters(bags):
+    return float(bags or 0) / FINE_SAND_BAGS_PER_CUBIC_METER
+
+
+def format_stock_quantity(quantity):
+    quantity = float(quantity or 0)
+    return f"{quantity:,.3f}".rstrip("0").rstrip(".")
 
 
 def center_popup(window, width, height, parent=None):
@@ -210,7 +220,11 @@ def update_pay(event, cement_entry, pay_rate_var, result_label):
 
 
 def format_material_stock(cursor, item_name):
-    return f"Available: {fetch_material_stock(cursor, item_name):,}"
+    stock = fetch_material_stock(cursor, item_name)
+    if item_name == FINE_SAND_ITEM_NAME:
+        bags = stock * FINE_SAND_BAGS_PER_CUBIC_METER
+        return f"Available: {format_stock_quantity(stock)} cubic meters\nEquivalent Bags: {format_stock_quantity(bags)} bags"
+    return f"Available: {format_stock_quantity(stock)}"
 
 
 def refresh_material_dropdowns(cursor, cement_stock_var=None, sand_stock_var=None, cement_stock_combo=None, sand_stock_combo=None):
@@ -223,9 +237,15 @@ def refresh_material_dropdowns(cursor, cement_stock_var=None, sand_stock_var=Non
         sand_stock_var.set(sand_text)
 
     if cement_stock_combo is not None:
-        cement_stock_combo.config(values=[cement_text])
+        try:
+            cement_stock_combo.config(values=[cement_text])
+        except tk.TclError:
+            pass
     if sand_stock_combo is not None:
-        sand_stock_combo.config(values=[sand_text])
+        try:
+            sand_stock_combo.config(values=[sand_text])
+        except tk.TclError:
+            pass
 
 
 def validate_material_stock(cursor, cement_needed, sand_needed, selected_id=None, return_existing_materials=True):
@@ -243,17 +263,17 @@ def validate_material_stock(cursor, cement_needed, sand_needed, selected_id=None
         old_row = cursor.fetchone()
         if old_row and int(old_row[2] or 0):
             old_cement = int(old_row[0] or 0)
-            old_sand = int(old_row[1] or 0)
+            old_sand = float(old_row[1] or 0)
 
     cement_delta = int(cement_needed) - old_cement
-    sand_delta = int(sand_needed) - old_sand
+    sand_delta = fine_sand_bags_to_cubic_meters(float(sand_needed or 0) - old_sand)
     cement_available = fetch_material_stock(cursor, CEMENT_ITEM_NAME)
     sand_available = fetch_material_stock(cursor, FINE_SAND_ITEM_NAME)
 
     if cement_delta > cement_available:
         return False, f"Not enough cement. Available: {cement_available:,}, needed: {cement_delta:,}."
     if sand_delta > sand_available:
-        return False, f"Not enough fine sand. Available: {sand_available:,}, needed: {sand_delta:,}."
+        return False, "Not enough fine sand stock available."
     return True, ""
 
 
@@ -269,7 +289,7 @@ def get_production_inventory_values(cursor, production_id):
     row = cursor.fetchone()
     if not row:
         return 0, 0, 0, 0
-    return int(row[0] or 0), int(row[1] or 0), int(row[2] or 0), int(row[3] or 0)
+    return int(row[0] or 0), int(row[1] or 0), float(row[2] or 0), int(row[3] or 0)
 
 
 def ask_return_materials(win, action, cement, sand):
@@ -344,6 +364,9 @@ def save(conn, cursor, win, worker_entry, date_var, cement_entry, blocks_entry, 
     except:
         show_chb_error(win, "Error", "Invalid input.")
         return
+    if cement <= 0 or sand <= 0:
+        show_chb_error(win, "Error", "Enter a valid quantity.")
+        return
 
     worker = worker_entry.get()
     date = date_var.get()
@@ -370,7 +393,7 @@ def save(conn, cursor, win, worker_entry, date_var, cement_entry, blocks_entry, 
     """, (date, worker, cement, sand, blocks, pay, pay_rate, 1, ts))
 
     adjust_material_inventory(cursor, CEMENT_ITEM_NAME, -cement)
-    adjust_material_inventory(cursor, FINE_SAND_ITEM_NAME, -sand)
+    adjust_material_inventory(cursor, FINE_SAND_ITEM_NAME, -fine_sand_bags_to_cubic_meters(sand))
     conn.commit()
     adjust_chb_inventory(conn, cursor, produced_delta=blocks)
     notify_inventory_views()
@@ -395,6 +418,9 @@ def update(conn, cursor, win, selected_id, worker_entry, date_var, cement_entry,
         pay = cement * pay_rate
     except:
         show_chb_error(win, "Error", "Invalid input.")
+        return
+    if cement <= 0 or sand <= 0:
+        show_chb_error(win, "Error", "Enter a valid quantity.")
         return
 
     old_blocks, old_cement_value, old_sand_value, old_applied = get_production_inventory_values(cursor, selected_id.get())
@@ -422,7 +448,7 @@ def update(conn, cursor, win, selected_id, worker_entry, date_var, cement_entry,
     ))
 
     adjust_material_inventory(cursor, CEMENT_ITEM_NAME, old_cement - cement)
-    adjust_material_inventory(cursor, FINE_SAND_ITEM_NAME, old_sand - sand)
+    adjust_material_inventory(cursor, FINE_SAND_ITEM_NAME, fine_sand_bags_to_cubic_meters(old_sand - sand))
     conn.commit()
     adjust_chb_inventory(conn, cursor, produced_delta=(blocks - old_blocks))
     notify_inventory_views()
@@ -458,7 +484,7 @@ def delete(conn, cursor, win, selected_id, worker_entry, load_data, update_total
     cursor.execute("DELETE FROM chb_production WHERE id=?", (selected_id.get(),))
     if return_materials:
         adjust_material_inventory(cursor, CEMENT_ITEM_NAME, old_cement)
-        adjust_material_inventory(cursor, FINE_SAND_ITEM_NAME, old_sand)
+        adjust_material_inventory(cursor, FINE_SAND_ITEM_NAME, fine_sand_bags_to_cubic_meters(old_sand))
     conn.commit()
     adjust_chb_inventory(conn, cursor, produced_delta=-old_blocks)
     notify_inventory_views()

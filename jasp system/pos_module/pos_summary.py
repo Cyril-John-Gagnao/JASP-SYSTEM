@@ -4,6 +4,7 @@ import tkinter as tk
 from datetime import datetime
 from tkinter import messagebox
 from tkinter import ttk
+from tkinter import font as tkfont
 
 from jasp_theme import DASHBOARD_CONTENT_BG
 from main_dashboard.main_functions import (
@@ -96,14 +97,14 @@ def open_pos_summary(parent):
     totals_var = tk.StringVar()
 
     headings = [
-        ("txn", "Receipt ID", 95, "w"),
-        ("date", "Date & Time", 170, "w"),
-        ("items", "Item(s)", 230, "w"),
-        ("qty", "Qty", 75, "e"),
-        ("total", "Total", 110, "e"),
-        ("cashier", "Cashier", 110, "w"),
-        ("status", "Status", 90, "center"),
-        ("location", "Receipt Location", 320, "w"),
+        ("txn", "Receipt ID", 95, 150, "w"),
+        ("date", "Date & Time", 170, 240, "w"),
+        ("items", "Item(s)", 230, 380, "w"),
+        ("qty", "Qty", 75, 120, "e"),
+        ("total", "Total", 110, 160, "e"),
+        ("cashier", "Cashier", 110, 180, "w"),
+        ("status", "Status", 90, 130, "center"),
+        ("location", "Receipt Location", 320, 520, "w"),
     ]
 
     def title_text():
@@ -117,6 +118,20 @@ def open_pos_summary(parent):
     def clear_tree():
         for item in summary_tree.get_children():
             summary_tree.delete(item)
+
+    def auto_adjust_columns():
+        body_font = tkfont.Font(font=("Arial", 15))
+        heading_font = tkfont.Font(font=("Arial", 14, "bold"))
+        tree_columns = list(summary_tree["columns"])
+        for col, heading, min_width, max_width, anchor in headings:
+            col_index = tree_columns.index(col)
+            width = max(min_width, heading_font.measure(heading) + 28)
+            for item in summary_tree.get_children():
+                values = summary_tree.item(item, "values")
+                if col_index < len(values):
+                    width = max(width, body_font.measure(str(values[col_index])) + 34)
+            width = min(width, max_width)
+            summary_tree.column(col, width=width, minwidth=min_width, anchor=anchor, stretch=False)
 
     def open_receipt_location(path):
         if not path or path == "Not downloaded":
@@ -148,6 +163,13 @@ def open_pos_summary(parent):
         paid_total = 0
         paid_count = 0
         void_count = 0
+        if not rows:
+            summary_tree.insert(
+                "",
+                "end",
+                values=("", "", "No POS transactions for the selected period.", "", "", "", "", ""),
+                tags=("even",),
+            )
         for index, row in enumerate(rows):
             txn_ref, ts, items, item_count, qty, total, cashier, status, receipt_path = row
             status = status or "Paid"
@@ -176,6 +198,7 @@ def open_pos_summary(parent):
         totals_var.set(
             f"Receipts: {len(rows):,}   |   Paid: {paid_count:,}   |   Void: {void_count:,}   |   Paid Sales: {money(paid_total)}"
         )
+        auto_adjust_columns()
 
     controls = tk.Frame(summary_win, bg=SUMMARY_BG)
     controls.pack(fill="x", padx=16, pady=(14, 8))
@@ -238,9 +261,9 @@ def open_pos_summary(parent):
     hsb.grid(row=1, column=0, sticky="ew")
     table_frame.grid_rowconfigure(0, weight=1)
     table_frame.grid_columnconfigure(0, weight=1)
-    for col, heading, width, anchor in headings:
+    for col, heading, width, _max_width, anchor in headings:
         summary_tree.heading(col, text=heading)
-        summary_tree.column(col, width=width, minwidth=width, anchor=anchor, stretch=True)
+        summary_tree.column(col, width=width, minwidth=width, anchor=anchor, stretch=False)
     summary_tree.tag_configure("even", background="#e0f2fe", foreground=TEXT_PRIMARY)
     summary_tree.tag_configure("odd", background="#ffffff", foreground=TEXT_PRIMARY)
     summary_tree.bind("<ButtonRelease-1>", on_tree_click)

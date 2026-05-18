@@ -220,32 +220,6 @@ def open_pos():
     right_frame.pack(fill="both", expand=True)
     tk.Label(right_frame, text="Items In Inventory", font=("Arial", 18, "bold"), bg="white").pack(pady=5)
 
-    inventory_table_frame = tk.Frame(right_frame, bg="white")
-    inventory_table_frame.pack(fill="x", pady=(0, 8))
-    inventory_table_frame.grid_columnconfigure(0, weight=1)
-    inventory_table_frame.grid_rowconfigure(0, weight=1)
-
-    global inv_tree
-    inv_tree = ttk.Treeview(
-        inventory_table_frame,
-        columns=("ID","Name","Unit","Quantity","Price","Add"),
-        show="headings",
-        style="Pos.Treeview",
-        height=10,
-    )
-    ctx["inv_tree"] = inv_tree
-    inv_y_scroll = ttk.Scrollbar(inventory_table_frame, orient="vertical", command=inv_tree.yview)
-    inv_x_scroll = ttk.Scrollbar(inventory_table_frame, orient="horizontal", command=inv_tree.xview)
-    inv_y_scroll.configure(command=lambda *args: (inv_tree.yview(*args), pos_functions.schedule_inventory_buttons(ctx)))
-    inv_x_scroll.configure(command=lambda *args: (inv_tree.xview(*args), pos_functions.schedule_inventory_buttons(ctx)))
-    inv_tree.configure(
-        yscrollcommand=lambda *args: (inv_y_scroll.set(*args), pos_functions.schedule_inventory_buttons(ctx)),
-        xscrollcommand=lambda *args: (inv_x_scroll.set(*args), pos_functions.schedule_inventory_buttons(ctx)),
-    )
-    inv_tree.grid(row=0, column=0, sticky="nsew")
-    inv_y_scroll.grid(row=0, column=1, sticky="ns")
-    inv_x_scroll.grid(row=1, column=0, sticky="ew")
-    tk.Frame(inventory_table_frame, bg="white", width=16, height=16).grid(row=1, column=1, sticky="nsew")
     inventory_columns = {
         "ID": (60, 55, 0.7),
         "Name": (205, 150, 2.4),
@@ -255,41 +229,76 @@ def open_pos():
         "Add": (110, 100, 1.2),
     }
     ctx["inventory_column_specs"] = inventory_columns
-    for col, (width, minwidth, _weight) in inventory_columns.items():
-        heading_text = "Selling Price" if col == "Price" else col
-        heading_text = "Add to Cart" if col == "Add" else heading_text
-        heading_text = "Quantity Available" if col == "Quantity" else heading_text
-        inv_tree.heading(col, text=heading_text)
-        inv_tree.column(col, width=width, minwidth=minwidth, anchor="center", stretch=False)
-    inv_tree.tag_configure("oddrow", background="#ffffff", foreground="#000000")
-    inv_tree.tag_configure("evenrow", background="#bfdbfe", foreground="#000000")
-    inv_tree.tag_configure("emptyrow", background="#f8fafc", foreground="#64748b")
-    inv_tree.bind("<Configure>", lambda event: (
-        pos_functions.auto_fit_tree_columns(inv_tree, inventory_columns),
-        pos_functions.schedule_inventory_buttons(ctx),
-    ))
-    inv_tree.bind("<MouseWheel>", lambda event: pos_functions.schedule_inventory_buttons(ctx))
-    inv_tree.bind("<B1-Motion>", lambda event: pos_functions.schedule_inventory_buttons(ctx))
-    inv_tree.bind("<ButtonRelease-1>", lambda event: pos_functions.schedule_inventory_buttons(ctx))
+
+    def create_inventory_section(parent, title, height):
+        section = tk.Frame(parent, bg="white")
+        section.pack(fill="x", pady=(0, 10))
+        tk.Label(section, text=title, font=("Arial", 15, "bold"), bg="white", fg="#1e40af").pack(anchor="w", pady=(0, 4))
+        table_frame = tk.Frame(section, bg="white")
+        table_frame.pack(fill="x")
+        table_frame.grid_columnconfigure(0, weight=1)
+        table_frame.grid_rowconfigure(0, weight=1)
+        tree = ttk.Treeview(
+            table_frame,
+            columns=("ID","Name","Unit","Quantity","Price","Add"),
+            show="headings",
+            style="Pos.Treeview",
+            height=height,
+        )
+        y_scroll = ttk.Scrollbar(table_frame, orient="vertical", command=tree.yview)
+        x_scroll = ttk.Scrollbar(table_frame, orient="horizontal", command=tree.xview)
+        y_scroll.configure(command=lambda *args: (tree.yview(*args), pos_functions.schedule_inventory_buttons(ctx)))
+        x_scroll.configure(command=lambda *args: (tree.xview(*args), pos_functions.schedule_inventory_buttons(ctx)))
+        tree.configure(
+            yscrollcommand=lambda *args: (y_scroll.set(*args), pos_functions.schedule_inventory_buttons(ctx)),
+            xscrollcommand=lambda *args: (x_scroll.set(*args), pos_functions.schedule_inventory_buttons(ctx)),
+        )
+        tree.grid(row=0, column=0, sticky="nsew")
+        y_scroll.grid(row=0, column=1, sticky="ns")
+        x_scroll.grid(row=1, column=0, sticky="ew")
+        tk.Frame(table_frame, bg="white", width=16, height=16).grid(row=1, column=1, sticky="nsew")
+        for col, (width, minwidth, _weight) in inventory_columns.items():
+            heading_text = "Selling Price" if col == "Price" else col
+            heading_text = "Add to Cart" if col == "Add" else heading_text
+            heading_text = "Quantity Available" if col == "Quantity" else heading_text
+            tree.heading(col, text=heading_text)
+            tree.column(col, width=width, minwidth=minwidth, anchor="center", stretch=False)
+        tree.tag_configure("oddrow", background="#ffffff", foreground="#000000")
+        tree.tag_configure("evenrow", background="#bfdbfe", foreground="#000000")
+        tree.tag_configure("emptyrow", background="#f8fafc", foreground="#64748b")
+        tree.bind("<Configure>", lambda event, tree_widget=tree: (
+            pos_functions.auto_fit_tree_columns(tree_widget, inventory_columns),
+            pos_functions.schedule_inventory_buttons(ctx),
+        ))
+        tree.bind("<MouseWheel>", lambda event: pos_functions.schedule_inventory_buttons(ctx))
+        tree.bind("<B1-Motion>", lambda event: pos_functions.schedule_inventory_buttons(ctx))
+        tree.bind("<ButtonRelease-1>", lambda event: pos_functions.schedule_inventory_buttons(ctx))
+        tree.bind("<Double-1>", lambda event, tree_widget=tree: pos_functions.open_add_to_cart_modal(ctx, event, tree_widget=tree_widget))
+        return tree
+
+    global chb_inv_tree, inv_tree
+    chb_inv_tree = create_inventory_section(right_frame, "CHB Items", 3)
+    inv_tree = create_inventory_section(right_frame, "Other Items", 5)
+    ctx["chb_inv_tree"] = chb_inv_tree
+    ctx["inv_tree"] = inv_tree
     root.after_idle(lambda: (
+        pos_functions.auto_fit_tree_columns(chb_inv_tree, inventory_columns),
         pos_functions.auto_fit_tree_columns(inv_tree, inventory_columns),
         pos_functions.schedule_inventory_buttons(ctx),
     ))
     root.after(250, lambda: (
+        pos_functions.auto_fit_tree_columns(chb_inv_tree, inventory_columns),
         pos_functions.auto_fit_tree_columns(inv_tree, inventory_columns),
         pos_functions.schedule_inventory_buttons(ctx),
     ))
 
-    tk.Frame(right_frame, bg="white").pack(fill="both", expand=True)
-
     checkout_button_frame = tk.Frame(right_frame, bg="white")
-    checkout_button_frame.pack(pady=(24, 10))
+    checkout_button_frame.pack(side="bottom", pady=(12, 10))
     tk.Button(checkout_button_frame, text="Clear Cart", bg="#dc3545", fg="white", width=25, font=("Arial", 14, "bold"),
               command=lambda: pos_functions.clear_cart(ctx), padx=15, pady=10, **BUTTON_BORDER).pack(side="left", padx=5)
     tk.Button(checkout_button_frame, text="Pay / Checkout", bg="#ffc107", fg="black", width=25, font=("Arial", 14, "bold"),
               command=lambda: pos_functions.open_payment_modal(ctx), padx=15, pady=10, **BUTTON_BORDER).pack(side="left", padx=5)
 
-    inv_tree.bind("<Double-1>", lambda event: pos_functions.open_add_to_cart_modal(ctx, event))
     cart_tree.bind("<Double-1>", lambda event: pos_functions.open_cart_item_modal(ctx, event))
 
     pos_functions.load_inventory(ctx)

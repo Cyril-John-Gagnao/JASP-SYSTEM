@@ -6,7 +6,7 @@ DB_NAME = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "jasp
 
 
 def init_delivery_db():
-    """Initialize delivery table in database"""
+    """Initialize delivery tables in database"""
     conn = sqlite3.connect(DB_NAME)
     cursor = conn.cursor()
 
@@ -62,6 +62,53 @@ def init_delivery_db():
 
         conn.commit()
 
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS other_items_delivery (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            transaction_date TEXT,
+            delivery_date TEXT,
+            item_name TEXT,
+            quantity INTEGER,
+            unit_of_measurement TEXT,
+            delivery_address TEXT,
+            delivery_driver TEXT,
+            helper TEXT,
+            delivery_fee REAL DEFAULT 0,
+            delivery_datetime TEXT,
+            ts TEXT
+        )
+    """)
+
+    cursor.execute("PRAGMA table_info(other_items_delivery)")
+    other_columns = {row[1] for row in cursor.fetchall()}
+    if "transaction_date" not in other_columns:
+        cursor.execute("ALTER TABLE other_items_delivery ADD COLUMN transaction_date TEXT")
+    if "delivery_date" not in other_columns:
+        cursor.execute("ALTER TABLE other_items_delivery ADD COLUMN delivery_date TEXT")
+    if "item_name" not in other_columns:
+        cursor.execute("ALTER TABLE other_items_delivery ADD COLUMN item_name TEXT")
+    if "quantity" not in other_columns:
+        cursor.execute("ALTER TABLE other_items_delivery ADD COLUMN quantity INTEGER")
+    if "unit_of_measurement" not in other_columns:
+        cursor.execute("ALTER TABLE other_items_delivery ADD COLUMN unit_of_measurement TEXT")
+    if "delivery_address" not in other_columns:
+        cursor.execute("ALTER TABLE other_items_delivery ADD COLUMN delivery_address TEXT")
+    if "delivery_driver" not in other_columns:
+        cursor.execute("ALTER TABLE other_items_delivery ADD COLUMN delivery_driver TEXT")
+    if "helper" not in other_columns:
+        cursor.execute("ALTER TABLE other_items_delivery ADD COLUMN helper TEXT")
+    if "delivery_fee" not in other_columns:
+        cursor.execute("ALTER TABLE other_items_delivery ADD COLUMN delivery_fee REAL DEFAULT 0")
+    if "delivery_datetime" not in other_columns:
+        cursor.execute("ALTER TABLE other_items_delivery ADD COLUMN delivery_datetime TEXT")
+    if "ts" not in other_columns:
+        cursor.execute("ALTER TABLE other_items_delivery ADD COLUMN ts TEXT")
+
+    cursor.execute("UPDATE other_items_delivery SET transaction_date = COALESCE(transaction_date, delivery_datetime, '')")
+    cursor.execute("UPDATE other_items_delivery SET delivery_date = COALESCE(delivery_date, delivery_datetime, transaction_date, '')")
+    cursor.execute("UPDATE other_items_delivery SET delivery_fee = COALESCE(delivery_fee, 0)")
+
+    conn.commit()
     conn.close()
 
 
@@ -80,6 +127,30 @@ def insert_delivery(conn, cursor, transaction_date, date, worker, driver_name, a
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     """, (transaction_date, date, worker, driver_name, address, blocks, delivery_fee, payment_per, total, ts))
 
+    conn.commit()
+
+
+def insert_other_item_delivery(conn, cursor, transaction_date, delivery_date, item_name, quantity, unit_of_measurement, delivery_address, delivery_driver, helper, delivery_fee):
+    ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    cursor.execute("""
+        INSERT INTO other_items_delivery
+        (transaction_date, delivery_date, item_name, quantity, unit_of_measurement, delivery_address, delivery_driver, helper, delivery_fee, delivery_datetime, ts)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    """, (transaction_date, delivery_date, item_name, quantity, unit_of_measurement, delivery_address, delivery_driver, helper, delivery_fee, delivery_date, ts))
+    conn.commit()
+
+
+def update_other_item_delivery_record(conn, cursor, selected_id, transaction_date, delivery_date, item_name, quantity, unit_of_measurement, delivery_address, delivery_driver, helper, delivery_fee):
+    cursor.execute("""
+        UPDATE other_items_delivery
+        SET transaction_date=?, delivery_date=?, item_name=?, quantity=?, unit_of_measurement=?, delivery_address=?, delivery_driver=?, helper=?, delivery_fee=?, delivery_datetime=?
+        WHERE id=?
+    """, (transaction_date, delivery_date, item_name, quantity, unit_of_measurement, delivery_address, delivery_driver, helper, delivery_fee, delivery_date, selected_id))
+    conn.commit()
+
+
+def delete_other_item_delivery_record(conn, cursor, selected_id):
+    cursor.execute("DELETE FROM other_items_delivery WHERE id=?", (selected_id,))
     conn.commit()
 
 
@@ -142,6 +213,44 @@ def fetch_delivery_rows(cursor, keyword, sort_option, delivery_date=None):
     return cursor.fetchall()
 
 
+def fetch_other_item_delivery_rows(cursor, keyword, sort_option, delivery_date=None):
+    query = """
+        SELECT id,
+               COALESCE(transaction_date, delivery_datetime, ''),
+               COALESCE(delivery_date, delivery_datetime, transaction_date, ''),
+               COALESCE(item_name, ''),
+               COALESCE(quantity, 0),
+               COALESCE(unit_of_measurement, ''),
+               COALESCE(delivery_address, ''),
+               COALESCE(delivery_driver, ''),
+               COALESCE(helper, ''),
+               COALESCE(delivery_fee, 0)
+        FROM other_items_delivery
+    """
+
+    params = []
+    where_clauses = []
+
+    if delivery_date:
+        where_clauses.append("DATE(COALESCE(NULLIF(delivery_date, ''), transaction_date, delivery_datetime, ts)) = ?")
+        params.append(delivery_date)
+
+    if keyword:
+        where_clauses.append("(LOWER(item_name) LIKE ? OR LOWER(delivery_address) LIKE ? OR LOWER(delivery_driver) LIKE ? OR LOWER(helper) LIKE ? OR delivery_date LIKE ? OR transaction_date LIKE ?)")
+        params.extend([f"%{keyword}%", f"%{keyword}%", f"%{keyword}%", f"%{keyword}%", f"%{keyword}%", f"%{keyword}%"])
+
+    if where_clauses:
+        query += " WHERE " + " AND ".join(where_clauses)
+
+    if sort_option == "Worker Name":
+        query += " ORDER BY item_name ASC"
+    else:
+        query += " ORDER BY DATE(COALESCE(NULLIF(delivery_date, ''), transaction_date, delivery_datetime, ts)) DESC, ts DESC"
+
+    cursor.execute(query, params)
+    return cursor.fetchall()
+
+
 def fetch_delivery_summary(cursor, start=None, end=None):
     q = """
         SELECT COALESCE(transaction_date, delivery_date, '') AS transaction_date,
@@ -161,6 +270,30 @@ def fetch_delivery_summary(cursor, start=None, end=None):
     q += """
         GROUP BY COALESCE(transaction_date, delivery_date, ''), delivery_date, worker_name, driver_name, address
         ORDER BY DATE(COALESCE(NULLIF(delivery_date, ''), transaction_date, ts)) DESC, delivery_date DESC, worker_name ASC
+    """
+    cursor.execute(q, params)
+    return cursor.fetchall()
+
+
+def fetch_other_item_delivery_summary(cursor, start=None, end=None):
+    q = """
+        SELECT COALESCE(transaction_date, delivery_datetime, '') AS transaction_date,
+               COALESCE(delivery_date, delivery_datetime, transaction_date, '') AS delivery_date,
+               COALESCE(item_name, '') AS item_name,
+               COALESCE(quantity, 0) AS quantity,
+               COALESCE(unit_of_measurement, '') AS unit_of_measurement,
+               COALESCE(delivery_address, '') AS delivery_address,
+               COALESCE(delivery_driver, '') AS delivery_driver,
+               COALESCE(helper, '') AS helper,
+               COALESCE(delivery_fee, 0) AS delivery_fee
+        FROM other_items_delivery
+    """
+    params = []
+    if start and end:
+        q += " WHERE DATE(COALESCE(NULLIF(delivery_date, ''), transaction_date, delivery_datetime, ts)) BETWEEN ? AND ?"
+        params = [start.strftime("%Y-%m-%d"), end.strftime("%Y-%m-%d")]
+    q += """
+        ORDER BY DATE(COALESCE(NULLIF(delivery_date, ''), transaction_date, delivery_datetime, ts)) DESC, item_name ASC
     """
     cursor.execute(q, params)
     return cursor.fetchall()

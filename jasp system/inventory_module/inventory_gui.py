@@ -129,7 +129,7 @@ def open_inventory(parent=None):
         relief="solid",
         padx=16,
         pady=7,
-        command=lambda: open_inventory_summary(inventory_window)
+        command=lambda: open_inventory_summary(inventory_window, left_frame)
     ).pack(side="left")
 
     stock_counts_frame = tk.Frame(left_frame, bg=DASHBOARD_CONTENT_BG)
@@ -177,7 +177,6 @@ def open_inventory(parent=None):
     content_frame.pack(fill="both", expand=True, pady=10)
 
     table_area = tk.Frame(content_frame, bg=DASHBOARD_CONTENT_BG)
-    table_area.pack(side="left", fill="both", expand=True, padx=(0, 10))
 
     chb_section = tk.Frame(
         table_area,
@@ -234,6 +233,7 @@ def open_inventory(parent=None):
         highlightthickness=0
     )
     right_frame.pack(side="right", fill="y", padx=(10, 0))
+    table_area.pack(side="left", fill="both", expand=True, padx=(0, 10))
 
     columns = ("ID", "Name", "Unit", "Quantity", "Price", "Raw Price", "Status", "Restock")
     column_headings = {
@@ -340,6 +340,7 @@ def open_inventory(parent=None):
         clear_status_labels()
         target_tree.update_idletasks()
         heading_font = tkfont.Font(font=style.lookup("Inventory.Treeview.Heading", "font"))
+        body_font = tkfont.Font(font=style.lookup("Inventory.Treeview", "font"))
         extra_padding = {
             "ID": 46,
             "Name": 70,
@@ -350,10 +351,29 @@ def open_inventory(parent=None):
             "Status": 54,
             "Restock": 42,
         }
+        max_widths = {
+            "ID": 90,
+            "Name": 240,
+            "Unit": 190,
+            "Quantity": 330,
+            "Price": 330,
+            "Raw Price": 170,
+            "Status": 140,
+            "Restock": 130,
+        }
 
+        tree_columns = list(target_tree["columns"])
         for col in columns:
             heading_text = column_headings[col]
             width = heading_font.measure(heading_text) + extra_padding[col]
+            col_index = tree_columns.index(col)
+            for item in target_tree.get_children():
+                values = target_tree.item(item, "values")
+                if col_index >= len(values):
+                    continue
+                value_width = body_font.measure(str(values[col_index])) + extra_padding[col]
+                width = max(width, value_width)
+            width = min(width, max_widths[col])
             target_tree.column(col, width=width, minwidth=width, stretch=False)
 
     def clear_status_labels():
@@ -397,7 +417,7 @@ def open_inventory(parent=None):
         placeholders = ", ".join("?" for _ in CHB_SECTION_ITEMS)
         cursor.execute(
             f"""
-            SELECT id, name, unit, quantity, price, raw_price, COALESCE(status, 'Active')
+            SELECT id, name, unit, quantity, price, raw_price, COALESCE(status, 'Active'), COALESCE(fine_sand_bag_price, 0)
             FROM items
             WHERE LOWER(name) IN ({placeholders})
             ORDER BY CASE LOWER(name)
@@ -410,8 +430,9 @@ def open_inventory(parent=None):
             tuple(item_name.lower() for item_name in CHB_SECTION_ITEMS)
         )
         for index, row in enumerate(cursor.fetchall()):
-            tag = inventory_functions.inventory_row_tag(index, row)
-            chb_tree.insert("", tk.END, values=row + ("",), tags=(tag,))
+            display_row = inventory_functions.display_inventory_row(row)
+            tag = inventory_functions.inventory_row_tag(index, display_row)
+            chb_tree.insert("", tk.END, values=display_row + ("",), tags=(tag,))
         auto_adjust_columns(chb_tree)
 
     def remove_chb_items_from_main_table():

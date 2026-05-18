@@ -6,6 +6,8 @@ from datetime import datetime
 DB_NAME = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "jasp.db")
 CHB_ITEM_NAME = "CHB Blocks"
 CHB_STATE_ID = 1
+FINE_SAND_ITEM_NAME = "Fine Sand"
+FINE_SAND_UNIT = "cubic meters"
 
 
 def open_pos_connection():
@@ -78,6 +80,10 @@ def initialize_pos_database():
     if "status" not in item_cols:
         cursor.execute("ALTER TABLE items ADD COLUMN status TEXT DEFAULT 'Active'")
         cursor.execute("UPDATE items SET status='Active' WHERE status IS NULL OR status=''")
+    if "fine_sand_bag_price" not in item_cols:
+        cursor.execute("ALTER TABLE items ADD COLUMN fine_sand_bag_price REAL DEFAULT 0")
+
+    cursor.execute("UPDATE items SET unit=? WHERE LOWER(name)=LOWER(?)", (FINE_SAND_UNIT, FINE_SAND_ITEM_NAME))
 
     cursor.execute("SELECT id FROM chb_inventory_state WHERE id=?", (CHB_STATE_ID,))
     if not cursor.fetchone():

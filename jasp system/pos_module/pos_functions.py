@@ -21,6 +21,81 @@ CANCEL_RED = "#dc2626"
 PRIMARY_BLUE = "#2563eb"
 WARNING_ORANGE = "#f59e0b"
 PANEL_BG = "#ffffff"
+CHB_SECTION_ITEMS = ("Cement", "Fine Sand", CHB_ITEM_NAME)
+CHB_SECTION_ORDER = {name.lower(): index for index, name in enumerate(CHB_SECTION_ITEMS)}
+FINE_SAND_ITEM_NAME = "Fine Sand"
+FINE_SAND_BAGS_PER_CUBIC_METER = 40
+FINE_SAND_BASE_UNIT = "cubic meters"
+FINE_SAND_TRANSACTION_UNITS = (FINE_SAND_BASE_UNIT, "bag")
+
+
+def is_fine_sand(item_name):
+    return str(item_name or "").strip().lower() == FINE_SAND_ITEM_NAME.lower()
+
+
+def is_bag_unit(unit):
+    unit_text = str(unit or "").strip().lower()
+    return unit_text in {"bag", "bags", "bag/sack", "sack", "sacks"}
+
+
+def fine_sand_cubic_deduction(qty, unit):
+    qty = float(qty or 0)
+    return qty / FINE_SAND_BAGS_PER_CUBIC_METER if is_bag_unit(unit) else qty
+
+
+def parse_sale_quantity(qty_text, item_name, unit):
+    qty_text = str(qty_text or "").strip()
+    if is_fine_sand(item_name) and not is_bag_unit(unit):
+        return float(qty_text)
+    return int(qty_text)
+
+
+def format_pos_quantity(quantity):
+    try:
+        value = float(quantity or 0)
+    except (TypeError, ValueError):
+        return str(quantity)
+    return f"{value:,.3f}".rstrip("0").rstrip(".")
+
+
+def format_fine_sand_stock(quantity):
+    cubic_stock = float(quantity or 0)
+    equivalent_bags = cubic_stock * FINE_SAND_BAGS_PER_CUBIC_METER
+    return f"{format_pos_quantity(cubic_stock)} cubic meters ({format_pos_quantity(equivalent_bags)} bags)"
+
+
+def format_money_value(value):
+    return f"{float(value or 0):.2f}"
+
+
+def format_fine_sand_prices(cubic_price, bag_price):
+    return f"Cubic: {format_money_value(cubic_price)} | Bag: {format_money_value(bag_price)}"
+
+
+def fetch_fine_sand_prices(cursor, item_id):
+    cursor.execute("SELECT COALESCE(price, 0), COALESCE(fine_sand_bag_price, 0) FROM items WHERE id=?", (item_id,))
+    row = cursor.fetchone() or (0, 0)
+    return float(row[0] or 0), float(row[1] or 0)
+
+
+def fine_sand_price_for_unit(cursor, item_id, unit):
+    cubic_price, bag_price = fetch_fine_sand_prices(cursor, item_id)
+    return bag_price if is_bag_unit(unit) else cubic_price
+
+
+def parse_stock_quantity(quantity):
+    return float(str(quantity).split(" ", 1)[0].replace(",", ""))
+
+
+def display_inventory_row(row):
+    values = list(row)
+    if len(values) > 3 and is_fine_sand(values[1]):
+        values[2] = FINE_SAND_BASE_UNIT
+        values[3] = format_fine_sand_stock(values[3])
+        bag_price = values[5] if len(values) > 5 else 0
+        values[4] = format_fine_sand_prices(values[4], bag_price)
+        values = values[:5]
+    return tuple(values)
 
 
 def center_window(window, width=None, height=None, parent=None):
@@ -169,11 +244,21 @@ def fit_tree_columns_to_width(tree, column_weights, padding=26):
 
 def auto_fit_tree_columns(tree, column_specs, padding=26, sample_limit=80):
     tree.update_idletasks()
-    min_total = sum(min_width for _base_width, min_width, _weight in column_specs.values())
-    available_width = max(tree.winfo_width() - padding, min_total)
     body_font = tkfont.Font(font=("Arial", 15))
     heading_font = tkfont.Font(font=("Arial", 15, "bold"))
-    measured_widths = {}
+    max_widths = {
+        "ID": 90,
+        "Name": 220,
+        "Unit": 150,
+        "Quantity": 330,
+        "Price": 340,
+        "Add": 120,
+        "Qty": 120,
+        "Selling Price": 190,
+        "Total": 170,
+        "Edit": 120,
+        "Item": 320,
+    }
 
     for column, (base_width, min_width, _weight) in column_specs.items():
         heading_text = tree.heading(column, "text") or column
@@ -185,41 +270,8 @@ def auto_fit_tree_columns(tree, column_specs, padding=26, sample_limit=80):
             except (ValueError, IndexError):
                 value = ""
             measured = max(measured, body_font.measure(str(value)) + 34)
-        measured_widths[column] = max(min_width, min(measured, max(base_width * 2, min_width)))
-
-    total_measured = sum(measured_widths.values())
-    if total_measured < available_width:
-        extra_width = available_width - total_measured
-        total_weight = sum(weight for _width, _minwidth, weight in column_specs.values()) or 1
-        for column, (_base_width, min_width, weight) in column_specs.items():
-            measured_widths[column] = max(
-                min_width,
-                measured_widths[column] + int(extra_width * (weight / total_weight)),
-            )
-    elif total_measured > available_width and total_measured > min_total:
-        overflow = total_measured - available_width
-        shrinkable_total = sum(
-            max(measured_widths[column] - min_width, 0)
-            for column, (_base_width, min_width, _weight) in column_specs.items()
-        ) or 1
-        for column, (_base_width, min_width, _weight) in column_specs.items():
-            shrinkable = max(measured_widths[column] - min_width, 0)
-            measured_widths[column] = max(
-                min_width,
-                measured_widths[column] - int(overflow * (shrinkable / shrinkable_total)),
-            )
-
-    width_delta = available_width - sum(measured_widths.values())
-    if width_delta:
-        flexible_columns = [
-            column for column, (_base_width, min_width, _weight) in column_specs.items()
-            if width_delta > 0 or measured_widths[column] > min_width
-        ]
-        if flexible_columns:
-            measured_widths[flexible_columns[-1]] += width_delta
-
-    for column, width in measured_widths.items():
-        tree.column(column, width=width, minwidth=column_specs[column][1], stretch=False)
+        width = min(max(measured, base_width, min_width), max_widths.get(column, max(base_width * 3, min_width)))
+        tree.column(column, width=width, minwidth=min_width, stretch=False)
 
 
 def refresh_inventory_names(ctx):
@@ -236,26 +288,63 @@ def update_search_suggestions(ctx):
 
 def load_inventory(ctx, search_query=""):
     inv_tree = ctx["inv_tree"]
+    chb_inv_tree = ctx.get("chb_inv_tree")
+    inventory_trees = [tree for tree in (chb_inv_tree, inv_tree) if tree and tree.winfo_exists()]
     cursor = ctx["cursor"]
     sort_var = ctx["sort_var"]
     clear_inventory_buttons(ctx)
-    for row in inv_tree.get_children():
-        inv_tree.delete(row)
+    for tree in inventory_trees:
+        for row in tree.get_children():
+            tree.delete(row)
 
-    query = "SELECT id, name, unit, quantity, price FROM items WHERE COALESCE(status, 'Active') = 'Active'"
+    chb_query = """
+        SELECT id, name, unit, quantity, price, COALESCE(fine_sand_bag_price, 0)
+        FROM items
+        WHERE COALESCE(status, 'Active') = 'Active'
+          AND LOWER(name) IN ('cement', 'fine sand', 'chb blocks')
+        ORDER BY
+            CASE LOWER(name)
+                WHEN 'cement' THEN 0
+                WHEN 'fine sand' THEN 1
+                WHEN 'chb blocks' THEN 2
+                ELSE 3
+            END
+    """
+    cursor.execute(chb_query)
+    chb_rows = cursor.fetchall()
+
+    query = """
+        SELECT id, name, unit, quantity, price, COALESCE(fine_sand_bag_price, 0)
+        FROM items
+        WHERE COALESCE(status, 'Active') = 'Active'
+          AND LOWER(name) NOT IN ('cement', 'fine sand', 'chb blocks')
+    """
     params = []
     if search_query:
         query += " AND name LIKE ?"
         params.append("%" + search_query + "%")
 
     if sort_var.get() == "Name":
-        query += " ORDER BY LOWER(name) ASC"
+        query += """
+            ORDER BY
+                CASE WHEN LOWER(name) IN ('cement', 'fine sand', 'chb blocks') THEN 0 ELSE 1 END,
+                CASE LOWER(name)
+                    WHEN 'cement' THEN 0
+                    WHEN 'fine sand' THEN 1
+                    WHEN 'chb blocks' THEN 2
+                    ELSE 3
+                END,
+                LOWER(name) ASC
+        """
     else:
-        query += " ORDER BY id DESC"
+        query += """
+            ORDER BY
+                id DESC
+        """
 
     cursor.execute(query, params)
-    rows = cursor.fetchall()
-    if not rows:
+    other_rows = cursor.fetchall()
+    if not chb_rows and not other_rows:
         empty_message = "No items found"
         if search_query:
             cursor.execute(
@@ -272,20 +361,37 @@ def load_inventory(ctx, search_query=""):
                 empty_message = "Matching item is currently unavailable"
             elif inactive_count > 1:
                 empty_message = "Matching items are currently unavailable"
+        if chb_inv_tree and chb_inv_tree.winfo_exists():
+            chb_inv_tree.insert("", tk.END, values=("", "No CHB items found", "", "", "", ""), tags=("emptyrow",))
         inv_tree.insert("", tk.END, values=("", empty_message, "", "", "", ""), tags=("emptyrow",))
         refresh_inventory_names(ctx)
         if ctx.get("inventory_column_specs"):
-            auto_fit_tree_columns(inv_tree, ctx["inventory_column_specs"])
+            for tree in inventory_trees:
+                auto_fit_tree_columns(tree, ctx["inventory_column_specs"])
         schedule_inventory_buttons(ctx)
         return
 
-    for index, row in enumerate(rows):
-        tag = "evenrow" if index % 2 else "oddrow"
-        inv_tree.insert("", tk.END, values=row + ("",), tags=(tag,))
+    if chb_inv_tree and chb_inv_tree.winfo_exists():
+        if chb_rows:
+            for index, row in enumerate(chb_rows):
+                tag = "evenrow" if index % 2 else "oddrow"
+                display_row = display_inventory_row(row)
+                chb_inv_tree.insert("", tk.END, values=display_row + ("",), tags=(tag,))
+        else:
+            chb_inv_tree.insert("", tk.END, values=("", "No CHB items found", "", "", "", ""), tags=("emptyrow",))
+
+    if other_rows:
+        for index, row in enumerate(other_rows):
+            tag = "evenrow" if index % 2 else "oddrow"
+            display_row = display_inventory_row(row)
+            inv_tree.insert("", tk.END, values=display_row + ("",), tags=(tag,))
+    else:
+        inv_tree.insert("", tk.END, values=("", "No other items found", "", "", "", ""), tags=("emptyrow",))
 
     refresh_inventory_names(ctx)
     if ctx.get("inventory_column_specs"):
-        auto_fit_tree_columns(inv_tree, ctx["inventory_column_specs"])
+        for tree in inventory_trees:
+            auto_fit_tree_columns(tree, ctx["inventory_column_specs"])
     schedule_inventory_buttons(ctx)
 
 
@@ -302,56 +408,57 @@ def clear_inventory_buttons(ctx):
 
 
 def schedule_inventory_buttons(ctx):
-    inv_tree = ctx.get("inv_tree")
-    if not inv_tree or not inv_tree.winfo_exists():
+    root = ctx.get("root")
+    if not root or not root.winfo_exists():
         return
     if ctx.get("inventory_button_job") is not None:
         return
-    ctx["inventory_button_job"] = inv_tree.after_idle(lambda: render_inventory_buttons(ctx))
+    ctx["inventory_button_job"] = root.after_idle(lambda: render_inventory_buttons(ctx))
 
 
 def render_inventory_buttons(ctx):
     ctx["inventory_button_job"] = None
-    inv_tree = ctx["inv_tree"]
-    inv_tree.update_idletasks()
     buttons = ctx.setdefault("inventory_buttons", {})
     if isinstance(buttons, list):
         clear_inventory_buttons(ctx)
         buttons = ctx["inventory_buttons"]
     visible_items = set()
 
-    for item_id in inv_tree.get_children():
-        bbox = inv_tree.bbox(item_id, "Add")
-        values = inv_tree.item(item_id, "values")
-        if not values or values[0] == "":
-            continue
-        if not bbox:
-            button = buttons.get(item_id)
-            if button and button.winfo_exists():
-                button.place_forget()
-            continue
-        visible_items.add(item_id)
-        button = buttons.get(item_id)
-        if button is None or not button.winfo_exists():
-            button = tk.Button(
-                inv_tree,
-                text="Add",
-                bg="#16a34a",
-                fg="white",
-                activebackground="#15803d",
-                activeforeground="white",
-                font=("Arial", 10, "bold"),
-                cursor="hand2",
-                command=lambda row_id=item_id: (
-                    inv_tree.selection_set(row_id),
-                    inv_tree.focus(row_id),
-                    open_add_to_cart_modal(ctx),
-                ),
-                **ctx["button_border"],
-            )
-            buttons[item_id] = button
-        x, y, width, height = bbox
-        button.place(x=x + 4, y=y + 4, width=max(width - 8, 64), height=max(height - 8, 24))
+    for inv_tree in [tree for tree in (ctx.get("chb_inv_tree"), ctx.get("inv_tree")) if tree and tree.winfo_exists()]:
+        inv_tree.update_idletasks()
+        for item_id in inv_tree.get_children():
+            button_key = (str(inv_tree), item_id)
+            bbox = inv_tree.bbox(item_id, "Add")
+            values = inv_tree.item(item_id, "values")
+            if not values or values[0] == "":
+                continue
+            if not bbox:
+                button = buttons.get(button_key)
+                if button and button.winfo_exists():
+                    button.place_forget()
+                continue
+            visible_items.add(button_key)
+            button = buttons.get(button_key)
+            if button is None or not button.winfo_exists():
+                button = tk.Button(
+                    inv_tree,
+                    text="Add",
+                    bg="#16a34a",
+                    fg="white",
+                    activebackground="#15803d",
+                    activeforeground="white",
+                    font=("Arial", 10, "bold"),
+                    cursor="hand2",
+                    command=lambda row_id=item_id, tree_widget=inv_tree: (
+                        tree_widget.selection_set(row_id),
+                        tree_widget.focus(row_id),
+                        open_add_to_cart_modal(ctx, tree_widget=tree_widget),
+                    ),
+                    **ctx["button_border"],
+                )
+                buttons[button_key] = button
+            x, y, width, height = bbox
+            button.place(x=x + 4, y=y + 4, width=max(width - 8, 64), height=max(height - 8, 24))
 
     for item_id, button in list(buttons.items()):
         if item_id not in visible_items:
@@ -372,13 +479,17 @@ def add_item_to_cart(ctx, product_id, name, unit, quantity, price, qty):
 
     raw_price = float(rp[0]) if rp[0] is not None else price
     existing_item = next((item for item in cart if item["id"] == product_id), None)
+    if existing_item and is_fine_sand(name) and existing_item.get("unit") != unit:
+        show_pos_error(root, "Error", "Fine sand is already in the cart with a different unit.")
+        return False
     existing_qty = existing_item["qty"] if existing_item else 0
 
     if qty <= 0:
         show_pos_error(root, "Error", "Enter a valid quantity.")
         return False
-    if existing_qty + qty > quantity:
-        show_pos_error(root, "Error", "Stocks aren't enough.")
+    requested_stock = fine_sand_cubic_deduction(existing_qty + qty, unit) if is_fine_sand(name) else existing_qty + qty
+    if requested_stock > quantity:
+        show_pos_error(root, "Error", "Not enough fine sand stock available." if is_fine_sand(name) else "Stocks aren't enough.")
         return False
 
     if existing_item:
@@ -523,18 +634,20 @@ def nudge_add_quantity(parent, qty_entry, delta):
     nudge_quantity(qty_entry, delta, 0, minimum=0)
 
 
-def open_add_to_cart_modal(ctx, _event=None):
-    inv_tree = ctx["inv_tree"]
+def open_add_to_cart_modal(ctx, _event=None, tree_widget=None):
+    inv_tree = tree_widget or (getattr(_event, "widget", None) if _event is not None else None) or ctx["inv_tree"]
     selected = inv_tree.focus()
     if not selected:
         return
 
     values = inv_tree.item(selected, "values")
+    if not values or not values[0]:
+        return
     product_id = int(values[0])
     name = values[1]
     unit = values[2] or "pcs"
-    quantity = int(values[3])
-    price = float(values[4])
+    quantity = parse_stock_quantity(values[3])
+    price = fine_sand_price_for_unit(ctx["cursor"], product_id, FINE_SAND_BASE_UNIT) if is_fine_sand(name) else float(values[4])
     button_border = ctx["button_border"]
     root = ctx["root"]
 
@@ -555,7 +668,8 @@ def open_add_to_cart_modal(ctx, _event=None):
     body = tk.Frame(modal, bg=PANEL_BG, padx=28, pady=22, highlightthickness=1, highlightbackground="black")
     body.pack(fill="both", expand=True, padx=26, pady=22)
     tk.Label(body, text=name, font=("Arial", 20, "bold"), bg=PANEL_BG, wraplength=520, justify="center").pack(pady=(0, 8))
-    tk.Label(body, text=f"Available stock: {quantity} {unit}", font=("Arial", 16, "bold"), bg=PANEL_BG, fg="#1e40af").pack(pady=(0, 18))
+    available_text = format_fine_sand_stock(quantity) if is_fine_sand(name) else f"{format_pos_quantity(quantity)} {unit}"
+    tk.Label(body, text=f"Available stock: {available_text}", font=("Arial", 16, "bold"), bg=PANEL_BG, fg="#1e40af").pack(pady=(0, 18))
 
     form = tk.Frame(body, bg=PANEL_BG)
     form.pack(pady=8, fill="x")
@@ -592,6 +706,27 @@ def open_add_to_cart_modal(ctx, _event=None):
     ).grid(row=0, column=3, padx=(8, 0), pady=8)
     qty_entry.focus_set()
 
+    sale_unit_var = tk.StringVar(value=FINE_SAND_BASE_UNIT if is_fine_sand(name) else unit)
+    price_var = tk.StringVar(value=f"Price: {format_money_value(price)}")
+    if is_fine_sand(name):
+        price_label = tk.Label(form, textvariable=price_var, bg=PANEL_BG, font=("Arial", 14, "bold"), fg="#991b1b")
+        price_label.grid(row=2, column=1, columnspan=3, sticky="w", pady=(2, 0))
+
+        def update_price_for_unit(*_args):
+            current_price = fine_sand_price_for_unit(ctx["cursor"], product_id, sale_unit_var.get())
+            price_var.set(f"Price: {format_money_value(current_price)}")
+
+        sale_unit_var.trace_add("write", update_price_for_unit)
+        tk.Label(form, text="Unit", bg=PANEL_BG, font=("Arial", 17, "bold")).grid(row=1, column=0, padx=(0, 12), pady=8)
+        ttk.Combobox(
+            form,
+            textvariable=sale_unit_var,
+            values=FINE_SAND_TRANSACTION_UNITS,
+            state="readonly",
+            width=13,
+            font=("Arial", 16),
+        ).grid(row=1, column=1, columnspan=3, sticky="ew", pady=8)
+
     quick_row = tk.Frame(body, bg=PANEL_BG)
     quick_row.pack(pady=(8, 10), fill="x")
     for idx, step in enumerate((-20, -10, -5, 5, 10, 20)):
@@ -613,10 +748,14 @@ def open_add_to_cart_modal(ctx, _event=None):
 
     def submit():
         qty_text = qty_entry.get().strip()
-        if not qty_text.isdigit():
+        try:
+            sale_unit = sale_unit_var.get()
+            qty = parse_sale_quantity(qty_text, name, sale_unit)
+            sale_price = fine_sand_price_for_unit(ctx["cursor"], product_id, sale_unit) if is_fine_sand(name) else price
+        except ValueError:
             show_pos_error(modal, "Error", "Enter a valid quantity.")
             return
-        if add_item_to_cart(ctx, product_id, name, unit, quantity, price, int(qty_text)):
+        if add_item_to_cart(ctx, product_id, name, sale_unit, quantity, sale_price, qty):
             modal.destroy()
 
     btns = tk.Frame(body, bg=PANEL_BG)
@@ -646,10 +785,10 @@ def open_cart_item_modal(ctx, _event=None):
 
     cursor.execute("SELECT quantity FROM items WHERE id=?", (item_id,))
     row = cursor.fetchone()
-    available_stock = int(row[0]) if row else 0
+    available_stock = float(row[0]) if row else 0
     cursor.execute("SELECT unit FROM items WHERE id=?", (item_id,))
     unit_row = cursor.fetchone()
-    unit = unit_row[0] if unit_row and unit_row[0] else "pcs"
+    unit = cart_item.get("unit") or (unit_row[0] if unit_row and unit_row[0] else "pcs")
     button_border = ctx["button_border"]
     root = ctx["root"]
 
@@ -670,7 +809,8 @@ def open_cart_item_modal(ctx, _event=None):
     body = tk.Frame(modal, bg=PANEL_BG, padx=28, pady=22, highlightthickness=1, highlightbackground="black")
     body.pack(fill="both", expand=True, padx=26, pady=22)
     tk.Label(body, text=cart_item["name"], font=("Arial", 20, "bold"), bg=PANEL_BG, wraplength=520, justify="center").pack(pady=(0, 8))
-    tk.Label(body, text=f"Available stock: {available_stock} {unit}", font=("Arial", 16, "bold"), bg=PANEL_BG, fg="#1e40af").pack(pady=(0, 18))
+    available_text = format_fine_sand_stock(available_stock) if is_fine_sand(cart_item["name"]) else f"{format_pos_quantity(available_stock)} {unit}"
+    tk.Label(body, text=f"Available stock: {available_text}", font=("Arial", 16, "bold"), bg=PANEL_BG, fg="#1e40af").pack(pady=(0, 18))
 
     form = tk.Frame(body, bg=PANEL_BG)
     form.pack(pady=8, fill="x")
@@ -709,6 +849,26 @@ def open_cart_item_modal(ctx, _event=None):
         **button_border,
     ).grid(row=0, column=3, padx=(8, 0), pady=8)
 
+    sale_unit_var = tk.StringVar(value=unit if is_fine_sand(cart_item["name"]) else unit)
+    price_var = tk.StringVar(value=f"Price: {format_money_value(cart_item['price'])}")
+    if is_fine_sand(cart_item["name"]):
+        tk.Label(form, textvariable=price_var, bg=PANEL_BG, font=("Arial", 14, "bold"), fg="#991b1b").grid(row=2, column=1, columnspan=3, sticky="w", pady=(2, 0))
+
+        def update_price_for_unit(*_args):
+            current_price = fine_sand_price_for_unit(cursor, item_id, sale_unit_var.get())
+            price_var.set(f"Price: {format_money_value(current_price)}")
+
+        sale_unit_var.trace_add("write", update_price_for_unit)
+        tk.Label(form, text="Unit", bg=PANEL_BG, font=("Arial", 17, "bold")).grid(row=1, column=0, padx=(0, 12), pady=8)
+        ttk.Combobox(
+            form,
+            textvariable=sale_unit_var,
+            values=FINE_SAND_TRANSACTION_UNITS,
+            state="readonly",
+            width=13,
+            font=("Arial", 16),
+        ).grid(row=1, column=1, columnspan=3, sticky="ew", pady=8)
+
     quick_row = tk.Frame(body, bg=PANEL_BG)
     quick_row.pack(pady=(8, 10), fill="x")
     for idx, step in enumerate((-20, -10, -5, 5, 10, 20)):
@@ -730,17 +890,23 @@ def open_cart_item_modal(ctx, _event=None):
 
     def save_changes():
         qty_text = qty_entry.get().strip()
-        if not qty_text.isdigit():
+        try:
+            sale_unit = sale_unit_var.get()
+            new_qty = parse_sale_quantity(qty_text, cart_item["name"], sale_unit)
+        except ValueError:
             show_pos_error(modal, "Error", "Enter a valid quantity.")
             return
-        new_qty = int(qty_text)
         if new_qty <= 0:
             show_pos_error(modal, "Error", "Enter a valid quantity.")
             return
-        if new_qty > available_stock:
-            show_pos_error(modal, "Error", "Stocks aren't enough.")
+        requested_stock = fine_sand_cubic_deduction(new_qty, sale_unit) if is_fine_sand(cart_item["name"]) else new_qty
+        if requested_stock > available_stock:
+            show_pos_error(modal, "Error", "Not enough fine sand stock available." if is_fine_sand(cart_item["name"]) else "Stocks aren't enough.")
             return
         cart_item["qty"] = new_qty
+        cart_item["unit"] = sale_unit
+        if is_fine_sand(cart_item["name"]):
+            cart_item["price"] = fine_sand_price_for_unit(cursor, item_id, sale_unit)
         cart_item["total"] = new_qty * cart_item["price"]
         update_cart(ctx)
         modal.destroy()
@@ -937,9 +1103,10 @@ def open_invoice_window(ctx, cart_items, total_amount, money_received, change, m
 
         now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         for item in cart_items:
+            stock_qty = fine_sand_cubic_deduction(item["qty"], item.get("unit", "")) if is_fine_sand(item["name"]) else item["qty"]
             cursor.execute(
                 "UPDATE items SET quantity = quantity + ? WHERE id = ?",
-                (item["qty"], item["id"]),
+                (stock_qty, item["id"]),
             )
             if item["name"] == CHB_ITEM_NAME:
                 cursor.execute(
@@ -1040,7 +1207,17 @@ def finalize_transaction(ctx, mode, money_received, platform):
     change = money_received - total_amount if mode == "Cash" else 0
 
     for item in cart:
-        cursor.execute("UPDATE items SET quantity = quantity - ? WHERE id=?", (item["qty"], item["id"]))
+        stock_qty = fine_sand_cubic_deduction(item["qty"], item.get("unit", "")) if is_fine_sand(item["name"]) else item["qty"]
+        cursor.execute("SELECT COALESCE(quantity, 0) FROM items WHERE id=?", (item["id"],))
+        row = cursor.fetchone()
+        available = float(row[0] or 0) if row else 0
+        if stock_qty > available:
+            show_pos_error(ctx["root"], "Error", "Not enough fine sand stock available." if is_fine_sand(item["name"]) else "Stocks aren't enough.")
+            return False
+
+    for item in cart:
+        stock_qty = fine_sand_cubic_deduction(item["qty"], item.get("unit", "")) if is_fine_sand(item["name"]) else item["qty"]
+        cursor.execute("UPDATE items SET quantity = quantity - ? WHERE id=?", (stock_qty, item["id"]))
         cursor.execute(
             """
             INSERT INTO sales (item_name, qty, price, raw_price, total, ts, transaction_id, cashier, payment_status, payment_method)
@@ -1103,7 +1280,7 @@ def open_payment_modal(ctx):
 
     summary_frame = tk.Frame(pay_modal, bg="white")
     summary_frame.pack(fill="x", padx=22, pady=(0, 10))
-    columns = ("Item", "Qty", "Selling Price", "Total")
+    columns = ("Item", "Unit", "Qty", "Selling Price", "Total")
     summary_tree = ttk.Treeview(summary_frame, columns=columns, show="headings", height=4, style="Payment.Treeview")
     summary_scroll = ttk.Scrollbar(summary_frame, orient="vertical", command=summary_tree.yview)
     summary_tree.configure(yscrollcommand=summary_scroll.set)
@@ -1112,7 +1289,7 @@ def open_payment_modal(ctx):
     summary_frame.grid_columnconfigure(0, weight=1)
     summary_frame.grid_rowconfigure(0, weight=1)
 
-    for col, width, anchor in (("Item", 290, "w"), ("Qty", 80, "center"), ("Selling Price", 170, "e"), ("Total", 130, "e")):
+    for col, width, anchor in (("Item", 240, "w"), ("Unit", 130, "center"), ("Qty", 80, "center"), ("Selling Price", 160, "e"), ("Total", 120, "e")):
         summary_tree.heading(col, text=col)
         summary_tree.column(col, width=width, anchor=anchor, stretch=True)
     summary_tree.tag_configure("oddrow", background="#ffffff", foreground="#000000")
@@ -1122,7 +1299,7 @@ def open_payment_modal(ctx):
         summary_tree.insert(
             "",
             tk.END,
-            values=(item["name"], item["qty"], f"{item['price']:.2f}", f"{item['total']:.2f}"),
+            values=(item["name"], item.get("unit", "pcs"), item["qty"], f"{item['price']:.2f}", f"{item['total']:.2f}"),
             tags=(tag,),
         )
 

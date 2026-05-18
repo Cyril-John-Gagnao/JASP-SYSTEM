@@ -14,6 +14,8 @@ from .inventory_database import DB_NAME
 from .inventory_functions import show_inventory_error
 from jasp_theme import DASHBOARD_CONTENT_BG
 
+NO_INVENTORY_ACTIVITY_TEXT = "No inventory activity for this period"
+
 
 def center_window(window, width=None, height=None, parent=None):
     window.update_idletasks()
@@ -74,20 +76,24 @@ def fetch_summary_rows(cursor, start_date, end_date):
         """
         SELECT
             l.item_name,
+            COALESCE(i.unit, '') AS unit,
             l.qty,
             l.ts AS date_added,
             l.action_status AS status,
             COALESCE(NULLIF(l.responsible_user, ''), 'Admin') AS responsible_user
         FROM inventory_logs l
+        LEFT JOIN items i ON LOWER(i.name) = LOWER(l.item_name)
         WHERE DATE(l.ts) BETWEEN ? AND ?
         UNION ALL
         SELECT
             r.item_name,
+            COALESCE(i.unit, '') AS unit,
             r.qty,
             r.ts AS date_added,
             'Restock' AS status,
             'Admin' AS responsible_user
         FROM restocks r
+        LEFT JOIN items i ON LOWER(i.name) = LOWER(r.item_name)
         WHERE DATE(r.ts) BETWEEN ? AND ?
           AND NOT EXISTS (
               SELECT 1
@@ -99,6 +105,7 @@ def fetch_summary_rows(cursor, start_date, end_date):
         UNION ALL
         SELECT
             i.name,
+            COALESCE(i.unit, '') AS unit,
             COALESCE(i.quantity, 0),
             COALESCE(NULLIF(i.date_added, ''), '') AS date_added,
             COALESCE(i.status, 'Active') AS status,
@@ -214,7 +221,7 @@ def open_date_calendar(parent, date_var, on_select=None):
     center_window(cal_win, 470, 390, parent=parent)
 
 
-def open_inventory_summary(parent):
+def open_inventory_summary(parent, anchor_parent=None):
     conn = sqlite3.connect(DB_NAME)
     cursor = conn.cursor()
     ensure_summary_tables(cursor)
@@ -270,9 +277,13 @@ def open_inventory_summary(parent):
 
         start, end = compute_range()
         rows = fetch_summary_rows(cursor, start, end)
-        for index, (item_name, qty, ts, status, responsible_user) in enumerate(rows):
+        if not rows:
+            summary_tree.insert("", "end", values=(NO_INVENTORY_ACTIVITY_TEXT, "", "", "", "", ""), tags=("blue_row",))
+            return
+
+        for index, (item_name, unit, qty, ts, status, responsible_user) in enumerate(rows):
             tag = "blue_row" if index % 2 == 0 else "white_row"
-            summary_tree.insert("", "end", values=(item_name, qty, ts, status, responsible_user), tags=(tag,))
+            summary_tree.insert("", "end", values=(item_name, unit, qty, ts, status, responsible_user), tags=(tag,))
 
     def export_pdf(file_path, rows, title):
         doc = SimpleDocTemplate(file_path, pagesize=letter, topMargin=0.5*inch, bottomMargin=0.5*inch)
@@ -286,10 +297,10 @@ def open_inventory_summary(parent):
             spaceAfter=12,
         )
 
-        table_data = [["Item Name", "Quantity Added", "Date Added", "Status", "User"]]
-        table_data.extend(rows if rows else [["No records", "", "", "", ""]])
+        table_data = [["Item Name", "Unit", "Quantity Added", "Date Added", "Status", "User"]]
+        table_data.extend(rows if rows else [[NO_INVENTORY_ACTIVITY_TEXT, "", "", "", "", ""]])
 
-        table = Table(table_data, colWidths=[1.8*inch, 1.15*inch, 1.65*inch, 1.0*inch, 1.1*inch])
+        table = Table(table_data, colWidths=[1.55*inch, 1.0*inch, 1.05*inch, 1.55*inch, 0.9*inch, 0.95*inch])
         table.setStyle(TableStyle([
             ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#2563eb")),
             ("TEXTCOLOR", (0, 0), (-1, 0), colors.whitesmoke),
@@ -325,7 +336,7 @@ def open_inventory_summary(parent):
         preview_frame = tk.Frame(preview, bg="#ffffff")
         preview_frame.pack(fill="both", expand=True, padx=16, pady=8)
 
-        cols = ("Item Name", "Quantity Added", "Date Added", "Status", "User")
+        cols = ("Item Name", "Unit", "Quantity Added", "Date Added", "Status", "User")
         preview_tree = ttk.Treeview(preview_frame, columns=cols, show="headings")
         preview_style = ttk.Style()
         preview_style.configure("InventorySummaryPreview.Treeview", font=("Arial", 13), rowheight=36)
@@ -335,7 +346,7 @@ def open_inventory_summary(parent):
         scroll = ttk.Scrollbar(preview_frame, orient="vertical", command=preview_tree.yview)
         scroll.pack(side="right", fill="y")
         preview_tree.configure(yscrollcommand=scroll.set)
-        for col, width in (("Item Name", 220), ("Quantity Added", 130), ("Date Added", 170), ("Status", 100), ("User", 130)):
+        for col, width in (("Item Name", 200), ("Unit", 120), ("Quantity Added", 130), ("Date Added", 170), ("Status", 100), ("User", 130)):
             preview_tree.heading(col, text=col)
             preview_tree.column(col, width=width, anchor="center")
         preview_tree.tag_configure("blue_row", background="#dbeafe", foreground="#000000")
@@ -402,7 +413,7 @@ def open_inventory_summary(parent):
     table_frame = tk.Frame(summary_win, bg=DASHBOARD_CONTENT_BG)
     table_frame.pack(fill="both", expand=True, padx=16, pady=(0, 14))
 
-    columns = ("Item Name", "Quantity Added", "Date Added", "Status", "User")
+    columns = ("Item Name", "Unit", "Quantity Added", "Date Added", "Status", "User")
     summary_tree = ttk.Treeview(table_frame, columns=columns, show="headings")
     style = ttk.Style()
     style.configure("InventorySummary.Treeview", font=("Arial", 13), rowheight=36)
@@ -413,14 +424,14 @@ def open_inventory_summary(parent):
     table_scroll.pack(side="right", fill="y")
     summary_tree.configure(yscrollcommand=table_scroll.set)
 
-    for col, width in (("Item Name", 240), ("Quantity Added", 140), ("Date Added", 180), ("Status", 110), ("User", 140)):
+    for col, width in (("Item Name", 220), ("Unit", 130), ("Quantity Added", 140), ("Date Added", 180), ("Status", 110), ("User", 140)):
         summary_tree.heading(col, text=col)
         summary_tree.column(col, width=width, anchor="center")
     summary_tree.tag_configure("blue_row", background="#93c5fd", foreground="#000000")
     summary_tree.tag_configure("white_row", background="#ffffff", foreground="#000000")
 
     load_summary()
-    center_window(summary_win, 1040, 560, parent)
+    center_window(summary_win, 900, 560, anchor_parent or parent)
 
     def on_close():
         conn.close()

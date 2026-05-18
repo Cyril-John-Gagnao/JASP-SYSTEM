@@ -10,12 +10,13 @@ PREDEFINED_ITEMS = {
     "Nails": "kilograms",
     "CHB Blocks": CHB_DEFAULT_UNIT,
     "Cement": "bag/sack",
-    "Fine Sand": "bag/sack"
+    "Fine Sand": "cubic meters"
 }
 UNIT_OPTIONS = [
     CHB_DEFAULT_UNIT,
     "kilograms",
     "bag/sack",
+    "cubic meters",
     "pieces",
     "meters",
     "liters",
@@ -65,6 +66,11 @@ def setup_inventory_database(conn, cursor):
             (datetime.now().strftime("%Y-%m-%d %H:%M:%S"),)
         )
         conn.commit()
+    if "fine_sand_bag_price" not in columns:
+        cursor.execute("ALTER TABLE items ADD COLUMN fine_sand_bag_price REAL DEFAULT 0")
+        conn.commit()
+
+    ensure_inventory_unit_options(conn, cursor)
 
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS items (
@@ -169,11 +175,12 @@ def ensure_chb_material_items(conn, cursor):
         cursor.execute("SELECT id FROM items WHERE LOWER(name) = LOWER(?) ORDER BY id ASC LIMIT 1", (item_name,))
         row = cursor.fetchone()
         if row:
+            unit_expr = "?" if item_name == "Fine Sand" else "CASE WHEN COALESCE(unit, '') = '' THEN ? ELSE unit END"
             cursor.execute(
-                """
+                f"""
                 UPDATE items
                 SET name=?,
-                    unit=CASE WHEN COALESCE(unit, '') = '' THEN ? ELSE unit END,
+                    unit={unit_expr},
                     status=CASE WHEN COALESCE(status, '') = '' THEN 'Active' ELSE status END
                 WHERE id=?
                 """,
@@ -200,10 +207,70 @@ def ensure_chb_material_items(conn, cursor):
 
 def normalize_predefined_units(conn, cursor):
     for item_name, item_unit in PREDEFINED_ITEMS.items():
+        if item_name == "Fine Sand":
+            cursor.execute("UPDATE items SET unit=? WHERE name=?", (item_unit, item_name))
+            continue
         cursor.execute(
             "UPDATE items SET unit=? WHERE name=? AND COALESCE(unit, '') = ''",
             (item_unit, item_name)
         )
+    conn.commit()
+
+
+def ensure_inventory_unit_options(conn, cursor):
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS inventory_unit_options (
+            unit TEXT PRIMARY KEY,
+            is_custom INTEGER DEFAULT 0,
+            is_deleted INTEGER DEFAULT 0,
+            ts TEXT
+        )
+    """)
+    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    for unit in UNIT_OPTIONS:
+        cursor.execute(
+            """
+            INSERT OR IGNORE INTO inventory_unit_options (unit, is_custom, is_deleted, ts)
+            VALUES (?, 0, 0, ?)
+            """,
+            (unit, now)
+        )
+    conn.commit()
+
+
+def fetch_inventory_unit_options(conn, cursor):
+    ensure_inventory_unit_options(conn, cursor)
+    cursor.execute("""
+        SELECT unit
+        FROM inventory_unit_options
+        WHERE COALESCE(is_deleted, 0) = 0
+        ORDER BY is_custom ASC, LOWER(unit) ASC
+    """)
+    return [row[0] for row in cursor.fetchall()]
+
+
+def add_inventory_unit_option(conn, cursor, unit):
+    ensure_inventory_unit_options(conn, cursor)
+    unit = unit.strip()
+    if not unit:
+        return
+    cursor.execute(
+        """
+        INSERT INTO inventory_unit_options (unit, is_custom, is_deleted, ts)
+        VALUES (?, 1, 0, ?)
+        ON CONFLICT(unit) DO UPDATE SET is_deleted=0, ts=excluded.ts
+        """,
+        (unit, datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+    )
+    conn.commit()
+
+
+def delete_inventory_unit_option(conn, cursor, unit):
+    ensure_inventory_unit_options(conn, cursor)
+    cursor.execute(
+        "UPDATE inventory_unit_options SET is_deleted=1 WHERE unit=?",
+        (unit,)
+    )
     conn.commit()
 
 
@@ -214,11 +281,11 @@ def fetch_items(cursor, filter_text="", sort_by="Latest Date"):
 
     if filter_text:
         cursor.execute(
-            f"SELECT id, name, unit, quantity, price, raw_price, COALESCE(status, 'Active') FROM items WHERE name LIKE ? {order_clause}",
+            f"SELECT id, name, unit, quantity, price, raw_price, COALESCE(status, 'Active'), COALESCE(fine_sand_bag_price, 0) FROM items WHERE name LIKE ? {order_clause}",
             (f"%{filter_text}%",)
         )
     else:
-        cursor.execute(f"SELECT id, name, unit, quantity, price, raw_price, COALESCE(status, 'Active') FROM items {order_clause}")
+        cursor.execute(f"SELECT id, name, unit, quantity, price, raw_price, COALESCE(status, 'Active'), COALESCE(fine_sand_bag_price, 0) FROM items {order_clause}")
     return cursor.fetchall()
 
 
@@ -269,6 +336,7 @@ def log_inventory_action(conn, cursor, item_id, item_name, qty, action_status, t
         responsible_user = session.get_current_username("Admin")
     except Exception:
         responsible_user = "Admin"
+    qty_value = float(qty or 0) if str(item_name).strip().lower() == "fine sand" else int(qty or 0)
     cursor.execute(
         """
         INSERT INTO inventory_logs (item_id, item_name, qty, action_status, ts, responsible_user)
@@ -277,7 +345,7 @@ def log_inventory_action(conn, cursor, item_id, item_name, qty, action_status, t
         (
             item_id,
             item_name,
-            int(qty or 0),
+            qty_value,
             action_status,
             ts or datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             responsible_user,
@@ -310,6 +378,12 @@ def update_stacked_item(cursor, item_id, new_qty, raw_val, unit):
     )
 
 
+def fetch_fine_sand_bag_price(cursor, item_id):
+    cursor.execute("SELECT COALESCE(fine_sand_bag_price, 0) FROM items WHERE id=?", (item_id,))
+    row = cursor.fetchone()
+    return float(row[0] or 0) if row else 0
+
+
 def insert_item(cursor, name, quantity_val, price_val, raw_val, unit, status="Active"):
     cursor.execute(
         "INSERT INTO items (name, quantity, price, raw_price, unit, status, date_added) VALUES (?, ?, ?, ?, ?, ?, ?)",
@@ -321,6 +395,13 @@ def insert_item(cursor, name, quantity_val, price_val, raw_val, unit, status="Ac
 def update_item_record(cursor, item_id, name, quantity_val, price_val, raw_val, unit, status="Active"):
     cursor.execute("UPDATE items SET name=?, quantity=?, price=?, raw_price=?, unit=?, status=? WHERE id=?",
                    (name, quantity_val, price_val, raw_val, unit, status, item_id))
+
+
+def update_fine_sand_item_record(cursor, item_id, name, quantity_val, cubic_price, bag_price, raw_val, unit, status="Active"):
+    cursor.execute(
+        "UPDATE items SET name=?, quantity=?, price=?, fine_sand_bag_price=?, raw_price=?, unit=?, status=? WHERE id=?",
+        (name, quantity_val, cubic_price, bag_price, raw_val, unit, status, item_id)
+    )
 
 
 def restock_item_record(conn, cursor, item_id, qty_added):
@@ -337,7 +418,7 @@ def restock_item_record(conn, cursor, item_id, qty_added):
     if status != "Active":
         return "inactive"
 
-    current_qty = int(current_qty or 0)
+    current_qty = float(current_qty or 0) if str(name).strip().lower() == "fine sand" else int(current_qty or 0)
     new_qty = current_qty + qty_added
     cursor.execute(
         "UPDATE items SET quantity=?, date_added=? WHERE id=?",

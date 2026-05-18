@@ -3,6 +3,14 @@ import tkinter as tk
 from tkinter import messagebox
 from main_dashboard import session
 from window_utils import enable_centered_toplevels
+from jasp_theme import (
+    DASHBOARD_CONTENT_BG,
+    DASHBOARD_HEADER_BG,
+    DASHBOARD_HEADER_BORDER,
+    DASHBOARD_HEADER_FG,
+    DASHBOARD_HEADER_SUBTLE_FG,
+    add_header_logo,
+)
 
 from .database import (
     get_authenticated_user,
@@ -68,22 +76,42 @@ def open_cashier_dashboard():
         root.state("zoomed")
     except Exception:
         pass
-    root.configure(bg="#f4f6f9")
+    root.configure(bg=DASHBOARD_CONTENT_BG)
 
     for child in root.winfo_children():
         child.destroy()
 
-    header = tk.Frame(root, bg="#273142", height=68)
-    header.pack(fill="x")
+    header = tk.Frame(
+        root,
+        bg=DASHBOARD_HEADER_BG,
+        height=96,
+        padx=20,
+        pady=12,
+        highlightthickness=1,
+        highlightbackground=DASHBOARD_HEADER_BORDER,
+    )
+    header.pack(fill="x", padx=20, pady=(12, 8))
     header.pack_propagate(False)
 
+    header_left = tk.Frame(header, bg=DASHBOARD_HEADER_BG)
+    header_left.pack(side="left")
+    add_header_logo(header_left, DASHBOARD_HEADER_BG, size=62)
+    title_block = tk.Frame(header_left, bg=DASHBOARD_HEADER_BG)
+    title_block.pack(side="left")
     tk.Label(
-        header,
-        text="JASP Hardware - Cashier",
-        bg="#273142",
-        fg="white",
-        font=("Arial", 18, "bold")
-    ).pack(side="left", padx=24)
+        title_block,
+        text="JASP Hardware System",
+        bg=DASHBOARD_HEADER_BG,
+        fg=DASHBOARD_HEADER_FG,
+        font=("Arial", 22, "bold")
+    ).pack(anchor="w")
+    tk.Label(
+        title_block,
+        text="Cashier Workspace",
+        bg=DASHBOARD_HEADER_BG,
+        fg=DASHBOARD_HEADER_SUBTLE_FG,
+        font=("Arial", 12, "bold")
+    ).pack(anchor="w", pady=(3, 0))
 
     tk.Button(
         header,
@@ -92,42 +120,62 @@ def open_cashier_dashboard():
         bg=RED,
         fg="white",
         activebackground="#b91c1c",
-        font=("Arial", 10, "bold"),
-        relief="flat",
-        padx=16,
+        activeforeground="white",
+        font=("Arial", 13, "bold"),
+        relief="solid",
+        bd=2,
+        highlightthickness=1,
+        highlightbackground="black",
+        highlightcolor="black",
+        padx=18,
         pady=8
-    ).pack(side="right", padx=24)
+    ).pack(side="right")
 
-    content = tk.Frame(root, bg="#f4f6f9")
+    content = tk.Frame(root, bg=DASHBOARD_CONTENT_BG)
     content.pack(expand=True)
 
-    tk.Label(
+    card = tk.Frame(
         content,
+        bg=CARD_BG,
+        padx=56,
+        pady=42,
+        highlightthickness=2,
+        highlightbackground=DASHBOARD_HEADER_BG,
+    )
+    card.pack()
+
+    tk.Label(
+        card,
         text="Point of Sale",
-        bg="#f4f6f9",
+        bg=CARD_BG,
         fg=TEXT_DARK,
-        font=("Arial", 28, "bold")
+        font=("Arial", 30, "bold")
     ).pack(pady=(0, 8))
 
     tk.Label(
-        content,
+        card,
         text="Cashier access is limited to POS transactions only.",
-        bg="#f4f6f9",
+        bg=CARD_BG,
         fg=TEXT_MUTED,
-        font=("Arial", 12)
+        font=("Arial", 14)
     ).pack(pady=(0, 24))
 
     tk.Button(
-        content,
+        card,
         text="Open POS",
         command=open_pos_for_cashier,
         bg=GREEN,
         fg="white",
         activebackground=GREEN_HOVER,
-        font=("Arial", 14, "bold"),
-        relief="flat",
-        width=22,
-        pady=10
+        activeforeground="white",
+        font=("Arial", 16, "bold"),
+        relief="solid",
+        bd=2,
+        highlightthickness=1,
+        highlightbackground="black",
+        highlightcolor="black",
+        width=24,
+        pady=12
     ).pack()
 
 

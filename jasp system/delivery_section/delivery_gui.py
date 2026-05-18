@@ -119,6 +119,21 @@ def open_delivery_window(parent_win, bg_main, card_bg, primary):
 
     tk.Button(search_frame, text="Summary", command=lambda: delivery_functions.open_delivery_summary(delivery_win, cursor, bg_main, TEXT), bg="#8b5cf6", fg="white", font=("Arial", 13, "bold"), padx=12, pady=6, **BUTTON_BORDER).pack(side="left", padx=10)
 
+    display_option_var = tk.StringVar(value="Option 1")
+
+    tk.Button(
+        search_frame,
+        text="Other Items to Deliver",
+        command=lambda: delivery_functions.open_other_items_form(delivery_win, conn, cursor, load_data, display_option_var),
+        bg="#0f766e",
+        fg="white",
+        font=("Arial", 13, "bold"),
+        padx=12,
+        pady=6,
+        cursor="hand2",
+        **BUTTON_BORDER
+    ).pack(side="left", padx=(0, 10))
+
     # ================= MAIN CONTAINER (60-40 Split) =================
     main_container = tk.Frame(delivery_win, bg=card_bg, bd=1, relief="solid")
     main_container.pack(padx=20, pady=(5, 10), fill="both", expand=True)
@@ -230,9 +245,35 @@ def open_delivery_window(parent_win, bg_main, card_bg, primary):
     table_card = tk.Frame(main_container, bg=card_bg)
     table_card.grid(row=0, column=0, sticky="nsew", padx=15, pady=15)
     table_card.columnconfigure(0, weight=1)
-    table_card.rowconfigure(0, weight=1)
+    table_card.rowconfigure(1, weight=1)
 
     columns = ("id", "transaction date", "delivery date", "worker", "driver", "address", "blocks", "delivery fee", "total Salary")
+    other_columns = ("id", "transaction date", "delivery date", "item name", "quantity", "unit of measurement", "delivery address", "delivery driver", "helper", "delivery fee")
+    active_columns = {"columns": columns}
+
+    option_frame = tk.Frame(table_card, bg=card_bg)
+    option_frame.grid(row=0, column=0, sticky="w", pady=(0, 10))
+    tk.Label(option_frame, text="Display:", bg=card_bg, fg=TEXT, font=("Arial", 16, "bold")).pack(side="left", padx=(0, 10))
+    tk.Radiobutton(
+        option_frame,
+        text="CHB Blocks",
+        variable=display_option_var,
+        value="Option 1",
+        bg=card_bg,
+        fg=TEXT,
+        font=("Arial", 15, "bold"),
+        command=lambda: load_data()
+    ).pack(side="left", padx=10)
+    tk.Radiobutton(
+        option_frame,
+        text="Other Items",
+        variable=display_option_var,
+        value="Option 2",
+        bg=card_bg,
+        fg=TEXT,
+        font=("Arial", 15, "bold"),
+        command=lambda: load_data()
+    ).pack(side="left", padx=10)
 
     # Configure Treeview with larger fonts and blue scrollbars
     style = ttk.Style()
@@ -246,7 +287,7 @@ def open_delivery_window(parent_win, bg_main, card_bg, primary):
 
     # Create frame for tree and scrollbars
     tree_frame = tk.Frame(table_card, bg=card_bg)
-    tree_frame.grid(row=0, column=0, sticky="nsew")
+    tree_frame.grid(row=1, column=0, sticky="nsew")
     tree_frame.columnconfigure(0, weight=1)
     tree_frame.rowconfigure(0, weight=1)
 
@@ -267,10 +308,19 @@ def open_delivery_window(parent_win, bg_main, card_bg, primary):
     hsb.config(command=tree.xview)
 
     column_headings = {col: col.title() for col in columns}
+    other_column_headings = {col: col.title() for col in other_columns}
 
-    for col in columns:
-        tree.heading(col, text=column_headings[col])
-        tree.column(col, anchor="center", width=130, minwidth=80, stretch=False)
+    def configure_table_columns():
+        selected_columns = other_columns if display_option_var.get() == "Option 2" else columns
+        active_columns["columns"] = selected_columns
+        tree.configure(columns=selected_columns)
+        headings = other_column_headings if display_option_var.get() == "Option 2" else column_headings
+        for col in selected_columns:
+            tree.heading(col, text=headings[col])
+            anchor = "w" if col in ("worker", "driver", "address", "item name", "delivery address", "delivery driver", "helper") else "center"
+            tree.column(col, anchor=anchor, width=130, minwidth=80, stretch=False)
+
+    configure_table_columns()
 
     def auto_adjust_columns():
         tree.update_idletasks()
@@ -286,6 +336,13 @@ def open_delivery_window(parent_win, bg_main, card_bg, primary):
             "blocks": 55,
             "delivery fee": 65,
             "total Salary": 70,
+            "item name": 70,
+            "quantity": 55,
+            "unit of measurement": 75,
+            "delivery address": 90,
+            "delivery driver": 80,
+            "helper": 65,
+            "date": 55,
         }
         min_widths = {
             "id": 65,
@@ -297,6 +354,13 @@ def open_delivery_window(parent_win, bg_main, card_bg, primary):
             "blocks": 100,
             "delivery fee": 130,
             "total Salary": 140,
+            "item name": 150,
+            "quantity": 100,
+            "unit of measurement": 155,
+            "delivery address": 220,
+            "delivery driver": 150,
+            "helper": 130,
+            "date": 175,
         }
         max_widths = {
             "id": 90,
@@ -308,10 +372,18 @@ def open_delivery_window(parent_win, bg_main, card_bg, primary):
             "blocks": 150,
             "delivery fee": 180,
             "total Salary": 190,
+            "item name": 280,
+            "quantity": 140,
+            "unit of measurement": 220,
+            "delivery address": 420,
+            "delivery driver": 260,
+            "helper": 240,
+            "date": 220,
         }
 
-        for col in columns:
-            width = heading_font.measure(column_headings[col]) + padding[col]
+        headings = other_column_headings if display_option_var.get() == "Option 2" else column_headings
+        for col in active_columns["columns"]:
+            width = heading_font.measure(headings[col]) + padding[col]
             for item in tree.get_children():
                 width = max(width, row_font.measure(str(tree.set(item, col))) + padding[col])
             width = max(min_widths[col], min(width, max_widths[col]))
@@ -326,13 +398,26 @@ def open_delivery_window(parent_win, bg_main, card_bg, primary):
     tree.tag_configure('oddrow', background='#ffffff', foreground='#000000')
     tree.tag_configure('evenrow', background='#93c5fd', foreground='#000000')
 
-    on_select = lambda event: delivery_functions.on_select(event, tree, selected_id, transaction_date_var, date_var, worker_entry, driver_entry, address_entry, blocks_entry, delivery_fee_entry, auto_calc)
+    def on_select(event):
+        if display_option_var.get() == "Option 1":
+            delivery_functions.on_select(event, tree, selected_id, transaction_date_var, date_var, worker_entry, driver_entry, address_entry, blocks_entry, delivery_fee_entry, auto_calc)
+            return
+
+        selected = tree.focus()
+        values = tree.item(selected, "values")
+        if values and values[0]:
+            delivery_functions.open_other_items_form(delivery_win, conn, cursor, load_data, display_option_var, values)
 
     tree.bind("<ButtonRelease-1>", on_select)
 
     # ================= LOAD DATA =================
     def load_data(event=None):
-        delivery_functions.load_data(event, cursor, tree, search_var, sort_var, delivery_win)
+        configure_table_columns()
+        selected_id.set("")
+        if display_option_var.get() == "Option 2":
+            delivery_functions.load_other_items_data(event, cursor, tree, search_var, sort_var, delivery_win)
+        else:
+            delivery_functions.load_data(event, cursor, tree, search_var, sort_var, delivery_win)
         auto_adjust_columns()
 
     # BINDINGS (LIVE SEARCH)

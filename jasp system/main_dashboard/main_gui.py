@@ -37,6 +37,24 @@ enable_centered_toplevels()
 dashboard_refresh_callback = None
 
 
+def logout_to_login(root, logout_callback=None):
+    global dashboard_refresh_callback
+    dashboard_refresh_callback = None
+    try:
+        from main_dashboard import session
+        session.clear_current_user()
+    except Exception:
+        pass
+    if callable(logout_callback):
+        logout_callback()
+    else:
+        try:
+            from login.log_gui import show_login_screen
+            show_login_screen()
+        except Exception:
+            root.destroy()
+
+
 def open_main(root, logout_callback=None):
     global dashboard_refresh_callback
     data = fetch_dashboard_data()
@@ -141,7 +159,7 @@ def open_main(root, logout_callback=None):
     tk.Button(sidebar, text="Logout", bg="#dc2626", fg="white",
               font=("Arial", 13, "bold"), relief="solid", bd=2,
               highlightthickness=1, highlightbackground="black", highlightcolor="black",
-              command=(logout_callback if logout_callback else root.destroy), padx=16, pady=10,
+              command=lambda: logout_to_login(root, logout_callback), padx=16, pady=10,
               activebackground="#b91c1c").pack(fill="x", padx=18, pady=(16, 52))
 
     main_area = tk.Frame(root, bg=BG_PAGE)
@@ -243,7 +261,7 @@ def open_main(root, logout_callback=None):
 
     table_container = tk.Frame(recent_card, bg=recent_bg, padx=12, pady=6)
     table_container.pack(fill="both", expand=True)
-    render_recent_transactions(table_container, data["recent"], "No sales transactions yet.")
+    render_recent_transactions(table_container, data["recent"], "No transactions for today.")
 
     low_card = tk.Frame(mid_row, bg=low_stock_bg, width=260, highlightthickness=1,
                         highlightbackground=section_border, height=260)
@@ -332,7 +350,7 @@ def open_main(root, logout_callback=None):
     top_items_canvas.configure(yscrollcommand=top_items_scrollbar.set)
     top_items_canvas.pack(side="left", fill="both", expand=True)
     top_items_scrollbar.pack(side="right", fill="y")
-    draw_top_items(top_items_canvas, analytics.get("top_items", []))
+    draw_top_items(top_items_canvas, analytics.get("top_items", []), empty_text="No items sold today.")
 
 
 if __name__ == "__main__":
