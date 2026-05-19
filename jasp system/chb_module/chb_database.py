@@ -27,6 +27,7 @@ def init_db():
             pay REAL,
             pay_rate REAL DEFAULT 200,
             material_inventory_applied INTEGER DEFAULT 0,
+            responsible_user TEXT DEFAULT '',
             ts TEXT
         )
     """)
@@ -71,6 +72,8 @@ def init_db():
         cursor.execute("ALTER TABLE chb_production ADD COLUMN pay_rate REAL DEFAULT 200")
     if "material_inventory_applied" not in existing_cols:
         cursor.execute("ALTER TABLE chb_production ADD COLUMN material_inventory_applied INTEGER DEFAULT 0")
+    if "responsible_user" not in existing_cols:
+        cursor.execute("ALTER TABLE chb_production ADD COLUMN responsible_user TEXT DEFAULT ''")
     cursor.execute("PRAGMA table_info(items)")
     item_cols = [col[1] for col in cursor.fetchall()]
     if "unit" not in item_cols:
@@ -232,14 +235,18 @@ def adjust_material_inventory(cursor, item_name, quantity_delta):
 
 def fetch_production_summary(cursor, start=None, end=None):
     q = """
-        SELECT production_date, worker_name, COALESCE(SUM(total_blocks),0) AS blocks, COALESCE(SUM(pay),0) AS pay
+        SELECT production_date,
+               worker_name,
+               COALESCE(NULLIF(responsible_user, ''), 'Admin') AS responsible_user,
+               COALESCE(SUM(total_blocks),0) AS blocks,
+               COALESCE(SUM(pay),0) AS pay
         FROM chb_production
     """
     params = []
     if start and end:
         q += " WHERE DATE(COALESCE(NULLIF(production_date, ''), ts)) BETWEEN ? AND ?"
         params = [start.strftime("%Y-%m-%d"), end.strftime("%Y-%m-%d")]
-    q += " GROUP BY production_date, worker_name ORDER BY DATE(COALESCE(NULLIF(production_date, ''), ts)) DESC, worker_name ASC"
+    q += " GROUP BY production_date, worker_name, COALESCE(NULLIF(responsible_user, ''), 'Admin') ORDER BY DATE(COALESCE(NULLIF(production_date, ''), ts)) DESC, worker_name ASC, responsible_user ASC"
     cursor.execute(q, params)
     return cursor.fetchall()
 

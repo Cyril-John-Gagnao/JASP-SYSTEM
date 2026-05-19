@@ -102,9 +102,9 @@ def open_pos_summary(parent):
         ("items", "Item(s)", 230, 380, "w"),
         ("qty", "Qty", 75, 120, "e"),
         ("total", "Total", 110, 160, "e"),
-        ("cashier", "Cashier", 110, 180, "w"),
         ("status", "Status", 90, 130, "center"),
         ("location", "Receipt Location", 320, 520, "w"),
+        ("user", "Cashier", 110, 180, "w"),
     ]
 
     def title_text():
@@ -146,14 +146,16 @@ def open_pos_summary(parent):
             messagebox.showerror("Open Failed", f"Unable to open receipt:\n{exc}", parent=summary_win)
 
     def on_tree_click(event):
-        if summary_tree.identify_column(event.x) != f"#{len(headings)}":
+        columns = list(summary_tree["columns"])
+        location_index = columns.index("location")
+        if summary_tree.identify_column(event.x) != f"#{location_index + 1}":
             return
         row_id = summary_tree.identify_row(event.y)
         if not row_id:
             return
         values = summary_tree.item(row_id, "values")
         if values:
-            open_receipt_location(values[-1])
+            open_receipt_location(values[location_index])
 
     def load_summary():
         start, end = compute_summary_range(period_var.get(), date_var.get())
@@ -187,9 +189,9 @@ def open_pos_summary(parent):
                     compact_items(items, item_count),
                     f"{int(qty or 0):,}",
                     money(total or 0),
-                    cashier or "Admin",
                     status,
                     receipt_path or "Not downloaded",
+                    cashier or "Admin",
                 ),
                 tags=("even" if index % 2 == 0 else "odd",),
             )

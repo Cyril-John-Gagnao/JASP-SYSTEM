@@ -23,6 +23,8 @@ BUTTON_BORDER = {
     "highlightbackground": "black",
     "highlightcolor": "black",
 }
+CART_PANEL_BG = "#e0f2fe"
+CART_HEADER_BG = "#bfdbfe"
 
 # ==================== POS WINDOW ====================
 def open_pos():
@@ -87,7 +89,7 @@ def open_pos():
         font=("Arial", 22, "bold"),
     ).pack(side=tk.LEFT)
 
-    tk.Button(header_frame, text="← Back", bg="#dc3545", fg="white", font=("Arial", 13, "bold"),
+    tk.Button(header_frame, text="← Back", bg="#2563eb", fg="white", activebackground="#1d4ed8", activeforeground="white", font=("Arial", 13, "bold"),
               command=lambda: (globals().__setitem__("pos_refresh_callback", None), root.destroy()), padx=12, pady=8, **BUTTON_BORDER).pack(side=tk.RIGHT, padx=6)
     tk.Button(header_frame, text="🔄 Refresh", bg="#16a34a", fg="white", font=("Arial", 13, "bold"),
               command=lambda: pos_functions.load_inventory(ctx, search_entry.get()), padx=12, pady=8, **BUTTON_BORDER).pack(side=tk.RIGHT, padx=6)
@@ -96,22 +98,56 @@ def open_pos():
     main_frame = tk.Frame(root, bg=DASHBOARD_CONTENT_BG)
     main_frame.pack(fill="both", expand=True, padx=10, pady=5)
 
+    cart_fullscreen = tk.BooleanVar(value=False)
+
     # Left Frame - Cart / POS
-    left_frame = tk.Frame(main_frame, bg=DASHBOARD_CONTENT_BG, padx=10, pady=10)
+    left_frame = tk.Frame(
+        main_frame,
+        bg=CART_PANEL_BG,
+        padx=10,
+        pady=10,
+        highlightthickness=1,
+        highlightbackground="#93c5fd",
+    )
     left_frame.pack(side="left", fill="both", expand=True, padx=(0, 5))
     left_frame.configure(width=620)
     left_frame.pack_propagate(False)
 
-    tk.Label(left_frame, text="Checkout Cart", font=("Arial", 17, "bold"), bg=DASHBOARD_CONTENT_BG).pack(pady=5)
+    sort_var = tk.StringVar(value="Name")
+    ctx["sort_var"] = sort_var
 
-    cart_frame = tk.Frame(left_frame, bg=DASHBOARD_CONTENT_BG)
+    cart_header_frame = tk.Frame(left_frame, bg=CART_HEADER_BG, bd=1, relief="solid")
+    cart_header_frame.pack(fill="x", pady=(10, 5))
+    tk.Label(
+        cart_header_frame,
+        text="Checkout Cart",
+        font=("Arial", 17, "bold"),
+        bg=CART_HEADER_BG,
+        fg="#1e40af",
+    ).pack(side="left", padx=10, pady=6)
+    cart_fullscreen_btn = tk.Button(
+        cart_header_frame,
+        text="Full Screen",
+        bg="#2563eb",
+        fg="white",
+        activebackground="#1d4ed8",
+        activeforeground="white",
+        font=("Arial", 11, "bold"),
+        command=lambda: toggle_cart_fullscreen(),
+        padx=10,
+        pady=3,
+        **BUTTON_BORDER,
+    )
+    cart_fullscreen_btn.pack(side="right")
+
+    cart_frame = tk.Frame(left_frame, bg=CART_PANEL_BG)
     cart_frame.pack(pady=5)
     tk.Label(cart_frame, text=" You can also Double-click an item to select it.", font=("Arial", 13),
-             bg=DASHBOARD_CONTENT_BG).pack()
+             bg=CART_PANEL_BG).pack()
     # Cart Treeview
-    cart_table_frame = tk.Frame(left_frame, bg=DASHBOARD_CONTENT_BG)
-    cart_table_frame.pack(fill="x", pady=5)
-    cart_table_frame.configure(height=315)
+    cart_table_frame = tk.Frame(left_frame, bg=CART_PANEL_BG)
+    cart_table_frame.pack(fill="x", pady=(3, 4))
+    cart_table_frame.configure(height=270)
     cart_table_frame.pack_propagate(False)
     cart_table_frame.grid_columnconfigure(0, weight=1)
     cart_table_frame.grid_rowconfigure(0, weight=1)
@@ -130,7 +166,7 @@ def open_pos():
     cart_tree.grid(row=0, column=0, sticky="nsew")
     cart_y_scroll.grid(row=0, column=1, sticky="ns")
     cart_x_scroll.grid(row=1, column=0, sticky="ew")
-    tk.Frame(cart_table_frame, bg=DASHBOARD_CONTENT_BG, width=16, height=16).grid(row=1, column=1, sticky="nsew")
+    tk.Frame(cart_table_frame, bg=CART_PANEL_BG, width=16, height=16).grid(row=1, column=1, sticky="nsew")
     cart_column_specs = {
         "ID": (60, 55, 0.8),
         "Name": (170, 130, 2.4),
@@ -164,43 +200,71 @@ def open_pos():
     global total_label
     total_label = tk.Label(
         left_frame,
-        text="Amount Due: P0.00",
-        font=("Arial", 22, "bold"),
-        bg=DASHBOARD_CONTENT_BG,
+        text=f"Amount Due: {pos_functions.format_money_value(0)}",
+        font=("Arial", 21, "bold"),
+        bg=CART_PANEL_BG,
         fg="#991b1b",
     )
     ctx["total_label"] = total_label
-    total_label.pack(fill="x", pady=(18, 10))
+    total_label.pack(fill="x", pady=(8, 6))
 
-    # Right Frame - Search + Inventory
+    checkout_button_frame = tk.Frame(left_frame, bg=CART_PANEL_BG)
+    checkout_button_frame.pack(fill="x", pady=(0, 6))
+    clear_cart_btn = tk.Button(
+        checkout_button_frame,
+        text="Clear Cart",
+        bg="#dc3545",
+        fg="white",
+        activebackground="#b91c1c",
+        activeforeground="white",
+        font=("Arial", 16, "bold"),
+        command=lambda: pos_functions.clear_cart(ctx),
+        padx=15,
+        pady=12,
+        **BUTTON_BORDER,
+    )
+    clear_cart_btn.pack(side="left", fill="x", expand=True, padx=(0, 5))
+    pay_checkout_btn = tk.Button(
+        checkout_button_frame,
+        text="Pay / Checkout",
+        bg="#ffc107",
+        fg="black",
+        activebackground="#eab308",
+        activeforeground="black",
+        font=("Arial", 16, "bold"),
+        command=lambda: pos_functions.open_payment_modal(ctx),
+        padx=15,
+        pady=12,
+        **BUTTON_BORDER,
+    )
+    pay_checkout_btn.pack(side="left", fill="x", expand=True, padx=(5, 0))
+
+    # Right Frame - Inventory
     right_outer = tk.Frame(main_frame, bg=DASHBOARD_CONTENT_BG)
     right_outer.pack(side="right", fill="both", expand=True, padx=(5, 0))
 
-    controls_frame = tk.Frame(right_outer, bg=DASHBOARD_CONTENT_BG)
-    controls_frame.pack(fill="x", pady=(0, 6))
+    inventory_controls_frame = tk.Frame(right_outer, bg=DASHBOARD_CONTENT_BG)
+    inventory_controls_frame.pack(fill="x", pady=(0, 6))
 
-    tk.Label(controls_frame, text="Search Inventory:", bg=DASHBOARD_CONTENT_BG, font=("Arial", 14, "bold")).pack(side=tk.LEFT, padx=(0, 8))
-    search_entry = tk.Entry(controls_frame, width=22, font=("Arial", 15), bd=2, relief="solid")
+    tk.Label(inventory_controls_frame, text="Search Inventory:", bg=DASHBOARD_CONTENT_BG, font=("Arial", 13, "bold")).pack(side=tk.LEFT, padx=(0, 6))
+    search_entry = tk.Entry(inventory_controls_frame, width=22, font=("Arial", 14), bd=2, relief="solid")
     ctx["search_entry"] = search_entry
-    search_entry.pack(side=tk.LEFT, padx=(0, 8), ipady=3)
+    search_entry.pack(side=tk.LEFT, padx=(0, 10), ipady=2)
     search_entry.bind("<KeyRelease>", lambda e: pos_functions.load_inventory(ctx, search_entry.get()))
 
-    tk.Label(controls_frame, text="Sort By:", bg=DASHBOARD_CONTENT_BG, font=("Arial", 14, "bold")).pack(side=tk.LEFT, padx=(0, 8))
-
-    sort_var = tk.StringVar(value="Name")
-    ctx["sort_var"] = sort_var
+    tk.Label(inventory_controls_frame, text="Sort By:", bg=DASHBOARD_CONTENT_BG, font=("Arial", 13, "bold")).pack(side=tk.LEFT, padx=(0, 6))
     sort_menu = ttk.Combobox(
-        controls_frame,
+        inventory_controls_frame,
         textvariable=sort_var,
         values=["Name", "Newest"],
         state="readonly",
-        width=12,
-        font=("Arial", 15)
+        width=10,
+        font=("Arial", 14)
     )
-    sort_menu.pack(side=tk.LEFT, ipady=3)
+    sort_menu.pack(side=tk.LEFT, ipady=2)
 
     tk.Button(
-        controls_frame,
+        inventory_controls_frame,
         text="Summary",
         bg="#8b5cf6",
         fg="white",
@@ -209,16 +273,41 @@ def open_pos():
         font=("Arial", 13, "bold"),
         command=lambda: open_pos_summary(root),
         padx=14,
-        pady=6,
+        pady=5,
         **BUTTON_BORDER,
-    ).pack(side=tk.RIGHT, padx=(10, 0))
+    ).pack(side=tk.RIGHT)
+
+    inventory_fullscreen = tk.BooleanVar(value=False)
+    other_items_fullscreen = tk.BooleanVar(value=False)
 
     sort_menu.bind("<<ComboboxSelected>>", lambda e: pos_functions.load_inventory(ctx, search_entry.get()))
     pos_refresh_callback = lambda: pos_functions.load_inventory(ctx, search_entry.get())
 
     right_frame = tk.Frame(right_outer, bg="white", padx=10, pady=10)
     right_frame.pack(fill="both", expand=True)
-    tk.Label(right_frame, text="Items In Inventory", font=("Arial", 18, "bold"), bg="white").pack(pady=5)
+    inventory_header = tk.Frame(right_frame, bg="#dbeafe", bd=1, relief="solid")
+    inventory_header.pack(fill="x", pady=(0, 10))
+    tk.Label(
+        inventory_header,
+        text="Items In Inventory",
+        font=("Arial", 18, "bold"),
+        bg="#dbeafe",
+        fg="#1e40af"
+    ).pack(side="left", padx=12, pady=8)
+    fullscreen_btn = tk.Button(
+        inventory_header,
+        text="Full Screen Display",
+        bg="#0f766e",
+        fg="white",
+        activebackground="#0f766e",
+        activeforeground="white",
+        font=("Arial", 13, "bold"),
+        command=lambda: toggle_inventory_fullscreen(),
+        padx=14,
+        pady=6,
+        **BUTTON_BORDER,
+    )
+    fullscreen_btn.pack(side="right", padx=10, pady=6)
 
     inventory_columns = {
         "ID": (60, 55, 0.7),
@@ -230,10 +319,33 @@ def open_pos():
     }
     ctx["inventory_column_specs"] = inventory_columns
 
-    def create_inventory_section(parent, title, height):
+    def refresh_inventory_table_layout():
+        pos_functions.auto_fit_tree_columns(chb_inv_tree, inventory_columns)
+        pos_functions.auto_fit_tree_columns(inv_tree, inventory_columns)
+        pos_functions.schedule_inventory_buttons(ctx)
+
+    def create_inventory_section(parent, title, height, include_fullscreen=False):
         section = tk.Frame(parent, bg="white")
         section.pack(fill="x", pady=(0, 10))
-        tk.Label(section, text=title, font=("Arial", 15, "bold"), bg="white", fg="#1e40af").pack(anchor="w", pady=(0, 4))
+        header = tk.Frame(section, bg="white")
+        header.pack(fill="x", pady=(0, 4))
+        tk.Label(header, text=title, font=("Arial", 15, "bold"), bg="white", fg="#1e40af").pack(side="left")
+        if include_fullscreen:
+            other_fullscreen_btn = tk.Button(
+                header,
+                text="Full Screen",
+                bg="#0f766e",
+                fg="white",
+                activebackground="#0f766e",
+                activeforeground="white",
+                font=("Arial", 11, "bold"),
+                command=lambda: toggle_other_items_fullscreen(),
+                padx=10,
+                pady=3,
+                **BUTTON_BORDER,
+            )
+            other_fullscreen_btn.pack(side="right")
+            ctx["other_fullscreen_btn"] = other_fullscreen_btn
         table_frame = tk.Frame(section, bg="white")
         table_frame.pack(fill="x")
         table_frame.grid_columnconfigure(0, weight=1)
@@ -274,13 +386,121 @@ def open_pos():
         tree.bind("<B1-Motion>", lambda event: pos_functions.schedule_inventory_buttons(ctx))
         tree.bind("<ButtonRelease-1>", lambda event: pos_functions.schedule_inventory_buttons(ctx))
         tree.bind("<Double-1>", lambda event, tree_widget=tree: pos_functions.open_add_to_cart_modal(ctx, event, tree_widget=tree_widget))
-        return tree
+        return section, table_frame, tree
 
     global chb_inv_tree, inv_tree
-    chb_inv_tree = create_inventory_section(right_frame, "CHB Items", 3)
-    inv_tree = create_inventory_section(right_frame, "Other Items", 5)
+    chb_inv_section, chb_inv_table_frame, chb_inv_tree = create_inventory_section(right_frame, "CHB Items", 3)
+    inv_section, inv_table_frame, inv_tree = create_inventory_section(right_frame, "Other Items", 5, include_fullscreen=True)
+    inv_section.pack_configure(fill="both", expand=True)
+    inv_table_frame.pack_configure(fill="both", expand=True)
     ctx["chb_inv_tree"] = chb_inv_tree
     ctx["inv_tree"] = inv_tree
+
+    def refresh_cart_table_layout():
+        pos_functions.auto_fit_tree_columns(cart_tree, cart_column_specs)
+        pos_functions.schedule_cart_buttons(ctx)
+
+    def restore_cart_table_size():
+        cart_table_frame.pack_configure(fill="x", expand=False, pady=(3, 4))
+        cart_table_frame.configure(height=270)
+        cart_table_frame.pack_propagate(False)
+        cart_tree._fill_available_width = False
+        for button in (clear_cart_btn, pay_checkout_btn):
+            button.config(font=("Arial", 16, "bold"), pady=12)
+        cart_fullscreen_btn.config(text="Full Screen", bg="#2563eb", activebackground="#1d4ed8")
+        cart_fullscreen.set(False)
+
+    def show_cart_panel():
+        left_frame.pack_forget()
+        right_outer.pack_forget()
+        restore_cart_table_size()
+        left_frame.pack(side="left", fill="both", expand=False, padx=(0, 5))
+        left_frame.configure(width=620)
+        left_frame.pack_propagate(False)
+        right_outer.pack(side="right", fill="both", expand=True, padx=(5, 0))
+        root.after(50, refresh_cart_table_layout)
+
+    def hide_cart_panel():
+        left_frame.pack_forget()
+        right_outer.pack_forget()
+        restore_cart_table_size()
+        right_outer.pack(side="right", fill="both", expand=True, padx=0)
+
+    def show_cart_only():
+        left_frame.pack_forget()
+        right_outer.pack_forget()
+        cart_table_frame.pack_configure(fill="both", expand=True, pady=5)
+        cart_tree._fill_available_width = True
+        for button in (clear_cart_btn, pay_checkout_btn):
+            button.config(font=("Arial", 14, "bold"), pady=7)
+        cart_fullscreen_btn.config(text="Exit Full Screen", bg="#334155", activebackground="#334155")
+        cart_fullscreen.set(True)
+        left_frame.pack(side="left", fill="both", expand=True, padx=0)
+        left_frame.pack_propagate(True)
+        root.after(50, refresh_cart_table_layout)
+
+    def restore_other_items_section():
+        if not other_items_fullscreen.get():
+            return
+        chb_inv_section.pack_forget()
+        inv_section.pack_forget()
+        chb_inv_section.pack(fill="x", pady=(0, 10))
+        inv_section.pack(fill="both", expand=True, pady=(0, 10))
+        inv_table_frame.pack_configure(fill="both", expand=True)
+        inv_tree._fill_available_width = bool(inventory_fullscreen.get())
+        ctx["other_fullscreen_btn"].config(text="Full Screen", bg="#0f766e", activebackground="#0f766e")
+        other_items_fullscreen.set(False)
+
+    def toggle_inventory_fullscreen():
+        if inventory_fullscreen.get():
+            show_cart_panel()
+            for tree_widget in (chb_inv_tree, inv_tree):
+                tree_widget._fill_available_width = False
+            fullscreen_btn.config(text="Full Screen Display", bg="#0f766e", activebackground="#0f766e")
+            inventory_fullscreen.set(False)
+        else:
+            if cart_fullscreen.get():
+                show_cart_panel()
+            restore_other_items_section()
+            hide_cart_panel()
+            for tree_widget in (chb_inv_tree, inv_tree):
+                tree_widget._fill_available_width = True
+            fullscreen_btn.config(text="Exit Full Screen", bg="#334155", activebackground="#334155")
+            inventory_fullscreen.set(True)
+        root.after(50, refresh_inventory_table_layout)
+
+    def toggle_other_items_fullscreen():
+        if other_items_fullscreen.get():
+            restore_other_items_section()
+        else:
+            if cart_fullscreen.get():
+                show_cart_panel()
+            if inventory_fullscreen.get():
+                show_cart_panel()
+                for tree_widget in (chb_inv_tree, inv_tree):
+                    tree_widget._fill_available_width = False
+                fullscreen_btn.config(text="Full Screen Display", bg="#0f766e", activebackground="#0f766e")
+                inventory_fullscreen.set(False)
+            chb_inv_section.pack_forget()
+            inv_section.pack_configure(fill="both", expand=True, pady=(0, 10))
+            inv_table_frame.pack_configure(fill="both", expand=True)
+            inv_tree._fill_available_width = True
+            ctx["other_fullscreen_btn"].config(text="Exit Full Screen", bg="#334155", activebackground="#334155")
+            other_items_fullscreen.set(True)
+        root.after(50, refresh_inventory_table_layout)
+
+    def toggle_cart_fullscreen():
+        if cart_fullscreen.get():
+            show_cart_panel()
+        else:
+            if inventory_fullscreen.get():
+                for tree_widget in (chb_inv_tree, inv_tree):
+                    tree_widget._fill_available_width = False
+                fullscreen_btn.config(text="Full Screen Display", bg="#0f766e", activebackground="#0f766e")
+                inventory_fullscreen.set(False)
+            restore_other_items_section()
+            show_cart_only()
+        root.after(50, refresh_inventory_table_layout)
     root.after_idle(lambda: (
         pos_functions.auto_fit_tree_columns(chb_inv_tree, inventory_columns),
         pos_functions.auto_fit_tree_columns(inv_tree, inventory_columns),
@@ -291,13 +511,6 @@ def open_pos():
         pos_functions.auto_fit_tree_columns(inv_tree, inventory_columns),
         pos_functions.schedule_inventory_buttons(ctx),
     ))
-
-    checkout_button_frame = tk.Frame(right_frame, bg="white")
-    checkout_button_frame.pack(side="bottom", pady=(12, 10))
-    tk.Button(checkout_button_frame, text="Clear Cart", bg="#dc3545", fg="white", width=25, font=("Arial", 14, "bold"),
-              command=lambda: pos_functions.clear_cart(ctx), padx=15, pady=10, **BUTTON_BORDER).pack(side="left", padx=5)
-    tk.Button(checkout_button_frame, text="Pay / Checkout", bg="#ffc107", fg="black", width=25, font=("Arial", 14, "bold"),
-              command=lambda: pos_functions.open_payment_modal(ctx), padx=15, pady=10, **BUTTON_BORDER).pack(side="left", padx=5)
 
     cart_tree.bind("<Double-1>", lambda event: pos_functions.open_cart_item_modal(ctx, event))
 

@@ -299,6 +299,7 @@ def open_most_items_summary(parent):
         ("sales", "Sales Count", 120, 170, "e"),
         ("total", "Total Sales", 140, 190, "e"),
         ("latest", "Latest Sale", 190, 260, "w"),
+        ("user", "User", 110, 180, "w"),
     ]
 
     def title_text():
@@ -363,15 +364,15 @@ def open_most_items_summary(parent):
             summary_tree.insert(
                 "",
                 "end",
-                values=("No items sold for the selected period.", "", "", "", ""),
+                values=("No items sold for the selected period.", "", "", "", "", ""),
                 tags=("even",),
             )
         for index, row in enumerate(data["items"]):
-            item_name, qty, sales_count, total_sales, latest_ts = row
+            item_name, qty, sales_count, total_sales, latest_ts, user = row
             summary_tree.insert(
                 "",
                 "end",
-                values=(item_name, f"{qty:,}", f"{sales_count:,}", money(total_sales), format_dashboard_datetime(latest_ts)),
+                values=(item_name, f"{qty:,}", f"{sales_count:,}", money(total_sales), format_dashboard_datetime(latest_ts), user or "Admin"),
                 tags=("even" if index % 2 == 0 else "odd",),
             )
         adjust_columns(summary_tree)
@@ -399,12 +400,12 @@ def open_most_items_summary(parent):
             alignment=1,
             spaceAfter=10,
         )
-        table_data = [["Item Name", "Items Sold", "Sales Count", "Total Sales", "Latest Sale"]]
+        table_data = [["Item Name", "Items Sold", "Sales Count", "Total Sales", "Latest Sale", "User"]]
         table_data.extend(list(row) for row in rows)
         if len(table_data) == 1:
-            table_data.append(["No items sold", "", "", "", ""])
+            table_data.append(["No items sold", "", "", "", "", ""])
         doc = SimpleDocTemplate(file_path, pagesize=landscape(letter), topMargin=0.45*inch, bottomMargin=0.45*inch)
-        table = Table(table_data, colWidths=[3.0*inch, 1.0*inch, 1.1*inch, 1.3*inch, 2.0*inch])
+        table = Table(table_data, colWidths=[2.6*inch, 0.9*inch, 1.0*inch, 1.2*inch, 1.8*inch, 1.1*inch])
         table.setStyle(TableStyle([
             ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor(PRIMARY)),
             ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),

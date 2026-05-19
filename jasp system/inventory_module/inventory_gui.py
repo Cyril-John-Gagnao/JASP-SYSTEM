@@ -124,11 +124,11 @@ def open_inventory(parent=None):
         text="Summary",
         bg="#8b5cf6",
         fg="white",
-        font=("Arial", 14, "bold"),
+        font=("Arial", 13, "bold"),
         bd=2,
         relief="solid",
-        padx=16,
-        pady=7,
+        padx=14,
+        pady=3,
         command=lambda: open_inventory_summary(inventory_window, left_frame)
     ).pack(side="left")
 
@@ -141,7 +141,7 @@ def open_inventory(parent=None):
     tk.Button(
         stock_counts_frame,
         textvariable=low_stock_var,
-        font=("Arial", 16, "bold"),
+        font=("Arial", 13, "bold"),
         bg="#fed7aa",
         fg="#9a3412",
         activebackground="#fdba74",
@@ -149,8 +149,8 @@ def open_inventory(parent=None):
         cursor="hand2",
         bd=2,
         relief="solid",
-        padx=12,
-        pady=4,
+        padx=10,
+        pady=2,
         command=lambda: show_low_stock_items()
     ).pack(side="left", padx=(28, 0))
     tk.Button(
@@ -168,6 +168,23 @@ def open_inventory(parent=None):
         pady=4,
         command=lambda: show_all_items()
     ).pack(side="left", padx=(10, 0))
+
+    fullscreen_btn = tk.Button(
+        stock_counts_frame,
+        text="Full Screen Display",
+        font=("Arial", 12, "bold"),
+        bg="#0f766e",
+        fg="white",
+        activebackground="#0f766e",
+        activeforeground="white",
+        cursor="hand2",
+        bd=2,
+        relief="solid",
+        padx=10,
+        pady=4,
+        command=lambda: toggle_display_fullscreen()
+    )
+    fullscreen_btn.pack(side="right", padx=(10, 0))
 
     # ---------- CRUD Functions ----------
     sort_state = {"column": None, "ascending": True}
@@ -189,13 +206,25 @@ def open_inventory(parent=None):
     )
     chb_section.pack(fill="x", pady=(0, 10))
 
+    chb_header = tk.Frame(chb_section, bg="white")
+    chb_header.pack(fill="x", pady=(0, 8))
+
     tk.Label(
-        chb_section,
+        chb_header,
         text="CHB Items",
         font=("Arial", 18, "bold"),
         bg="white",
         fg="#1e40af"
-    ).pack(anchor="w", pady=(0, 8))
+    ).pack(side="left")
+
+    chb_items_count_var = tk.StringVar(value="Total: 0")
+    tk.Label(
+        chb_header,
+        textvariable=chb_items_count_var,
+        font=("Arial", 14, "bold"),
+        bg="white",
+        fg="#475569"
+    ).pack(side="left", padx=(14, 0))
 
     chb_tree_frame = tk.Frame(chb_section, bg="white")
     chb_tree_frame.pack(fill="x")
@@ -211,13 +240,64 @@ def open_inventory(parent=None):
     )
     lower_section.pack(fill="both", expand=True)
 
+    other_header = tk.Frame(lower_section, bg="white")
+    other_header.pack(fill="x", pady=(0, 8))
+
     tk.Label(
-        lower_section,
+        other_header,
         text="Other Inventory Items",
         font=("Arial", 18, "bold"),
         bg="white",
         fg="#1e40af"
-    ).pack(anchor="w", pady=(0, 8))
+    ).pack(side="left")
+
+    other_items_count_var = tk.StringVar(value="Total: 0")
+    tk.Label(
+        other_header,
+        textvariable=other_items_count_var,
+        font=("Arial", 14, "bold"),
+        bg="white",
+        fg="#475569"
+    ).pack(side="left", padx=(14, 0))
+
+    other_items_fullscreen = tk.BooleanVar(value=False)
+
+    def toggle_other_items_fullscreen():
+        clear_status_labels()
+        if other_items_fullscreen.get():
+            lower_section.pack_forget()
+            chb_section.pack(fill="x", pady=(0, 10))
+            lower_section.pack(fill="both", expand=True)
+            other_fullscreen_btn.config(text="Full Screen", bg="#0f766e", activebackground="#0f766e")
+            other_items_fullscreen.set(False)
+        else:
+            if display_fullscreen.get():
+                right_frame.pack(side="right", fill="y", padx=(10, 0))
+                table_area.pack_configure(side="left", fill="both", expand=True, padx=(0, 10))
+                fullscreen_btn.config(text="Full Screen Display", bg="#0f766e", activebackground="#0f766e")
+                display_fullscreen.set(False)
+            chb_section.pack_forget()
+            lower_section.pack_configure(fill="both", expand=True)
+            other_fullscreen_btn.config(text="Exit Full Screen", bg="#334155", activebackground="#334155")
+            other_items_fullscreen.set(True)
+        inventory_window.after(50, lambda: (auto_adjust_columns(tree), schedule_status_labels(tree)))
+
+    other_fullscreen_btn = tk.Button(
+        other_header,
+        text="Full Screen",
+        font=("Arial", 11, "bold"),
+        bg="#0f766e",
+        fg="white",
+        activebackground="#0f766e",
+        activeforeground="white",
+        cursor="hand2",
+        bd=2,
+        relief="solid",
+        padx=10,
+        pady=4,
+        command=lambda: toggle_other_items_fullscreen()
+    )
+    other_fullscreen_btn.pack(side="right")
 
     tree_frame = tk.Frame(lower_section, bg="white")
     tree_frame.pack(fill="both", expand=True)
@@ -234,6 +314,28 @@ def open_inventory(parent=None):
     )
     right_frame.pack(side="right", fill="y", padx=(10, 0))
     table_area.pack(side="left", fill="both", expand=True, padx=(0, 10))
+
+    display_fullscreen = tk.BooleanVar(value=False)
+
+    def toggle_display_fullscreen():
+        clear_status_labels()
+        if display_fullscreen.get():
+            right_frame.pack(side="right", fill="y", padx=(10, 0))
+            table_area.pack_configure(side="left", fill="both", expand=True, padx=(0, 10))
+            fullscreen_btn.config(text="Full Screen Display", bg="#0f766e", activebackground="#0f766e")
+            display_fullscreen.set(False)
+        else:
+            if other_items_fullscreen.get():
+                lower_section.pack_forget()
+                chb_section.pack(fill="x", pady=(0, 10))
+                lower_section.pack(fill="both", expand=True)
+                other_fullscreen_btn.config(text="Full Screen", bg="#0f766e", activebackground="#0f766e")
+                other_items_fullscreen.set(False)
+            right_frame.pack_forget()
+            table_area.pack_configure(side="left", fill="both", expand=True, padx=0)
+            fullscreen_btn.config(text="Exit Full Screen", bg="#334155", activebackground="#334155")
+            display_fullscreen.set(True)
+        inventory_window.after(50, lambda: (auto_adjust_columns(chb_tree), auto_adjust_columns(tree), schedule_status_labels()))
 
     columns = ("ID", "Name", "Unit", "Quantity", "Price", "Raw Price", "Status", "Restock")
     column_headings = {
@@ -363,6 +465,7 @@ def open_inventory(parent=None):
         }
 
         tree_columns = list(target_tree["columns"])
+        measured_widths = {}
         for col in columns:
             heading_text = column_headings[col]
             width = heading_font.measure(heading_text) + extra_padding[col]
@@ -374,7 +477,22 @@ def open_inventory(parent=None):
                 value_width = body_font.measure(str(values[col_index])) + extra_padding[col]
                 width = max(width, value_width)
             width = min(width, max_widths[col])
-            target_tree.column(col, width=width, minwidth=width, stretch=False)
+            measured_widths[col] = width
+
+        if target_tree is tree and (other_items_fullscreen.get() or display_fullscreen.get()):
+            target_tree.update_idletasks()
+            total_width = sum(measured_widths.values())
+            available_width = max(target_tree.winfo_width() - 24, total_width)
+            if available_width > total_width:
+                flexible_columns = ["Name", "Unit", "Quantity", "Price", "Raw Price", "Status"]
+                extra_width = available_width - total_width
+                per_column = extra_width // len(flexible_columns)
+                remainder = extra_width % len(flexible_columns)
+                for index, col in enumerate(flexible_columns):
+                    measured_widths[col] += per_column + (1 if index < remainder else 0)
+
+        for col in columns:
+            target_tree.column(col, width=measured_widths[col], minwidth=measured_widths[col], stretch=False)
 
     def clear_status_labels():
         for widget in overlay_widgets.values():
@@ -414,6 +532,7 @@ def open_inventory(parent=None):
         for row in chb_tree.get_children():
             chb_tree.delete(row)
 
+        chb_count = 0
         placeholders = ", ".join("?" for _ in CHB_SECTION_ITEMS)
         cursor.execute(
             f"""
@@ -433,6 +552,8 @@ def open_inventory(parent=None):
             display_row = inventory_functions.display_inventory_row(row)
             tag = inventory_functions.inventory_row_tag(index, display_row)
             chb_tree.insert("", tk.END, values=display_row + ("",), tags=(tag,))
+            chb_count += 1
+        chb_items_count_var.set(f"Total: {chb_count:,}")
         auto_adjust_columns(chb_tree)
 
     def remove_chb_items_from_main_table():
@@ -447,6 +568,7 @@ def open_inventory(parent=None):
             status = values[6] if len(values) > 6 else "Active"
             tree.item(item, tags=(inventory_functions.status_row_tag(remaining_index, status, values[1], values[3]),))
             remaining_index += 1
+        other_items_count_var.set(f"Total: {remaining_index:,}")
         auto_adjust_columns(tree)
 
     def update_low_stock_count():
@@ -474,6 +596,7 @@ def open_inventory(parent=None):
                     continue
                 target_tree.item(item, tags=(inventory_functions.LOW_STOCK_ROW,))
                 visible_index += 1
+            other_items_count_var.set(f"Total: {visible_index:,}")
             auto_adjust_columns(target_tree)
 
     def show_low_stock_items():

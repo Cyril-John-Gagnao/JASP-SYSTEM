@@ -226,7 +226,11 @@ def show_success_popup(user_role):
         fg="white",
         activebackground=GREEN_HOVER,
         font=("Arial", 15, "bold"),
-        relief="flat",
+        relief="solid",
+        bd=2,
+        highlightthickness=1,
+        highlightbackground="black",
+        highlightcolor="black",
         width=18,
         pady=10
     )
@@ -834,7 +838,11 @@ def show_login_screen():
         bg=GREEN,
         fg="white",
         activebackground=GREEN_HOVER,
-        relief="flat",
+        relief="solid",
+        bd=2,
+        highlightthickness=1,
+        highlightbackground="black",
+        highlightcolor="black",
         command=login
     )
     login_btn.pack(pady=(0, 4), ipady=6)

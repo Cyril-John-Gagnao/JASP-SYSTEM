@@ -94,7 +94,8 @@ def fetch_most_items_summary(start, end):
             COALESCE(SUM(qty), 0) AS total_qty,
             COUNT(*) AS sales_count,
             COALESCE(SUM(total), 0) AS total_sales,
-            MAX(ts) AS latest_ts
+            MAX(ts) AS latest_ts,
+            COALESCE(NULLIF(MAX(cashier), ''), 'Admin') AS cashier_name
         FROM sales
         WHERE DATE(ts) BETWEEN ? AND ?
           AND COALESCE(payment_status, 'Paid') <> 'Void'

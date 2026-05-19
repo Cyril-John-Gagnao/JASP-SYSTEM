@@ -134,7 +134,7 @@ def open_chb_dashboard():
     sort_menu.pack(side="left", pady=10)
     # Summary button (opens period summary dialog)
     tk.Button(search_frame, text='Summary', command=lambda: chb_functions.open_period_summary(win, cursor, BG_MAIN, TEXT), bg='#8b5cf6', fg='white', font=('Arial', 13, 'bold'), padx=12, pady=6, **BUTTON_BORDER).pack(side='left', padx=10)
-    tk.Button(search_frame, text='Open Delivery Form', command=lambda: open_delivery_window(win, BG_MAIN, CARD_BG, PRIMARY), bg='#f59e0b', fg='white', font=('Arial', 13, 'bold'), padx=12, pady=6, **BUTTON_BORDER, cursor='hand2').pack(side='right', padx=(10, 0), pady=10)
+    tk.Button(search_frame, text='Open Delivery Section', command=lambda: open_delivery_window(win, BG_MAIN, CARD_BG, PRIMARY), bg='#f59e0b', fg='white', font=('Arial', 13, 'bold'), padx=12, pady=6, **BUTTON_BORDER, cursor='hand2').pack(side='left', padx=(0, 10), pady=10)
 
     # ================= TOTAL HOLLOW BLOCKS DISPLAY =================
     total_frame = tk.Frame(win, bg=BG_MAIN)
@@ -150,6 +150,9 @@ def open_chb_dashboard():
         fg="#1e40af"
     )
     total_label.pack(side="left")
+
+    fullscreen_btn = tk.Button(total_frame, text='Full Screen Display', command=lambda: toggle_display_fullscreen(), bg='#0f766e', fg='white', font=('Arial', 13, 'bold'), padx=12, pady=6, **BUTTON_BORDER)
+    fullscreen_btn.pack(side="right", padx=(10, 0))
 
     # ================= MAIN CONTAINER (51-49 Split) =================
     main_container = tk.Frame(win, bg=CARD_BG, bd=1, relief="solid")
@@ -322,7 +325,26 @@ def open_chb_dashboard():
     table_card.columnconfigure(0, weight=1)
     table_card.rowconfigure(0, weight=1)
 
-    columns = ("id", "date", "worker", "cement", "Fine Sand", "blocks", "pay")
+    display_fullscreen = tk.BooleanVar(value=False)
+
+    def toggle_display_fullscreen():
+        if display_fullscreen.get():
+            form_card.grid(row=0, column=1, sticky="nsew", padx=(6, 16), pady=(8, 12))
+            table_card.grid_configure(row=0, column=0, columnspan=1, sticky="nsew", padx=(10, 6), pady=(8, 12))
+            main_container.columnconfigure(0, weight=51, minsize=620)
+            main_container.columnconfigure(1, weight=49, minsize=508)
+            fullscreen_btn.config(text="Full Screen Display", bg="#0f766e")
+            display_fullscreen.set(False)
+        else:
+            form_card.grid_remove()
+            table_card.grid_configure(row=0, column=0, columnspan=2, sticky="nsew", padx=12, pady=(8, 12))
+            main_container.columnconfigure(0, weight=1, minsize=0)
+            main_container.columnconfigure(1, weight=0, minsize=0)
+            fullscreen_btn.config(text="Exit Full Screen", bg="#334155")
+            display_fullscreen.set(True)
+        win.after(50, auto_adjust_columns)
+
+    columns = ("id", "date", "worker", "cement", "Fine Sand", "blocks", "pay", "user")
     
     # Configure Treeview with larger fonts
     style = ttk.Style()
@@ -364,6 +386,7 @@ def open_chb_dashboard():
         "Fine Sand": "Fine Sand Bags",
         "blocks": "Blocks",
         "pay": "Pay",
+        "user": "User",
     }
 
     def auto_adjust_columns():
@@ -378,6 +401,7 @@ def open_chb_dashboard():
             "Fine Sand": 80,
             "blocks": 70,
             "pay": 75,
+            "user": 70,
         }
         base_min_widths = {
             "id": 40,
@@ -387,6 +411,7 @@ def open_chb_dashboard():
             "Fine Sand": 95,
             "blocks": 70,
             "pay": 80,
+            "user": 100,
         }
         max_widths = {
             "id": 90,
@@ -396,6 +421,7 @@ def open_chb_dashboard():
             "Fine Sand": 230,
             "blocks": 150,
             "pay": 160,
+            "user": 220,
         }
         measured_widths = {}
         min_widths = {}
@@ -409,6 +435,17 @@ def open_chb_dashboard():
                 width = max(width, row_font.measure(str(tree.set(item, col))) + column_padding[col])
             measured_widths[col] = max(min_widths[col], min(width, max_widths[col]))
 
+        if display_fullscreen.get():
+            total_width = sum(measured_widths.values())
+            available_width = max(tree.winfo_width() - 24, total_width)
+            if available_width > total_width:
+                flexible_columns = ["date", "worker", "cement", "Fine Sand", "blocks", "pay", "user"]
+                extra_width = available_width - total_width
+                per_column = extra_width // len(flexible_columns)
+                remainder = extra_width % len(flexible_columns)
+                for index, col in enumerate(flexible_columns):
+                    measured_widths[col] += per_column + (1 if index < remainder else 0)
+
         for col in columns:
             tree.column(col, width=measured_widths[col], minwidth=min_widths[col], stretch=False)
 
@@ -420,6 +457,7 @@ def open_chb_dashboard():
         "Fine Sand": 105,
         "blocks": 75,
         "pay": 90,
+        "user": 110,
     }
     for col in columns:
         tree.heading(col, text=column_labels.get(col, col.upper()))

@@ -125,7 +125,7 @@ def open_delivery_window(parent_win, bg_main, card_bg, primary):
         search_frame,
         text="Other Items to Deliver",
         command=lambda: delivery_functions.open_other_items_form(delivery_win, conn, cursor, load_data, display_option_var),
-        bg="#0f766e",
+        bg="#f59e0b",
         fg="white",
         font=("Arial", 13, "bold"),
         padx=12,
@@ -133,6 +133,32 @@ def open_delivery_window(parent_win, bg_main, card_bg, primary):
         cursor="hand2",
         **BUTTON_BORDER
     ).pack(side="left", padx=(0, 10))
+
+    fullscreen_btn = tk.Button(
+        search_frame,
+        text="Full Screen Display",
+        command=lambda: toggle_display_fullscreen(),
+        bg="#0f766e",
+        fg="white",
+        font=("Arial", 13, "bold"),
+        padx=12,
+        pady=6,
+        cursor="hand2",
+        **BUTTON_BORDER
+    )
+    fullscreen_btn.pack(side="left", padx=(0, 10))
+
+    total_frame = tk.Frame(delivery_win, bg=bg_main)
+    total_frame.pack(fill="x", padx=20, pady=(0, 8))
+
+    total_delivered_var = tk.StringVar(value="Total CHB Blocks Delivered Today: 0")
+    tk.Label(
+        total_frame,
+        textvariable=total_delivered_var,
+        bg=bg_main,
+        fg="#1e40af",
+        font=("Arial", 18, "bold")
+    ).pack(side="left", padx=10)
 
     # ================= MAIN CONTAINER (60-40 Split) =================
     main_container = tk.Frame(delivery_win, bg=card_bg, bd=1, relief="solid")
@@ -247,8 +273,27 @@ def open_delivery_window(parent_win, bg_main, card_bg, primary):
     table_card.columnconfigure(0, weight=1)
     table_card.rowconfigure(1, weight=1)
 
-    columns = ("id", "transaction date", "delivery date", "worker", "driver", "address", "blocks", "delivery fee", "total Salary")
-    other_columns = ("id", "transaction date", "delivery date", "item name", "quantity", "unit of measurement", "delivery address", "delivery driver", "helper", "delivery fee")
+    display_fullscreen = tk.BooleanVar(value=False)
+
+    def toggle_display_fullscreen():
+        if display_fullscreen.get():
+            form_card.grid(row=0, column=1, sticky="nsew", padx=15, pady=15)
+            table_card.grid_configure(row=0, column=0, columnspan=1, sticky="nsew", padx=15, pady=15)
+            main_container.columnconfigure(0, weight=3, uniform="delivery")
+            main_container.columnconfigure(1, weight=2, minsize=0, uniform="delivery")
+            fullscreen_btn.config(text="Full Screen Display", bg="#0f766e")
+            display_fullscreen.set(False)
+        else:
+            form_card.grid_remove()
+            table_card.grid_configure(row=0, column=0, columnspan=2, sticky="nsew", padx=15, pady=15)
+            main_container.columnconfigure(0, weight=1, uniform="")
+            main_container.columnconfigure(1, weight=0, minsize=0, uniform="")
+            fullscreen_btn.config(text="Exit Full Screen", bg="#334155")
+            display_fullscreen.set(True)
+        delivery_win.after(50, auto_adjust_columns)
+
+    columns = ("id", "transaction date", "delivery date", "worker", "driver", "address", "blocks", "delivery fee", "total Salary", "user")
+    other_columns = ("id", "transaction date", "delivery date", "item name", "quantity", "unit of measurement", "delivery address", "delivery driver", "helper", "delivery fee", "user")
     active_columns = {"columns": columns}
 
     option_frame = tk.Frame(table_card, bg=card_bg)
@@ -317,7 +362,7 @@ def open_delivery_window(parent_win, bg_main, card_bg, primary):
         headings = other_column_headings if display_option_var.get() == "Option 2" else column_headings
         for col in selected_columns:
             tree.heading(col, text=headings[col])
-            anchor = "w" if col in ("worker", "driver", "address", "item name", "delivery address", "delivery driver", "helper") else "center"
+            anchor = "w" if col in ("worker", "driver", "address", "item name", "delivery address", "delivery driver", "helper", "user") else "center"
             tree.column(col, anchor=anchor, width=130, minwidth=80, stretch=False)
 
     configure_table_columns()
@@ -336,6 +381,7 @@ def open_delivery_window(parent_win, bg_main, card_bg, primary):
             "blocks": 55,
             "delivery fee": 65,
             "total Salary": 70,
+            "user": 65,
             "item name": 70,
             "quantity": 55,
             "unit of measurement": 75,
@@ -354,6 +400,7 @@ def open_delivery_window(parent_win, bg_main, card_bg, primary):
             "blocks": 100,
             "delivery fee": 130,
             "total Salary": 140,
+            "user": 120,
             "item name": 150,
             "quantity": 100,
             "unit of measurement": 155,
@@ -372,6 +419,7 @@ def open_delivery_window(parent_win, bg_main, card_bg, primary):
             "blocks": 150,
             "delivery fee": 180,
             "total Salary": 190,
+            "user": 240,
             "item name": 280,
             "quantity": 140,
             "unit of measurement": 220,
@@ -382,12 +430,50 @@ def open_delivery_window(parent_win, bg_main, card_bg, primary):
         }
 
         headings = other_column_headings if display_option_var.get() == "Option 2" else column_headings
+        measured_widths = {}
+        min_column_widths = {}
         for col in active_columns["columns"]:
             width = heading_font.measure(headings[col]) + padding[col]
             for item in tree.get_children():
                 width = max(width, row_font.measure(str(tree.set(item, col))) + padding[col])
             width = max(min_widths[col], min(width, max_widths[col]))
-            tree.column(col, width=width, minwidth=min_widths[col], stretch=False)
+            measured_widths[col] = width
+            min_column_widths[col] = min_widths[col]
+
+        if display_fullscreen.get():
+            total_width = sum(measured_widths.values())
+            available_width = max(tree.winfo_width() - 24, total_width)
+            if available_width > total_width:
+                selected_columns = list(active_columns["columns"])
+                flexible_columns = [col for col in selected_columns if col != "id"]
+                extra_width = available_width - total_width
+                per_column = extra_width // len(flexible_columns)
+                remainder = extra_width % len(flexible_columns)
+                for index, col in enumerate(flexible_columns):
+                    measured_widths[col] += per_column + (1 if index < remainder else 0)
+
+        for col in active_columns["columns"]:
+            tree.column(col, width=measured_widths[col], minwidth=min_column_widths[col], stretch=False)
+
+    def update_total_delivered_today():
+        total_delivered = 0
+        if display_option_var.get() == "Option 2":
+            value_index = 4
+            label = "Total Other Items Delivered Today"
+        else:
+            value_index = 6
+            label = "Total CHB Blocks Delivered Today"
+
+        for item in tree.get_children():
+            values = tree.item(item, "values")
+            if len(values) <= value_index:
+                continue
+            try:
+                total_delivered += int(str(values[value_index]).replace(",", "") or 0)
+            except ValueError:
+                continue
+
+        total_delivered_var.set(f"{label}: {total_delivered:,}")
 
     # Bind to configure event to update scrollbar after column resize
     on_tree_configure = lambda event=None: delivery_functions.on_tree_configure(event, tree)
@@ -419,6 +505,7 @@ def open_delivery_window(parent_win, bg_main, card_bg, primary):
         else:
             delivery_functions.load_data(event, cursor, tree, search_var, sort_var, delivery_win)
         auto_adjust_columns()
+        update_total_delivered_today()
 
     # BINDINGS (LIVE SEARCH)
     search_entry.bind("<KeyRelease>", load_data)

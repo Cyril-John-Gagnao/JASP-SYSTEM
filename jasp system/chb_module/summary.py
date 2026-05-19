@@ -162,13 +162,13 @@ def open_period_summary(win, cursor, BG_MAIN, TEXT):
         total_pay = 0
         if not rows:
             empty_text = "No production today" if period_var.get() == "day" else "No production in this period"
-            summary_tree.insert('', 'end', values=(start.strftime("%Y-%m-%d"), empty_text, "", ""), tags=('oddrow',))
+            summary_tree.insert('', 'end', values=(start.strftime("%Y-%m-%d"), empty_text, "", "", ""), tags=('oddrow',))
         for i, row in enumerate(rows):
-            date, worker, blocks, pay = row
+            date, worker, responsible_user, blocks, pay = row
             total_blocks += blocks
             total_pay += pay
             tag = 'evenrow' if i % 2 == 0 else 'oddrow'
-            summary_tree.insert('', 'end', values=(date, worker, f"{blocks:,}", f"₱{pay:,.2f}"), tags=(tag,))
+            summary_tree.insert('', 'end', values=(date, worker, f"{blocks:,}", f"{chr(8369)}{pay:,.2f}", responsible_user), tags=(tag,))
         totals_var.set(f"TOTAL: {total_blocks:,} blocks | ₱{total_pay:,.2f}")
 
     def get_summary_title():
@@ -189,12 +189,12 @@ def open_period_summary(win, cursor, BG_MAIN, TEXT):
             values = summary_tree.item(item, 'values')
             tree_data.append(values)
 
-        table_data = [['Production Date', 'Worker Name', 'Total Blocks', 'Total Pay']]
+        table_data = [['Production Date', 'Worker Name', 'Total Blocks', 'Total Pay', 'User']]
         total_blocks = 0
         total_pay = 0
 
         for row in tree_data:
-            date, worker, blocks, pay = row
+            date, worker, blocks, pay, responsible_user = row
             if not blocks or not pay:
                 continue
             blocks_int = int(str(blocks).replace(',', ''))
@@ -202,9 +202,9 @@ def open_period_summary(win, cursor, BG_MAIN, TEXT):
 
             total_blocks += blocks_int
             total_pay += pay_float
-            table_data.append([date, worker, blocks, pay])
+            table_data.append([date, worker, blocks, pay, responsible_user])
 
-        table_data.append(['', 'TOTAL', f"{total_blocks:,}", f"₱{total_pay:,.2f}"])
+        table_data.append(['', 'TOTAL', f"{total_blocks:,}", f"{chr(8369)}{total_pay:,.2f}", ''])
         return table_data, total_blocks, total_pay
 
     def save_summary_pdf(file_path, title_text, table_data):
@@ -223,7 +223,7 @@ def open_period_summary(win, cursor, BG_MAIN, TEXT):
 
         elements.append(Paragraph(title_text, title_style))
 
-        table = Table(table_data, colWidths=[1.8*inch, 2.2*inch, 1.8*inch, 2*inch])
+        table = Table(table_data, colWidths=[1.4*inch, 1.7*inch, 1.4*inch, 1.4*inch, 1.5*inch])
         table.setStyle(TableStyle([
             ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#2563eb')),
             ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
@@ -284,16 +284,18 @@ def open_period_summary(win, cursor, BG_MAIN, TEXT):
                 font=('Arial', 22, 'bold')
             ).pack(anchor='w')
 
-            cols = ('date', 'worker', 'blocks', 'pay')
+            cols = ('date', 'worker', 'blocks', 'pay', 'user')
             preview_tree = ttk.Treeview(preview_win, columns=cols, show='headings', style='Summary.Treeview')
             preview_tree.heading('date', text='Production Date')
             preview_tree.heading('worker', text='Worker Name')
             preview_tree.heading('blocks', text='Total Blocks')
             preview_tree.heading('pay', text='Total Pay')
+            preview_tree.heading('user', text='User')
             preview_tree.column('date', width=150, anchor='center')
-            preview_tree.column('worker', width=310, anchor='w')
-            preview_tree.column('blocks', width=170, anchor='center')
-            preview_tree.column('pay', width=170, anchor='center')
+            preview_tree.column('worker', width=250, anchor='w')
+            preview_tree.column('blocks', width=150, anchor='center')
+            preview_tree.column('pay', width=150, anchor='center')
+            preview_tree.column('user', width=190, anchor='w')
             preview_tree.pack(fill='both', expand=True, padx=16, pady=8)
             preview_tree.tag_configure('oddrow', background='#ffffff', font=('Arial', 15))
             preview_tree.tag_configure('evenrow', background='#93c5fd', font=('Arial', 15))
@@ -397,7 +399,7 @@ def open_period_summary(win, cursor, BG_MAIN, TEXT):
 
     tk.Button(btn_frame, text='Preview / Convert PDF', command=open_pdf_preview, bg='#059669', fg='white', font=('Arial', 13, 'bold'), width=22, padx=14, pady=8, **SUMMARY_BUTTON_BORDER).pack(side='left', padx=4)
 
-    cols = ('date', 'worker', 'blocks', 'pay')
+    cols = ('date', 'worker', 'blocks', 'pay', 'user')
 
     style = ttk.Style()
     style.configure('Summary.Treeview', font=('Arial', 15), rowheight=40)
@@ -408,10 +410,12 @@ def open_period_summary(win, cursor, BG_MAIN, TEXT):
     summary_tree.heading('worker', text='Worker Name')
     summary_tree.heading('blocks', text='Total Blocks')
     summary_tree.heading('pay', text='Total Pay')
+    summary_tree.heading('user', text='User')
     summary_tree.column('date', width=140, anchor='center')
-    summary_tree.column('worker', width=280, anchor='w')
-    summary_tree.column('blocks', width=180, anchor='center')
-    summary_tree.column('pay', width=180, anchor='center')
+    summary_tree.column('worker', width=260, anchor='w')
+    summary_tree.column('blocks', width=160, anchor='center')
+    summary_tree.column('pay', width=160, anchor='center')
+    summary_tree.column('user', width=180, anchor='w')
     summary_tree.pack(fill='both', expand=True, padx=12, pady=12)
     summary_tree.tag_configure('oddrow', background='#ffffff', font=('Arial', 15))
     summary_tree.tag_configure('evenrow', background='#93c5fd', font=('Arial', 15))

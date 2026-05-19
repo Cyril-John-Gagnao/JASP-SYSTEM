@@ -74,8 +74,17 @@ def format_money_value(value):
     return f"{float(value or 0):.2f}"
 
 
+def format_peso_value(value):
+    return f"{chr(8369)}{float(value or 0):,.2f}"
+
+
+def parse_money_text(value):
+    cleaned = "".join(ch for ch in str(value) if ch.isdigit() or ch in ".-")
+    return cleaned or "0"
+
+
 def format_fine_sand_prices(cubic_price, bag_price):
-    return f"Cubic: {format_money_value(cubic_price)} | Bag: {format_money_value(bag_price)}"
+    return f"Cubic: {format_peso_value(cubic_price)} | Bag: {format_peso_value(bag_price)}"
 
 
 def display_inventory_row(row):
@@ -86,6 +95,9 @@ def display_inventory_row(row):
         bag_price = values[7] if len(values) > 7 else 0
         values[4] = format_fine_sand_prices(values[4], bag_price)
         values = values[:7]
+    elif len(values) > 5:
+        values[4] = format_peso_value(values[4])
+        values[5] = format_peso_value(values[5])
     return tuple(values)
 
 
@@ -258,7 +270,7 @@ def sort_tree(tree, sort_state, column, numeric=False):
     if numeric:
         def to_num(val):
             try:
-                return float(val)
+                return float(parse_money_text(val))
             except ValueError:
                 return 0
         data = [(to_num(val), k) for val, k in data]
@@ -440,8 +452,8 @@ def open_item_form(conn, cursor, inventory_window, tree, mode, item_values=None,
             price_entry.insert(0, format_money_value(price_row[0]))
             bag_price_entry.insert(0, format_money_value(price_row[1]))
         else:
-            price_entry.insert(0, item_values[4])
-        raw_price_entry.insert(0, item_values[5])
+            price_entry.insert(0, parse_money_text(item_values[4]))
+        raw_price_entry.insert(0, parse_money_text(item_values[5]))
         status_var.set(item_values[6] if len(item_values) > 6 and item_values[6] else "Active")
 
         if not unit_var.get() and item_values[1] in PREDEFINED_ITEMS:
@@ -492,7 +504,7 @@ def open_item_form(conn, cursor, inventory_window, tree, mode, item_values=None,
 
         if mode == "edit" and item_values and item_values[1] == CHB_ITEM_NAME:
             quantity_val = int(item_values[3])
-            raw_val = float(item_values[5])
+            raw_val = float(parse_money_text(item_values[5]))
             unit = CHB_DEFAULT_UNIT
 
         if name in PREDEFINED_ITEMS and not unit:

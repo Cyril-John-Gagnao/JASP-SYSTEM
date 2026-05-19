@@ -282,19 +282,19 @@ def open_delivery_summary(parent_win, cursor, bg_main, text_color):
                 summary_tree.insert(
                     "",
                     "end",
-                    values=(start.strftime("%Y-%m-%d"), start.strftime("%Y-%m-%d"), empty_text, "", "", "", "", ""),
+                    values=(start.strftime("%Y-%m-%d"), start.strftime("%Y-%m-%d"), empty_text, "", "", "", "", "", "", ""),
                     tags=("oddrow",)
                 )
 
             for i, row in enumerate(rows):
-                transaction_date, delivery_date, item_name, quantity, unit, address, driver, helper, delivery_fee = row
+                transaction_date, delivery_date, item_name, quantity, unit, address, driver, helper, responsible_user, delivery_fee = row
                 total_quantity += quantity
                 total_fee += delivery_fee
                 tag = "evenrow" if i % 2 == 0 else "oddrow"
                 summary_tree.insert(
                     "",
                     "end",
-                    values=(transaction_date, delivery_date, item_name, f"{quantity:,}", unit, address, driver, helper, money(delivery_fee)),
+                    values=(transaction_date, delivery_date, item_name, f"{quantity:,}", unit, address, driver, helper, money(delivery_fee), responsible_user),
                     tags=(tag,)
                 )
 
@@ -309,12 +309,12 @@ def open_delivery_summary(parent_win, cursor, bg_main, text_color):
                 summary_tree.insert(
                     "",
                     "end",
-                    values=(start.strftime("%Y-%m-%d"), start.strftime("%Y-%m-%d"), empty_text, "", "", "", "", ""),
+                    values=(start.strftime("%Y-%m-%d"), start.strftime("%Y-%m-%d"), empty_text, "", "", "", "", "", ""),
                     tags=("oddrow",)
                 )
 
             for i, row in enumerate(rows):
-                transaction_date, delivery_date, worker, driver, address, blocks, fee, salary = row
+                transaction_date, delivery_date, worker, driver, address, responsible_user, blocks, fee, salary = row
                 total_blocks += blocks
                 total_fee += fee
                 total_salary += salary
@@ -331,6 +331,7 @@ def open_delivery_summary(parent_win, cursor, bg_main, text_color):
                         f"{blocks:,}",
                         money(fee),
                         money(salary),
+                        responsible_user,
                     ),
                     tags=(tag,)
                 )
@@ -360,10 +361,10 @@ def open_delivery_summary(parent_win, cursor, bg_main, text_color):
                 total_quantity += int(str(values[3]).replace(",", "") or 0)
                 total_fee += parse_money(values[8])
 
-            table_data = [["Transaction Date", "Delivery Date", "Item Name", "Quantity", "Unit of Measurement", "Delivery Address", "Delivery Driver", "Helper", "Delivery Fee"]]
+            table_data = [["Transaction Date", "Delivery Date", "Item Name", "Quantity", "Unit of Measurement", "Delivery Address", "Delivery Driver", "Helper", "Delivery Fee", "User"]]
             table_data.extend(rows)
-            table_data.append(["", "", "TOTAL", f"{total_quantity:,}", "", "", "", "", money(total_fee)])
-            return table_data, rows, f"TOTAL QUANTITY: {total_quantity:,} | Delivery Fee: {money(total_fee)}", [0.7*inch, 0.7*inch, 0.8*inch, 0.55*inch, 0.8*inch, 1.0*inch, 0.8*inch, 0.65*inch, 0.65*inch]
+            table_data.append(["", "", "TOTAL", f"{total_quantity:,}", "", "", "", "", money(total_fee), ""])
+            return table_data, rows, f"TOTAL QUANTITY: {total_quantity:,} | Delivery Fee: {money(total_fee)}", [0.65*inch, 0.65*inch, 0.7*inch, 0.5*inch, 0.7*inch, 0.85*inch, 0.7*inch, 0.55*inch, 0.6*inch, 0.6*inch]
 
         total_blocks = 0
         total_fee = 0
@@ -375,11 +376,11 @@ def open_delivery_summary(parent_win, cursor, bg_main, text_color):
 
         table_data = [[
             "Transaction Date", "Delivery Date", "Worker Name", "Driver Name",
-            "Address", "Blocks", "Delivery Fee", "Worker Salary"
+            "Address", "Blocks", "Delivery Fee", "Worker Salary", "User"
         ]]
         table_data.extend(rows)
-        table_data.append(["", "", "", "", "TOTAL", f"{total_blocks:,}", money(total_fee), money(total_salary)])
-        return table_data, rows, f"TOTAL: {total_blocks:,} blocks | Delivery Fee: {money(total_fee)} | Worker Salary: {money(total_salary)}", [0.95*inch, 0.9*inch, 1.0*inch, 1.0*inch, 1.25*inch, 0.65*inch, 0.8*inch, 0.9*inch]
+        table_data.append(["", "", "", "", "TOTAL", f"{total_blocks:,}", money(total_fee), money(total_salary), ""])
+        return table_data, rows, f"TOTAL: {total_blocks:,} blocks | Delivery Fee: {money(total_fee)} | Worker Salary: {money(total_salary)}", [0.8*inch, 0.75*inch, 0.85*inch, 0.85*inch, 1.0*inch, 0.75*inch, 0.55*inch, 0.7*inch, 0.75*inch]
 
     def save_summary_pdf(file_path, title_text, table_data, col_widths):
         pdf = SimpleDocTemplate(file_path, pagesize=letter, topMargin=0.5*inch, bottomMargin=0.5*inch)
@@ -476,7 +477,7 @@ def open_delivery_summary(parent_win, cursor, bg_main, text_color):
             widths = get_summary_widths()
             for col in get_summary_columns():
                 preview_tree.heading(col, text=headings[col])
-                preview_tree.column(col, width=widths[col], anchor="w" if col in ("worker", "driver", "address", "item", "other_address", "other_driver", "helper") else "center", stretch=False)
+                preview_tree.column(col, width=widths[col], anchor="w" if col in ("worker", "driver", "address", "user", "item", "other_address", "other_driver", "helper", "other_user") else "center", stretch=False)
             preview_tree.tag_configure("oddrow", background="#ffffff", font=("Arial", 13))
             preview_tree.tag_configure("evenrow", background="#93c5fd", font=("Arial", 13))
 
@@ -570,8 +571,8 @@ def open_delivery_summary(parent_win, cursor, bg_main, text_color):
     tk.Radiobutton(display_frame, text="CHB Blocks", variable=summary_display_var, value="chb", bg=bg_main, font=("Arial", 14, "bold"), command=lambda: set_summary_display("chb")).pack(side="left", padx=6)
     tk.Radiobutton(display_frame, text="Other Items", variable=summary_display_var, value="other", bg=bg_main, font=("Arial", 14, "bold"), command=lambda: set_summary_display("other")).pack(side="left", padx=6)
 
-    chb_cols = ("transaction", "delivery", "worker", "driver", "address", "blocks", "fee", "salary")
-    other_cols = ("transaction_date", "delivery_date", "item", "quantity", "unit", "other_address", "other_driver", "helper", "other_fee")
+    chb_cols = ("transaction", "delivery", "worker", "driver", "address", "blocks", "fee", "salary", "user")
+    other_cols = ("transaction_date", "delivery_date", "item", "quantity", "unit", "other_address", "other_driver", "helper", "other_fee", "other_user")
     chb_summary_headings = {
         "transaction": "Transaction Date",
         "delivery": "Delivery Date",
@@ -581,6 +582,7 @@ def open_delivery_summary(parent_win, cursor, bg_main, text_color):
         "blocks": "Blocks",
         "fee": "Delivery Fee",
         "salary": "Worker Salary",
+        "user": "User",
     }
     other_summary_headings = {
         "transaction_date": "Transaction Date",
@@ -592,6 +594,7 @@ def open_delivery_summary(parent_win, cursor, bg_main, text_color):
         "other_driver": "Delivery Driver",
         "helper": "Helper",
         "other_fee": "Delivery Fee",
+        "other_user": "User",
     }
     chb_summary_widths = {
         "transaction": 130,
@@ -602,6 +605,7 @@ def open_delivery_summary(parent_win, cursor, bg_main, text_color):
         "blocks": 100,
         "fee": 120,
         "salary": 130,
+        "user": 140,
     }
     other_summary_widths = {
         "transaction_date": 135,
@@ -613,6 +617,7 @@ def open_delivery_summary(parent_win, cursor, bg_main, text_color):
         "other_driver": 160,
         "helper": 140,
         "other_fee": 130,
+        "other_user": 140,
     }
 
     def get_summary_columns():
@@ -635,7 +640,7 @@ def open_delivery_summary(parent_win, cursor, bg_main, text_color):
                 col,
                 width=widths[col],
                 minwidth=90,
-                anchor="w" if col in ("worker", "driver", "address", "item", "other_address", "other_driver", "helper") else "center",
+                anchor="w" if col in ("worker", "driver", "address", "user", "item", "other_address", "other_driver", "helper", "other_user") else "center",
                 stretch=False
             )
 
@@ -653,6 +658,7 @@ def open_delivery_summary(parent_win, cursor, bg_main, text_color):
             "worker": 58,
             "driver": 58,
             "address": 70,
+            "user": 58,
             "blocks": 42,
             "fee": 52,
             "salary": 58,
@@ -664,6 +670,7 @@ def open_delivery_summary(parent_win, cursor, bg_main, text_color):
             "other_address": 70,
             "other_driver": 58,
             "helper": 58,
+            "other_user": 58,
             "other_fee": 52,
         }
         min_widths = {
@@ -672,6 +679,7 @@ def open_delivery_summary(parent_win, cursor, bg_main, text_color):
             "worker": 145,
             "driver": 145,
             "address": 190,
+            "user": 130,
             "blocks": 95,
             "fee": 130,
             "salary": 145,
@@ -683,6 +691,7 @@ def open_delivery_summary(parent_win, cursor, bg_main, text_color):
             "other_address": 210,
             "other_driver": 155,
             "helper": 135,
+            "other_user": 130,
             "other_fee": 125,
         }
         max_widths = {
@@ -691,6 +700,7 @@ def open_delivery_summary(parent_win, cursor, bg_main, text_color):
             "worker": 280,
             "driver": 280,
             "address": 460,
+            "user": 240,
             "blocks": 140,
             "fee": 190,
             "salary": 210,
@@ -702,6 +712,7 @@ def open_delivery_summary(parent_win, cursor, bg_main, text_color):
             "other_address": 460,
             "other_driver": 280,
             "helper": 260,
+            "other_user": 240,
             "other_fee": 180,
         }
 
@@ -1112,7 +1123,7 @@ def load_data(event, cursor, tree, search_var, sort_var, delivery_win):
 
         row_index = 0
         if not rows:
-            tree.insert("", "end", values=("", today, today, "No deliveries for today", "", "", "", "", ""), tags=('oddrow',))
+            tree.insert("", "end", values=("", today, today, "No deliveries for today", "", "", "", "", "", ""), tags=('oddrow',))
             return
 
         for row in rows:
@@ -1134,7 +1145,7 @@ def load_other_items_data(event, cursor, tree, search_var, sort_var, delivery_wi
         rows = fetch_other_item_delivery_rows(cursor, keyword, sort_option, today)
 
         if not rows:
-            tree.insert("", "end", values=("", today, today, "No other item deliveries for today", "", "", "", "", "", ""), tags=("oddrow",))
+            tree.insert("", "end", values=("", today, today, "No other item deliveries for today", "", "", "", "", "", "", ""), tags=("oddrow",))
             return
 
         for row_index, row in enumerate(rows):

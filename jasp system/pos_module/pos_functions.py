@@ -27,6 +27,7 @@ FINE_SAND_ITEM_NAME = "Fine Sand"
 FINE_SAND_BAGS_PER_CUBIC_METER = 40
 FINE_SAND_BASE_UNIT = "cubic meters"
 FINE_SAND_TRANSACTION_UNITS = (FINE_SAND_BASE_UNIT, "bag")
+PESO_SIGN = chr(8369)
 
 
 def is_fine_sand(item_name):
@@ -65,7 +66,18 @@ def format_fine_sand_stock(quantity):
 
 
 def format_money_value(value):
-    return f"{float(value or 0):.2f}"
+    return f"{PESO_SIGN}{float(value or 0):,.2f}"
+
+
+def parse_money_value(value):
+    cleaned = (
+        str(value or "0")
+        .replace(PESO_SIGN, "")
+        .replace("P", "")
+        .replace(",", "")
+        .strip()
+    )
+    return float(cleaned or 0)
 
 
 def format_fine_sand_prices(cubic_price, bag_price):
@@ -95,6 +107,8 @@ def display_inventory_row(row):
         bag_price = values[5] if len(values) > 5 else 0
         values[4] = format_fine_sand_prices(values[4], bag_price)
         values = values[:5]
+    elif len(values) > 4:
+        values[4] = format_money_value(values[4])
     return tuple(values)
 
 
@@ -260,6 +274,7 @@ def auto_fit_tree_columns(tree, column_specs, padding=26, sample_limit=80):
         "Item": 320,
     }
 
+    measured_widths = {}
     for column, (base_width, min_width, _weight) in column_specs.items():
         heading_text = tree.heading(column, "text") or column
         measured = max(min_width, heading_font.measure(str(heading_text)) + 30)
@@ -271,7 +286,21 @@ def auto_fit_tree_columns(tree, column_specs, padding=26, sample_limit=80):
                 value = ""
             measured = max(measured, body_font.measure(str(value)) + 34)
         width = min(max(measured, base_width, min_width), max_widths.get(column, max(base_width * 3, min_width)))
-        tree.column(column, width=width, minwidth=min_width, stretch=False)
+        measured_widths[column] = width
+
+    if getattr(tree, "_fill_available_width", False):
+        total_width = sum(measured_widths.values())
+        available_width = max(tree.winfo_width() - padding, total_width)
+        if available_width > total_width:
+            flexible_columns = [column for column in column_specs if column != "ID"]
+            extra_width = available_width - total_width
+            per_column = extra_width // max(len(flexible_columns), 1)
+            remainder = extra_width % max(len(flexible_columns), 1)
+            for index, column in enumerate(flexible_columns):
+                measured_widths[column] += per_column + (1 if index < remainder else 0)
+
+    for column, (_base_width, min_width, _weight) in column_specs.items():
+        tree.column(column, width=measured_widths[column], minwidth=min_width, stretch=False)
 
 
 def refresh_inventory_names(ctx):
@@ -526,14 +555,14 @@ def update_cart(ctx):
                 item["name"],
                 item.get("unit", "pcs"),
                 item["qty"],
-                f"{item['price']:.2f}",
-                f"{item['total']:.2f}",
+                format_money_value(item["price"]),
+                format_money_value(item["total"]),
                 "",
             ),
             tags=(tag,),
         )
         total += item["total"]
-    total_label.config(text=f"Amount Due: P{total:.2f}")
+    total_label.config(text=f"Amount Due: {format_money_value(total)}")
     if ctx.get("cart_column_specs"):
         auto_fit_tree_columns(cart_tree, ctx["cart_column_specs"])
     schedule_cart_buttons(ctx)
@@ -647,7 +676,7 @@ def open_add_to_cart_modal(ctx, _event=None, tree_widget=None):
     name = values[1]
     unit = values[2] or "pcs"
     quantity = parse_stock_quantity(values[3])
-    price = fine_sand_price_for_unit(ctx["cursor"], product_id, FINE_SAND_BASE_UNIT) if is_fine_sand(name) else float(values[4])
+    price = fine_sand_price_for_unit(ctx["cursor"], product_id, FINE_SAND_BASE_UNIT) if is_fine_sand(name) else parse_money_value(values[4])
     button_border = ctx["button_border"]
     root = ctx["root"]
 
@@ -1045,22 +1074,22 @@ def open_invoice_window(ctx, cart_items, total_amount, money_received, change, m
         receipt_tree.insert(
             "",
             "end",
-            values=(item["name"], item["qty"], f"{item['price']:.2f}", f"{item['total']:.2f}"),
+            values=(item["name"], item["qty"], format_money_value(item["price"]), format_money_value(item["total"])),
             tags=("evenrow" if index % 2 else "oddrow",),
         )
     auto_fit_tree_columns(receipt_tree, receipt_column_specs, padding=34)
 
     total_panel = tk.Frame(content_frame, bg=DASHBOARD_CONTENT_BG, padx=16, pady=12, highlightthickness=1, highlightbackground="black")
     total_panel.pack(fill="x")
-    tk.Label(total_panel, text=f"Total Amount: {total_amount:.2f}", font=("Arial", 18, "bold"), bg=DASHBOARD_CONTENT_BG, fg="#991b1b").pack(anchor="w", pady=2)
+    tk.Label(total_panel, text=f"Total Amount: {format_money_value(total_amount)}", font=("Arial", 18, "bold"), bg=DASHBOARD_CONTENT_BG, fg="#991b1b").pack(anchor="w", pady=2)
     payment_label = "Money Received" if mode == "Cash" else "Amount Paid"
-    tk.Label(total_panel, text=f"{payment_label}: {money_received:.2f}", font=("Arial", 14, "bold"), bg=DASHBOARD_CONTENT_BG).pack(anchor="w", pady=2)
+    tk.Label(total_panel, text=f"{payment_label}: {format_money_value(money_received)}", font=("Arial", 14, "bold"), bg=DASHBOARD_CONTENT_BG).pack(anchor="w", pady=2)
     tk.Label(total_panel, text=f"Mode of Payment: {mode}" + (f" ({platform})" if platform else ""), font=("Arial", 14, "bold"), bg=DASHBOARD_CONTENT_BG).pack(anchor="w", pady=2)
     status_var = tk.StringVar(value="Status: Paid")
     status_label = tk.Label(total_panel, textvariable=status_var, font=("Arial", 14, "bold"), bg=DASHBOARD_CONTENT_BG, fg="#15803d")
     status_label.pack(anchor="w", pady=2)
     if mode == "Cash":
-        tk.Label(total_panel, text=f"Change: {change:.2f}", font=("Arial", 14, "bold"), bg=DASHBOARD_CONTENT_BG, fg="#15803d").pack(anchor="w", pady=2)
+        tk.Label(total_panel, text=f"Change: {format_money_value(change)}", font=("Arial", 14, "bold"), bg=DASHBOARD_CONTENT_BG, fg="#15803d").pack(anchor="w", pady=2)
 
     def print_receipt():
         pdf_path = generate_invoice_pdf(cart_items, total_amount, money_received, change, mode, platform, txn_id)
@@ -1284,7 +1313,7 @@ def open_payment_modal(ctx):
     payment_style.configure("Payment.Treeview.Heading", font=("Arial", 16, "bold"))
 
     tk.Label(pay_modal, text="Checkout Summary", font=("Arial", 28, "bold"), bg="white", fg="#2563eb").pack(pady=(18, 8))
-    tk.Label(pay_modal, text=f"Amount Due: P{total_amount:.2f}", font=("Arial", 22, "bold"), bg="white", fg="#991b1b").pack(pady=(0, 10))
+    tk.Label(pay_modal, text=f"Amount Due: {format_money_value(total_amount)}", font=("Arial", 22, "bold"), bg="white", fg="#991b1b").pack(pady=(0, 10))
 
     payment_method = tk.StringVar(value="Cash")
     method_frame = tk.Frame(pay_modal, bg="white")
@@ -1316,7 +1345,7 @@ def open_payment_modal(ctx):
         summary_tree.insert(
             "",
             tk.END,
-            values=(item["name"], item.get("unit", "pcs"), item["qty"], f"{item['price']:.2f}", f"{item['total']:.2f}"),
+            values=(item["name"], item.get("unit", "pcs"), item["qty"], format_money_value(item["price"]), format_money_value(item["total"])),
             tags=(tag,),
         )
 
@@ -1328,34 +1357,34 @@ def open_payment_modal(ctx):
     money_entry.pack(fill="x", pady=5, ipady=4)
     money_entry.focus_set()
 
-    change_var = tk.StringVar(value="Change: 0.00")
+    change_var = tk.StringVar(value=f"Change: {format_money_value(0)}")
     change_label = tk.Label(pay_modal, textvariable=change_var, bg="white", font=("Arial", 18, "bold"), fg="#15803d")
     change_label.pack(anchor="w", padx=24, pady=(0, 8))
 
     def update_change(*_):
         value = money_entry.get().strip()
         if not value:
-            change_var.set("Change: 0.00")
+            change_var.set(f"Change: {format_money_value(0)}")
             return
         try:
             received = float(value)
         except ValueError:
             change_var.set("Change: --")
             return
-        change_var.set(f"Change: {received - total_amount:.2f}")
+        change_var.set(f"Change: {format_money_value(received - total_amount)}")
 
     def update_payment_method(*_):
         if payment_method.get() == "GCash":
             money_label.config(text="Amount Paid:")
             money_entry.config(state="normal")
             money_entry.delete(0, tk.END)
-            change_var.set("Change: 0.00")
+            change_var.set(f"Change: {format_money_value(0)}")
             money_entry.focus_set()
         else:
             money_label.config(text="Money Received:")
             money_entry.config(state="normal")
             money_entry.delete(0, tk.END)
-            change_var.set("Change: 0.00")
+            change_var.set(f"Change: {format_money_value(0)}")
             money_entry.focus_set()
 
     def on_pay():

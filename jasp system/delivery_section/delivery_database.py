@@ -28,6 +28,7 @@ def init_delivery_db():
                 delivery_fee REAL DEFAULT 0,
                 payment_per_block REAL DEFAULT 2.0,
                 total_payment REAL,
+                responsible_user TEXT DEFAULT '',
                 ts TEXT
             )
         """)
@@ -52,6 +53,8 @@ def init_delivery_db():
             cursor.execute("ALTER TABLE chb_delivery ADD COLUMN payment_per_block REAL DEFAULT 2.0")
         if 'total_payment' not in columns:
             cursor.execute("ALTER TABLE chb_delivery ADD COLUMN total_payment REAL")
+        if 'responsible_user' not in columns:
+            cursor.execute("ALTER TABLE chb_delivery ADD COLUMN responsible_user TEXT DEFAULT ''")
         if 'ts' not in columns:
             cursor.execute("ALTER TABLE chb_delivery ADD COLUMN ts TEXT")
 
@@ -75,6 +78,7 @@ def init_delivery_db():
             helper TEXT,
             delivery_fee REAL DEFAULT 0,
             delivery_datetime TEXT,
+            responsible_user TEXT DEFAULT '',
             ts TEXT
         )
     """)
@@ -101,6 +105,8 @@ def init_delivery_db():
         cursor.execute("ALTER TABLE other_items_delivery ADD COLUMN delivery_fee REAL DEFAULT 0")
     if "delivery_datetime" not in other_columns:
         cursor.execute("ALTER TABLE other_items_delivery ADD COLUMN delivery_datetime TEXT")
+    if "responsible_user" not in other_columns:
+        cursor.execute("ALTER TABLE other_items_delivery ADD COLUMN responsible_user TEXT DEFAULT ''")
     if "ts" not in other_columns:
         cursor.execute("ALTER TABLE other_items_delivery ADD COLUMN ts TEXT")
 
@@ -118,34 +124,44 @@ def open_delivery_connection():
     return conn, cursor
 
 
+def get_responsible_user():
+    try:
+        from main_dashboard import session
+        return session.get_current_username("Admin")
+    except Exception:
+        return "Admin"
+
+
 def insert_delivery(conn, cursor, transaction_date, date, worker, driver_name, address, blocks, delivery_fee, payment_per, total):
     ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    responsible_user = get_responsible_user()
 
     cursor.execute("""
         INSERT INTO chb_delivery
-        (transaction_date, delivery_date, worker_name, driver_name, address, blocks_delivered, delivery_fee, payment_per_block, total_payment, ts)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    """, (transaction_date, date, worker, driver_name, address, blocks, delivery_fee, payment_per, total, ts))
+        (transaction_date, delivery_date, worker_name, driver_name, address, blocks_delivered, delivery_fee, payment_per_block, total_payment, responsible_user, ts)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    """, (transaction_date, date, worker, driver_name, address, blocks, delivery_fee, payment_per, total, responsible_user, ts))
 
     conn.commit()
 
 
 def insert_other_item_delivery(conn, cursor, transaction_date, delivery_date, item_name, quantity, unit_of_measurement, delivery_address, delivery_driver, helper, delivery_fee):
     ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    responsible_user = get_responsible_user()
     cursor.execute("""
         INSERT INTO other_items_delivery
-        (transaction_date, delivery_date, item_name, quantity, unit_of_measurement, delivery_address, delivery_driver, helper, delivery_fee, delivery_datetime, ts)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    """, (transaction_date, delivery_date, item_name, quantity, unit_of_measurement, delivery_address, delivery_driver, helper, delivery_fee, delivery_date, ts))
+        (transaction_date, delivery_date, item_name, quantity, unit_of_measurement, delivery_address, delivery_driver, helper, delivery_fee, delivery_datetime, responsible_user, ts)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    """, (transaction_date, delivery_date, item_name, quantity, unit_of_measurement, delivery_address, delivery_driver, helper, delivery_fee, delivery_date, responsible_user, ts))
     conn.commit()
 
 
 def update_other_item_delivery_record(conn, cursor, selected_id, transaction_date, delivery_date, item_name, quantity, unit_of_measurement, delivery_address, delivery_driver, helper, delivery_fee):
     cursor.execute("""
         UPDATE other_items_delivery
-        SET transaction_date=?, delivery_date=?, item_name=?, quantity=?, unit_of_measurement=?, delivery_address=?, delivery_driver=?, helper=?, delivery_fee=?, delivery_datetime=?
+        SET transaction_date=?, delivery_date=?, item_name=?, quantity=?, unit_of_measurement=?, delivery_address=?, delivery_driver=?, helper=?, delivery_fee=?, delivery_datetime=?, responsible_user=?
         WHERE id=?
-    """, (transaction_date, delivery_date, item_name, quantity, unit_of_measurement, delivery_address, delivery_driver, helper, delivery_fee, delivery_date, selected_id))
+    """, (transaction_date, delivery_date, item_name, quantity, unit_of_measurement, delivery_address, delivery_driver, helper, delivery_fee, delivery_date, get_responsible_user(), selected_id))
     conn.commit()
 
 
@@ -157,7 +173,7 @@ def delete_other_item_delivery_record(conn, cursor, selected_id):
 def update_delivery_record(conn, cursor, selected_id, transaction_date, date, worker, driver_name, address, blocks, delivery_fee, payment_per, total):
     cursor.execute("""
         UPDATE chb_delivery
-        SET transaction_date=?, delivery_date=?, worker_name=?, driver_name=?, address=?, blocks_delivered=?, delivery_fee=?, payment_per_block=?, total_payment=?
+        SET transaction_date=?, delivery_date=?, worker_name=?, driver_name=?, address=?, blocks_delivered=?, delivery_fee=?, payment_per_block=?, total_payment=?, responsible_user=?
         WHERE id=?
     """, (
         transaction_date,
@@ -165,6 +181,7 @@ def update_delivery_record(conn, cursor, selected_id, transaction_date, date, wo
         worker,
         driver_name, address,
         blocks, delivery_fee, payment_per, total,
+        get_responsible_user(),
         selected_id
     ))
 
@@ -186,7 +203,8 @@ def fetch_delivery_rows(cursor, keyword, sort_option, delivery_date=None):
                COALESCE(address, ''),
                COALESCE(blocks_delivered, 0),
                COALESCE(delivery_fee, 0),
-               COALESCE(total_payment, 0)
+               COALESCE(total_payment, 0),
+               COALESCE(NULLIF(responsible_user, ''), 'Admin')
         FROM chb_delivery
     """
 
@@ -224,7 +242,8 @@ def fetch_other_item_delivery_rows(cursor, keyword, sort_option, delivery_date=N
                COALESCE(delivery_address, ''),
                COALESCE(delivery_driver, ''),
                COALESCE(helper, ''),
-               COALESCE(delivery_fee, 0)
+               COALESCE(delivery_fee, 0),
+               COALESCE(NULLIF(responsible_user, ''), 'Admin')
         FROM other_items_delivery
     """
 
@@ -258,6 +277,7 @@ def fetch_delivery_summary(cursor, start=None, end=None):
                COALESCE(worker_name, '') AS worker_name,
                COALESCE(driver_name, '') AS driver_name,
                COALESCE(address, '') AS address,
+               COALESCE(NULLIF(responsible_user, ''), 'Admin') AS responsible_user,
                COALESCE(SUM(blocks_delivered), 0) AS blocks,
                COALESCE(SUM(delivery_fee), 0) AS delivery_fee,
                COALESCE(SUM(total_payment), 0) AS total_payment
@@ -268,8 +288,8 @@ def fetch_delivery_summary(cursor, start=None, end=None):
         q += " WHERE DATE(COALESCE(NULLIF(delivery_date, ''), transaction_date, ts)) BETWEEN ? AND ?"
         params = [start.strftime("%Y-%m-%d"), end.strftime("%Y-%m-%d")]
     q += """
-        GROUP BY COALESCE(transaction_date, delivery_date, ''), delivery_date, worker_name, driver_name, address
-        ORDER BY DATE(COALESCE(NULLIF(delivery_date, ''), transaction_date, ts)) DESC, delivery_date DESC, worker_name ASC
+        GROUP BY COALESCE(transaction_date, delivery_date, ''), delivery_date, worker_name, driver_name, address, COALESCE(NULLIF(responsible_user, ''), 'Admin')
+        ORDER BY DATE(COALESCE(NULLIF(delivery_date, ''), transaction_date, ts)) DESC, delivery_date DESC, worker_name ASC, responsible_user ASC
     """
     cursor.execute(q, params)
     return cursor.fetchall()
@@ -285,6 +305,7 @@ def fetch_other_item_delivery_summary(cursor, start=None, end=None):
                COALESCE(delivery_address, '') AS delivery_address,
                COALESCE(delivery_driver, '') AS delivery_driver,
                COALESCE(helper, '') AS helper,
+               COALESCE(NULLIF(responsible_user, ''), 'Admin') AS responsible_user,
                COALESCE(delivery_fee, 0) AS delivery_fee
         FROM other_items_delivery
     """

@@ -193,6 +193,14 @@ def notify_inventory_views():
                 pass
 
 
+def get_responsible_user():
+    try:
+        from main_dashboard import session
+        return session.get_current_username("Admin")
+    except Exception:
+        return "Admin"
+
+
 def go_back(win):
     parent = win.master if win.master and win.master.winfo_exists() else None
     win.destroy()
@@ -385,12 +393,13 @@ def save(conn, cursor, win, worker_entry, date_var, cement_entry, blocks_entry, 
         return
 
     ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    responsible_user = get_responsible_user()
 
     cursor.execute("""
         INSERT INTO chb_production
-        (production_date, worker_name, cement_bags, fine_sand, total_blocks, pay, pay_rate, material_inventory_applied, ts)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    """, (date, worker, cement, sand, blocks, pay, pay_rate, 1, ts))
+        (production_date, worker_name, cement_bags, fine_sand, total_blocks, pay, pay_rate, material_inventory_applied, responsible_user, ts)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    """, (date, worker, cement, sand, blocks, pay, pay_rate, 1, responsible_user, ts))
 
     adjust_material_inventory(cursor, CEMENT_ITEM_NAME, -cement)
     adjust_material_inventory(cursor, FINE_SAND_ITEM_NAME, -fine_sand_bags_to_cubic_meters(sand))
@@ -438,12 +447,12 @@ def update(conn, cursor, win, selected_id, worker_entry, date_var, cement_entry,
 
     cursor.execute("""
         UPDATE chb_production
-        SET production_date=?, worker_name=?, cement_bags=?, fine_sand=?, total_blocks=?, pay=?, pay_rate=?, material_inventory_applied=?
+        SET production_date=?, worker_name=?, cement_bags=?, fine_sand=?, total_blocks=?, pay=?, pay_rate=?, material_inventory_applied=?, responsible_user=?
         WHERE id=?
     """, (
         date_var.get(),
         worker_entry.get(),
-        cement, sand, blocks, pay, pay_rate, 1,
+        cement, sand, blocks, pay, pay_rate, 1, get_responsible_user(),
         selected_id.get()
     ))
 
@@ -550,7 +559,14 @@ def load_data(event, tree, search_var, sort_var, cursor):
     today = datetime.now().strftime("%Y-%m-%d")
 
     query = """
-        SELECT id, production_date, worker_name, cement_bags, fine_sand, total_blocks, pay
+        SELECT id,
+               production_date,
+               worker_name,
+               cement_bags,
+               fine_sand,
+               total_blocks,
+               pay,
+               COALESCE(NULLIF(responsible_user, ''), 'Admin')
         FROM chb_production
         WHERE DATE(COALESCE(NULLIF(production_date, ''), ts)) = ?
     """
@@ -571,7 +587,7 @@ def load_data(event, tree, search_var, sort_var, cursor):
     row_index = 0
     rows = cursor.fetchall()
     if not rows:
-        tree.insert("", "end", values=("", today, "No production today", "", "", "", ""), tags=('oddrow',))
+        tree.insert("", "end", values=("", today, "No production today", "", "", "", "", ""), tags=('oddrow',))
         return
     for row in rows:
         tag = 'evenrow' if row_index % 2 == 0 else 'oddrow'
