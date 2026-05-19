@@ -449,12 +449,11 @@ def open_item_form(conn, cursor, inventory_window, tree, mode, item_values=None,
         sync_fine_sand_transaction_unit()
 
         if item_values[1] == CHB_ITEM_NAME:
-            name_entry.config(state="disabled")
             quantity_entry.config(state="disabled")
             raw_price_entry.config(state="disabled")
             unit_entry.config(state="disabled")
             unit_var.set(CHB_DEFAULT_UNIT)
-            tk.Label(form_card, text="Quantity is auto from CHB production. Only price and status can be updated.", fg="#dc2626", bg=FORM_BG, font=("Arial", 12, "italic")).grid(row=8, column=0, columnspan=2, pady=(4, 0))
+            tk.Label(form_card, text="Quantity is auto from CHB production. Name, price, and status can be updated.", fg="#dc2626", bg=FORM_BG, font=("Arial", 12, "italic")).grid(row=8, column=0, columnspan=2, pady=(4, 0))
 
     def submit():
         name = name_var.get().strip()
@@ -492,7 +491,6 @@ def open_item_form(conn, cursor, inventory_window, tree, mode, item_values=None,
             return
 
         if mode == "edit" and item_values and item_values[1] == CHB_ITEM_NAME:
-            name = CHB_ITEM_NAME
             quantity_val = int(item_values[3])
             raw_val = float(item_values[5])
             unit = CHB_DEFAULT_UNIT

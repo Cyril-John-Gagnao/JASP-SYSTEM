@@ -151,16 +151,16 @@ def open_chb_dashboard():
     )
     total_label.pack(side="left")
 
-    # ================= MAIN CONTAINER (60-40 Split) =================
+    # ================= MAIN CONTAINER (51-49 Split) =================
     main_container = tk.Frame(win, bg=CARD_BG, bd=1, relief="solid")
     main_container.pack(padx=20, pady=(0, 8), fill="both", expand=True)
 
     # Configure columns: table and form
-    main_container.columnconfigure(0, weight=6, minsize=620)
-    main_container.columnconfigure(1, weight=4, minsize=420)
+    main_container.columnconfigure(0, weight=51, minsize=620)
+    main_container.columnconfigure(1, weight=49, minsize=508)
     main_container.rowconfigure(0, weight=1)
 
-    # ================= FORM (RIGHT SIDE - 40%) =================
+    # ================= FORM (RIGHT SIDE - 49%) =================
     form_card = tk.Frame(main_container, bg=CARD_BG)
     form_card.grid(row=0, column=1, sticky="nsew", padx=(6, 16), pady=(8, 12))
     form_card.columnconfigure(1, weight=1)
@@ -175,7 +175,7 @@ def open_chb_dashboard():
     form = tk.Frame(form_bg, bg="#fef3c7")
     form.pack(fill="x", padx=16, pady=12)
     form.columnconfigure(0, weight=0, minsize=128)
-    form.columnconfigure(1, weight=1, minsize=220)
+    form.columnconfigure(1, weight=1, minsize=266)
 
     # Production Date
     tk.Label(form, text="Production Date", bg="#fef3c7", font=("Arial", 13, "bold"), fg="#1e293b").grid(row=0, column=0, sticky="w", pady=6)
@@ -229,8 +229,8 @@ def open_chb_dashboard():
         relief="solid",
         padx=7,
         pady=4,
-        width=30,
-        wraplength=245
+        width=36,
+        wraplength=297
     )
     sand_stock_combo.grid(row=1, column=0, sticky="w", pady=(4, 0))
 

@@ -248,7 +248,7 @@ def open_pos_summary(parent):
 
     table_frame = tk.Frame(summary_win, bg=BG_CARD)
     table_frame.pack(fill="both", expand=True, padx=16, pady=(0, 16))
-    columns = tuple(col for col, _heading, _width, _anchor in headings)
+    columns = tuple(col for col, _heading, _width, _max_width, _anchor in headings)
     style = ttk.Style()
     style.configure("PosSummary.Treeview", font=("Arial", 15), rowheight=42, background=BG_CARD, fieldbackground=BG_CARD)
     style.configure("PosSummary.Treeview.Heading", font=("Arial", 14, "bold"), foreground=TEXT_PRIMARY)
