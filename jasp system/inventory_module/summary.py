@@ -1,4 +1,5 @@
 import calendar
+import os
 import sqlite3
 import tkinter as tk
 from tkinter import ttk, messagebox, filedialog
@@ -11,7 +12,7 @@ from reportlab.lib.units import inch
 from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
 
 from .inventory_database import DB_NAME
-from .inventory_functions import show_inventory_error
+from .inventory_functions import show_inventory_error, show_inventory_success
 from jasp_theme import DASHBOARD_CONTENT_BG
 
 NO_INVENTORY_ACTIVITY_TEXT = "No inventory activity for this period"
@@ -68,6 +69,48 @@ def ensure_summary_tables(cursor):
             "UPDATE items SET date_added=? WHERE date_added IS NULL OR date_added=''",
             (datetime.now().strftime("%Y-%m-%d %H:%M:%S"),)
         )
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS pdf_downloads (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            module TEXT NOT NULL,
+            downloaded_at TEXT NOT NULL,
+            location TEXT NOT NULL
+        )
+    """)
+
+
+def save_pdf_download(cursor, module, location):
+    downloaded_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    cursor.execute(
+        "INSERT INTO pdf_downloads (module, downloaded_at, location) VALUES (?, ?, ?)",
+        (module, downloaded_at, location),
+    )
+    return downloaded_at
+
+
+def fetch_pdf_downloads(cursor, module, start_date=None, end_date=None):
+    if start_date and end_date:
+        cursor.execute(
+            """
+            SELECT downloaded_at, location
+            FROM pdf_downloads
+            WHERE module = ?
+              AND DATE(downloaded_at) BETWEEN ? AND ?
+            ORDER BY id DESC
+            """,
+            (module, start_date.strftime("%Y-%m-%d"), end_date.strftime("%Y-%m-%d")),
+        )
+        return cursor.fetchall()
+    cursor.execute(
+        """
+        SELECT downloaded_at, location
+        FROM pdf_downloads
+        WHERE module = ?
+        ORDER BY id DESC
+        """,
+        (module,),
+    )
+    return cursor.fetchall()
 
 
 def fetch_summary_rows(cursor, start_date, end_date):
@@ -234,6 +277,7 @@ def open_inventory_summary(parent, anchor_parent=None):
 
     period_var = tk.StringVar(value="Day")
     date_var = tk.StringVar(value=datetime.now().strftime("%Y-%m-%d"))
+    pdf_download_module = "inventory_summary"
 
     def compute_range():
         try:
@@ -370,7 +414,13 @@ def open_inventory_summary(parent, anchor_parent=None):
                 return
             try:
                 export_pdf(file_path, rows, title)
-                messagebox.showinfo("Success", f"PDF exported successfully!\n{file_path}", parent=preview)
+                save_pdf_download(cursor, pdf_download_module, file_path)
+                conn.commit()
+                show_inventory_success(
+                    preview,
+                    "PDF Downloaded Successfully",
+                    f"The PDF has been downloaded successfully.\n\nSaved to:\n{file_path}",
+                )
                 preview.destroy()
             except Exception as exc:
                 show_inventory_error(preview, "Error", f"Failed to export PDF:\n{exc}")
@@ -409,6 +459,7 @@ def open_inventory_summary(parent, anchor_parent=None):
     pdf_button_frame = tk.Frame(summary_win, bg=DASHBOARD_CONTENT_BG)
     pdf_button_frame.pack(fill="x", padx=16, pady=(0, 8))
     tk.Button(pdf_button_frame, text="Convert to PDF", bg="#00c853", fg="white", font=("Arial", 13, "bold"), bd=2, relief="solid", command=open_preview, padx=14, pady=7).pack(side="left")
+    tk.Button(pdf_button_frame, text="View Downloaded PDF", bg="#2563eb", fg="white", font=("Arial", 13, "bold"), bd=2, relief="solid", command=lambda: open_downloaded_pdf_window(), padx=14, pady=7).pack(side="left", padx=8)
 
     table_frame = tk.Frame(summary_win, bg=DASHBOARD_CONTENT_BG)
     table_frame.pack(fill="both", expand=True, padx=16, pady=(0, 14))
@@ -429,6 +480,118 @@ def open_inventory_summary(parent, anchor_parent=None):
         summary_tree.column(col, width=width, anchor="center")
     summary_tree.tag_configure("blue_row", background="#93c5fd", foreground="#000000")
     summary_tree.tag_configure("white_row", background="#ffffff", foreground="#000000")
+
+    def open_pdf_location(path):
+        if not path or path == "Not downloaded":
+            messagebox.showinfo("PDF Location", "This summary has not been downloaded yet.", parent=summary_win)
+            return
+        if not os.path.exists(path):
+            messagebox.showwarning("PDF Missing", f"The PDF file was not found:\n{path}", parent=summary_win)
+            return
+        try:
+            os.startfile(path)
+        except OSError as exc:
+            messagebox.showerror("Open Failed", f"Unable to open PDF:\n{exc}", parent=summary_win)
+
+    def open_downloaded_pdf_window():
+        pdf_win = tk.Toplevel(summary_win)
+        pdf_win.title("Downloaded Inventory PDFs")
+        pdf_win.configure(bg=DASHBOARD_CONTENT_BG)
+        pdf_win.transient(summary_win)
+
+        tk.Label(pdf_win, text="Downloaded PDF Files", bg=DASHBOARD_CONTENT_BG, fg="#1e40af", font=("Arial", 22, "bold")).pack(anchor="w", padx=14, pady=(14, 8))
+        tk.Label(
+            pdf_win,
+            text="Click the PDF location to open or view the downloaded PDF.",
+            bg=DASHBOARD_CONTENT_BG,
+            fg="#334155",
+            font=("Arial", 15, "bold"),
+        ).pack(anchor="w", padx=14, pady=(0, 8))
+
+        pdf_period_var = tk.StringVar(value="Day")
+        pdf_date_var = tk.StringVar(value=datetime.now().strftime("%Y-%m-%d"))
+
+        def compute_pdf_range():
+            try:
+                selected = datetime.strptime(pdf_date_var.get(), "%Y-%m-%d")
+            except Exception:
+                selected = datetime.now()
+                pdf_date_var.set(selected.strftime("%Y-%m-%d"))
+            if pdf_period_var.get() == "Week":
+                start_date = selected - timedelta(days=selected.weekday())
+                end_date = start_date + timedelta(days=6)
+            elif pdf_period_var.get() == "Month":
+                start_date = datetime(selected.year, selected.month, 1)
+                if selected.month == 12:
+                    end_date = datetime(selected.year, 12, 31)
+                else:
+                    end_date = datetime(selected.year, selected.month + 1, 1) - timedelta(days=1)
+            else:
+                start_date = selected
+                end_date = selected
+            return start_date, end_date
+
+        def empty_pdf_message():
+            period = pdf_period_var.get()
+            if period == "Day":
+                if pdf_date_var.get() == datetime.now().strftime("%Y-%m-%d"):
+                    return "No PDFs downloaded today."
+                return "No PDFs downloaded on this date."
+            if period == "Week":
+                return "No PDFs downloaded this week."
+            return "No PDFs downloaded this month."
+
+        filter_frame = tk.Frame(pdf_win, bg=DASHBOARD_CONTENT_BG)
+        filter_frame.pack(fill="x", padx=14, pady=(0, 10))
+        tk.Label(filter_frame, text="Period:", bg=DASHBOARD_CONTENT_BG, font=("Arial", 14, "bold")).pack(side="left", padx=(0, 8))
+        for period in ("Day", "Week", "Month"):
+            tk.Radiobutton(filter_frame, text=period, variable=pdf_period_var, value=period, bg=DASHBOARD_CONTENT_BG, font=("Arial", 13)).pack(side="left", padx=4)
+        tk.Label(filter_frame, text="Date:", bg=DASHBOARD_CONTENT_BG, font=("Arial", 14, "bold")).pack(side="left", padx=(18, 6))
+        tk.Entry(filter_frame, textvariable=pdf_date_var, width=13, font=("Arial", 13), relief="solid", bd=1).pack(side="left", padx=4)
+        tk.Button(filter_frame, text="Calendar", bg="#2563eb", fg="white", font=("Arial", 12, "bold"), bd=2, relief="solid", command=lambda: open_date_calendar(pdf_win, pdf_date_var, load_pdf_records), padx=8, pady=4).pack(side="left", padx=4)
+        tk.Button(filter_frame, text="Apply", bg="#059669", fg="white", font=("Arial", 12, "bold"), bd=2, relief="solid", command=lambda: load_pdf_records(), padx=8, pady=4).pack(side="left", padx=4)
+
+        pdf_frame = tk.Frame(pdf_win, bg=DASHBOARD_CONTENT_BG)
+        pdf_frame.pack(fill="both", expand=True, padx=14, pady=(0, 10))
+        pdf_style = ttk.Style()
+        pdf_style.configure("DownloadedPDF.Treeview", font=("Arial", 14), rowheight=40)
+        pdf_style.configure("DownloadedPDF.Treeview.Heading", font=("Arial", 15, "bold"), padding=(6, 8, 6, 8))
+        pdf_tree = ttk.Treeview(pdf_frame, columns=("date", "location"), show="headings")
+        pdf_tree.configure(style="DownloadedPDF.Treeview")
+        pdf_tree.heading("date", text="Date Downloaded")
+        pdf_tree.heading("location", text="PDF Location")
+        pdf_tree.column("date", width=220, anchor="center")
+        pdf_tree.column("location", width=620, anchor="w")
+        pdf_tree.pack(side="left", fill="both", expand=True)
+        pdf_scroll = ttk.Scrollbar(pdf_frame, orient="vertical", command=pdf_tree.yview)
+        pdf_scroll.pack(side="right", fill="y")
+        pdf_tree.configure(yscrollcommand=pdf_scroll.set)
+
+        def load_pdf_records():
+            for item in pdf_tree.get_children():
+                pdf_tree.delete(item)
+            start_date, end_date = compute_pdf_range()
+            downloaded_pdf_records = fetch_pdf_downloads(cursor, pdf_download_module, start_date, end_date)
+            if downloaded_pdf_records:
+                for downloaded_at, location in downloaded_pdf_records:
+                    pdf_tree.insert("", "end", values=(downloaded_at, location))
+            else:
+                pdf_tree.insert("", "end", values=("", empty_pdf_message()))
+
+        def on_pdf_click(event):
+            if pdf_tree.identify_column(event.x) != "#2":
+                return
+            item_id = pdf_tree.identify_row(event.y)
+            if not item_id:
+                return
+            values = pdf_tree.item(item_id, "values")
+            if values and len(values) > 1:
+                open_pdf_location(values[1])
+
+        pdf_tree.bind("<ButtonRelease-1>", on_pdf_click)
+        load_pdf_records()
+        tk.Button(pdf_win, text="Close", bg="#dc2626", fg="white", font=("Arial", 12, "bold"), bd=2, relief="solid", command=pdf_win.destroy, padx=14, pady=6).pack(anchor="e", padx=14, pady=(0, 12))
+        center_window(pdf_win, 980, 540, summary_win)
 
     load_summary()
     center_window(summary_win, 900, 560, anchor_parent or parent)

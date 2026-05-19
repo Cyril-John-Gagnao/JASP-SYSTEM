@@ -16,8 +16,7 @@ from .inventory_database import (
     count_items,
     log_restock,
     log_inventory_action,
-    fetch_existing_item_for_stack,
-    update_stacked_item,
+    product_name_exists,
     fetch_fine_sand_bag_price,
     insert_item,
     update_item_record,
@@ -518,24 +517,20 @@ def open_item_form(conn, cursor, inventory_window, tree, mode, item_values=None,
             bag_price_val = 0
 
         if mode == "add":
-            existing = fetch_existing_item_for_stack(cursor, name, price_val)
+            if product_name_exists(cursor, name):
+                show_inventory_error(form, "Error", "Product or product name already exists.")
+                return
 
-            if existing:
-                item_id, current_qty = existing
-                new_qty = float(current_qty or 0) + quantity_val
-                update_stacked_item(cursor, item_id, new_qty, raw_val, unit)
-                if is_fine_sand(name):
-                    update_fine_sand_item_record(cursor, item_id, name, new_qty, price_val, bag_price_val, raw_val, unit, status)
-                success_msg = "Item quantity updated successfully!"
-                log_restock(conn, cursor, name, quantity_val, price_val, raw_val, item_id, "Restock")
-            else:
-                item_id = insert_item(cursor, name, quantity_val, price_val, raw_val, unit, status)
-                if is_fine_sand(name):
-                    update_fine_sand_item_record(cursor, item_id, name, quantity_val, price_val, bag_price_val, raw_val, unit, status)
-                success_msg = "Item added successfully!"
-                log_inventory_action(conn, cursor, item_id, name, quantity_val, status)
+            item_id = insert_item(cursor, name, quantity_val, price_val, raw_val, unit, status)
+            if is_fine_sand(name):
+                update_fine_sand_item_record(cursor, item_id, name, quantity_val, price_val, bag_price_val, raw_val, unit, status)
+            success_msg = "Item added successfully!"
+            log_inventory_action(conn, cursor, item_id, name, quantity_val, status)
         else:
             item_id = item_values[0]
+            if product_name_exists(cursor, name, item_id):
+                show_inventory_error(form, "Error", "Product or product name already exists.")
+                return
             previous_qty = fetch_item_quantity(cursor, item_id)
             previous_status = item_values[6] if len(item_values) > 6 and item_values[6] else "Active"
             if is_fine_sand(name):

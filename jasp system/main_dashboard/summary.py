@@ -201,7 +201,11 @@ def open_recent_transactions_summary(parent):
                 return
             try:
                 build_pdf(file_path, title_var.get(), rows)
-                messagebox.showinfo("Success", f"PDF exported successfully!\n{file_path}", parent=preview)
+                messagebox.showinfo(
+                    "PDF Downloaded Successfully",
+                    f"The PDF has been downloaded successfully.\n\nSaved to:\n{file_path}",
+                    parent=preview,
+                )
                 preview.destroy()
             except Exception as exc:
                 messagebox.showerror("Export Failed", str(exc), parent=preview)
@@ -457,7 +461,11 @@ def open_most_items_summary(parent):
                 return
             try:
                 build_pdf(file_path, title_var.get(), rows)
-                messagebox.showinfo("Success", f"PDF exported successfully!\n{file_path}", parent=preview)
+                messagebox.showinfo(
+                    "PDF Downloaded Successfully",
+                    f"The PDF has been downloaded successfully.\n\nSaved to:\n{file_path}",
+                    parent=preview,
+                )
                 preview.destroy()
             except Exception as exc:
                 messagebox.showerror("Export Failed", str(exc), parent=preview)

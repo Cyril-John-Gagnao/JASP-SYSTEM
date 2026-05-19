@@ -169,6 +169,14 @@ def open_inventory(parent=None):
         command=lambda: show_all_items()
     ).pack(side="left", padx=(10, 0))
 
+    no_results_label = tk.Label(
+        left_frame,
+        text="No matching products found.",
+        font=("Arial", 16, "bold"),
+        bg=DASHBOARD_CONTENT_BG,
+        fg="#dc2626"
+    )
+
     fullscreen_btn = tk.Button(
         stock_counts_frame,
         text="Full Screen Display",
@@ -534,11 +542,18 @@ def open_inventory(parent=None):
 
         chb_count = 0
         placeholders = ", ".join("?" for _ in CHB_SECTION_ITEMS)
+        search_text = search_entry.get().strip()
+        search_clause = ""
+        params = [item_name.lower() for item_name in CHB_SECTION_ITEMS]
+        if search_text:
+            search_clause = " AND LOWER(name) LIKE ?"
+            params.append(f"%{search_text.lower()}%")
+
         cursor.execute(
             f"""
             SELECT id, name, unit, quantity, price, raw_price, COALESCE(status, 'Active'), COALESCE(fine_sand_bag_price, 0)
             FROM items
-            WHERE LOWER(name) IN ({placeholders})
+            WHERE LOWER(name) IN ({placeholders}){search_clause}
             ORDER BY CASE LOWER(name)
                 WHEN 'cement' THEN 1
                 WHEN 'fine sand' THEN 2
@@ -546,7 +561,7 @@ def open_inventory(parent=None):
                 ELSE 4
             END
             """,
-            tuple(item_name.lower() for item_name in CHB_SECTION_ITEMS)
+            tuple(params)
         )
         for index, row in enumerate(cursor.fetchall()):
             display_row = inventory_functions.display_inventory_row(row)
@@ -598,6 +613,14 @@ def open_inventory(parent=None):
                 visible_index += 1
             other_items_count_var.set(f"Total: {visible_index:,}")
             auto_adjust_columns(target_tree)
+
+    def update_no_results_message():
+        has_search = bool(search_entry.get().strip())
+        has_results = bool(tree.get_children() or chb_tree.get_children())
+        if has_search and not has_results:
+            no_results_label.pack(anchor="w", pady=(0, 6), before=content_frame)
+        else:
+            no_results_label.pack_forget()
 
     def show_low_stock_items():
         low_stock_filter["active"] = True
@@ -822,6 +845,7 @@ def open_inventory(parent=None):
         load_chb_items()
         apply_low_stock_filter()
         update_low_stock_count()
+        update_no_results_message()
         schedule_status_labels()
 
     def sort_and_render(column, numeric=False):

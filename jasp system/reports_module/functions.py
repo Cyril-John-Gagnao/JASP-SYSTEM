@@ -600,7 +600,7 @@ def export_to_pdf(report_type, report_data):
         _append_signature_footer(story, styles)
 
         pdf.build(story)
-        return True, f"Report exported successfully:\n{file_path}"
+        return True, f"The PDF has been downloaded successfully.\n\nSaved to:\n{file_path}"
     except Exception as e:
         return False, f"PDF export failed: {str(e)}"
 

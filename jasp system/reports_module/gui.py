@@ -1006,6 +1006,6 @@ def _build_inventory_status_tab(parent):
 def _handle_export(report_type, data):
     success, message = export_to_pdf(report_type, data)
     if success:
-        messagebox.showinfo("Success", message)
+        messagebox.showinfo("PDF Downloaded Successfully", message)
     else:
         messagebox.showerror("Export Failed", message)

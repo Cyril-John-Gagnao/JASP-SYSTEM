@@ -54,6 +54,18 @@ def init_db():
     """)
 
     cursor.execute("""
+        CREATE TABLE IF NOT EXISTS chb_adjustments (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            adjustment_date TEXT NOT NULL,
+            adjustment_type TEXT NOT NULL,
+            quantity INTEGER NOT NULL,
+            reason TEXT NOT NULL,
+            responsible_user TEXT DEFAULT '',
+            ts TEXT NOT NULL
+        )
+    """)
+
+    cursor.execute("""
         CREATE TABLE IF NOT EXISTS sales (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             item_name TEXT NOT NULL,
@@ -247,6 +259,35 @@ def fetch_production_summary(cursor, start=None, end=None):
         q += " WHERE DATE(COALESCE(NULLIF(production_date, ''), ts)) BETWEEN ? AND ?"
         params = [start.strftime("%Y-%m-%d"), end.strftime("%Y-%m-%d")]
     q += " GROUP BY production_date, worker_name, COALESCE(NULLIF(responsible_user, ''), 'Admin') ORDER BY DATE(COALESCE(NULLIF(production_date, ''), ts)) DESC, worker_name ASC, responsible_user ASC"
+    cursor.execute(q, params)
+    return cursor.fetchall()
+
+
+def fetch_chb_adjustment_summary(cursor, start=None, end=None):
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS chb_adjustments (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            adjustment_date TEXT NOT NULL,
+            adjustment_type TEXT NOT NULL,
+            quantity INTEGER NOT NULL,
+            reason TEXT NOT NULL,
+            responsible_user TEXT DEFAULT '',
+            ts TEXT NOT NULL
+        )
+    """)
+    q = """
+        SELECT adjustment_date,
+               adjustment_type,
+               quantity,
+               reason,
+               COALESCE(NULLIF(responsible_user, ''), 'Admin') AS responsible_user
+        FROM chb_adjustments
+    """
+    params = []
+    if start and end:
+        q += " WHERE DATE(COALESCE(NULLIF(adjustment_date, ''), ts)) BETWEEN ? AND ?"
+        params = [start.strftime("%Y-%m-%d"), end.strftime("%Y-%m-%d")]
+    q += " ORDER BY DATE(COALESCE(NULLIF(adjustment_date, ''), ts)) DESC, ts DESC, id DESC"
     cursor.execute(q, params)
     return cursor.fetchall()
 

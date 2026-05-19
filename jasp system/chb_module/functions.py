@@ -1,9 +1,10 @@
 import sys
 import tkinter as tk
-from tkinter import messagebox
+from tkinter import messagebox, ttk
 from datetime import datetime
 
 from .chb_database import (
+    CHB_ITEM_NAME,
     CHB_STATE_ID,
     CEMENT_ITEM_NAME,
     FINE_SAND_ITEM_NAME,
@@ -201,6 +202,41 @@ def get_responsible_user():
         return "Admin"
 
 
+def is_blank(value):
+    return str(value or "").strip() == ""
+
+
+def get_tk_var_text(var):
+    try:
+        return str(var.get()).strip()
+    except tk.TclError:
+        return str(var._tk.globalgetvar(var._name)).strip()
+
+
+def parse_positive_int(value, field_name, parent):
+    try:
+        parsed = int(str(value).strip())
+    except (TypeError, ValueError):
+        show_chb_error(parent, "Error", f"{field_name} must be an integer number.")
+        return None
+    if parsed <= 0:
+        show_chb_error(parent, "Error", f"{field_name} must be greater than zero.")
+        return None
+    return parsed
+
+
+def parse_positive_number(value, field_name, parent):
+    try:
+        parsed = float(str(value).strip())
+    except (TypeError, ValueError):
+        show_chb_error(parent, "Error", f"{field_name} must be a numeric number.")
+        return None
+    if parsed <= 0:
+        show_chb_error(parent, "Error", f"{field_name} must be greater than zero.")
+        return None
+    return parsed
+
+
 def go_back(win):
     parent = win.master if win.master and win.master.winfo_exists() else None
     win.destroy()
@@ -216,6 +252,162 @@ def go_back(win):
 def refresh_data(load_data, update_total_blocks):
     load_data()
     update_total_blocks()
+
+
+def create_chb_adjustments_table(cursor):
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS chb_adjustments (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            adjustment_date TEXT NOT NULL,
+            adjustment_type TEXT NOT NULL,
+            quantity INTEGER NOT NULL,
+            reason TEXT NOT NULL,
+            responsible_user TEXT DEFAULT '',
+            ts TEXT NOT NULL
+        )
+    """)
+
+
+def apply_chb_stock_adjustment(conn, cursor, adjustment_date, adjustment_type, quantity, reason):
+    ensure_chb_inventory(conn, cursor)
+    create_chb_adjustments_table(cursor)
+
+    cursor.execute(
+        "SELECT COALESCE(available, 0) FROM chb_inventory_state WHERE id=?",
+        (CHB_STATE_ID,)
+    )
+    row = cursor.fetchone()
+    available = int(row[0] or 0) if row else 0
+    signed_quantity = quantity if adjustment_type == "Add" else -quantity
+    new_available = available + signed_quantity
+
+    if new_available < 0:
+        return False, "Adjustment cannot make available stock negative."
+
+    ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    cursor.execute(
+        """
+        UPDATE chb_inventory_state
+        SET available = available + ?,
+            updated_ts = ?
+        WHERE id = ?
+        """,
+        (signed_quantity, ts, CHB_STATE_ID)
+    )
+    cursor.execute(
+        "UPDATE items SET quantity = ? WHERE name=?",
+        (new_available, CHB_ITEM_NAME)
+    )
+    cursor.execute(
+        """
+        INSERT INTO chb_adjustments
+            (adjustment_date, adjustment_type, quantity, reason, responsible_user, ts)
+        VALUES (?, ?, ?, ?, ?, ?)
+        """,
+        (adjustment_date, adjustment_type, quantity, reason, get_responsible_user(), ts)
+    )
+    conn.commit()
+    notify_inventory_views()
+    return True, ""
+
+
+def open_chb_adjustment_form(conn, cursor, win, update_total_blocks):
+    form = tk.Toplevel(win)
+    form.title("Adjust CHB Stock")
+    form.transient(win)
+    form.grab_set()
+    form.configure(bg="#fef3c7")
+    form.resizable(False, False)
+
+    card = tk.Frame(form, bg="#fef3c7", padx=28, pady=24)
+    card.pack(fill="both", expand=True)
+
+    tk.Label(card, text="Adjust CHB Stock", bg="#fef3c7", fg="#1e40af", font=("Arial", 22, "bold")).grid(row=0, column=0, columnspan=2, sticky="w", pady=(0, 18))
+
+    cursor.execute("SELECT COALESCE(available, 0) FROM chb_inventory_state WHERE id=?", (CHB_STATE_ID,))
+    available_row = cursor.fetchone()
+    available = int(available_row[0] or 0) if available_row else 0
+    tk.Label(card, text=f"Current Available: {available:,}", bg="#fef3c7", fg="#111827", font=("Arial", 15, "bold")).grid(row=1, column=0, columnspan=2, sticky="w", pady=(0, 14))
+
+    adjustment_date_var = tk.StringVar(value=datetime.now().strftime("%Y-%m-%d"))
+    adjustment_type_var = tk.StringVar(value="Add")
+    quantity_var = tk.StringVar()
+    reason_text = tk.Text(card, width=32, height=4, font=("Arial", 13), bd=1, relief="solid")
+
+    tk.Label(card, text="Adjustment Date", bg="#fef3c7", font=("Arial", 13, "bold")).grid(row=2, column=0, sticky="w", pady=8)
+    date_frame = tk.Frame(card, bg="#fef3c7")
+    date_frame.grid(row=2, column=1, sticky="ew", padx=(12, 0), pady=8)
+    date_frame.columnconfigure(0, weight=1)
+    tk.Entry(date_frame, textvariable=adjustment_date_var, width=18, font=("Arial", 13), bd=1, relief="solid").grid(row=0, column=0, sticky="ew")
+    tk.Button(
+        date_frame,
+        text="Calendar",
+        command=lambda: open_date_calendar(form, adjustment_date_var),
+        bg="#3b82f6",
+        fg="white",
+        font=("Arial", 10, "bold"),
+        padx=8,
+        pady=2,
+        bd=1,
+        relief="solid"
+    ).grid(row=0, column=1, padx=(6, 0))
+
+    tk.Label(card, text="Type", bg="#fef3c7", font=("Arial", 13, "bold")).grid(row=3, column=0, sticky="w", pady=8)
+    ttk.Combobox(card, textvariable=adjustment_type_var, values=("Add", "Subtract"), state="readonly", width=21, font=("Arial", 13)).grid(row=3, column=1, sticky="ew", padx=(12, 0), pady=8)
+
+    tk.Label(card, text="Quantity", bg="#fef3c7", font=("Arial", 13, "bold")).grid(row=4, column=0, sticky="w", pady=8)
+    tk.Entry(card, textvariable=quantity_var, width=24, font=("Arial", 13), bd=1, relief="solid").grid(row=4, column=1, sticky="ew", padx=(12, 0), pady=8)
+
+    tk.Label(card, text="Reason", bg="#fef3c7", font=("Arial", 13, "bold")).grid(row=5, column=0, sticky="nw", pady=8)
+    reason_text.grid(row=5, column=1, sticky="ew", padx=(12, 0), pady=8)
+
+    def submit_adjustment():
+        adjustment_date = adjustment_date_var.get().strip()
+        adjustment_type = adjustment_type_var.get().strip()
+        reason = reason_text.get("1.0", tk.END).strip()
+        try:
+            quantity = int(quantity_var.get().strip())
+        except ValueError:
+            show_chb_error(form, "Error", "Quantity must be a positive whole number.")
+            return
+
+        if not adjustment_date or not reason:
+            show_chb_error(form, "Error", "Adjustment date and reason are required.")
+            return
+        if adjustment_type not in ("Add", "Subtract"):
+            show_chb_error(form, "Error", "Adjustment type must be Add or Subtract.")
+            return
+        if quantity <= 0:
+            show_chb_error(form, "Error", "Quantity must be greater than zero.")
+            return
+
+        signed_text = f"+{quantity:,}" if adjustment_type == "Add" else f"-{quantity:,}"
+        if not ask_chb_confirmation(
+            form,
+            "Confirm Adjustment",
+            f"Apply CHB stock adjustment of {signed_text}?",
+            confirm_text="Apply",
+            cancel_text="Cancel",
+            accent_color="#2563eb"
+        ):
+            return
+
+        ok, error = apply_chb_stock_adjustment(conn, cursor, adjustment_date, adjustment_type, quantity, reason)
+        if not ok:
+            show_chb_error(form, "Error", error)
+            return
+
+        update_total_blocks()
+        form.destroy()
+        show_chb_success(win, "Success", "CHB stock adjusted successfully!")
+
+    button_row = tk.Frame(card, bg="#fef3c7")
+    button_row.grid(row=6, column=0, columnspan=2, pady=(20, 0))
+    tk.Button(button_row, text="Apply", command=submit_adjustment, bg=SUCCESS_GREEN, fg="white", font=("Arial", 13, "bold"), width=13, pady=8, bd=2, relief="solid").pack(side="left", padx=8)
+    tk.Button(button_row, text="Cancel", command=form.destroy, bg=ERROR_RED, fg="white", font=("Arial", 13, "bold"), width=13, pady=8, bd=2, relief="solid").pack(side="left", padx=8)
+
+    form.bind("<Escape>", lambda _event: form.destroy())
+    center_popup(form, 560, 500, win)
 
 
 def update_pay(event, cement_entry, pay_rate_var, result_label):
@@ -363,25 +555,30 @@ def confirm_clear_form(win, worker_entry, cement_entry, sand_entry, blocks_entry
 
 
 def save(conn, cursor, win, worker_entry, date_var, cement_entry, blocks_entry, pay_rate_var, load_data, update_total_blocks, clear_form, refresh_materials=None):
-    try:
-        cement = int(cement_entry.get())
-        sand = cement * 15
-        blocks = int(blocks_entry.get())
-        pay_rate = float(pay_rate_var.get())
-        pay = cement * pay_rate
-    except:
-        show_chb_error(win, "Error", "Invalid input.")
-        return
-    if cement <= 0 or sand <= 0:
-        show_chb_error(win, "Error", "Enter a valid quantity.")
+    worker = worker_entry.get().strip()
+    date = date_var.get().strip()
+    cement_text = cement_entry.get().strip()
+    blocks_text = blocks_entry.get().strip()
+    pay_rate_text = get_tk_var_text(pay_rate_var)
+
+    if any(is_blank(value) for value in (worker, date, cement_text, blocks_text, pay_rate_text)):
+        show_chb_error(win, "Error", "All fields must not be empty.")
         return
 
-    worker = worker_entry.get()
-    date = date_var.get()
-
-    if not worker:
-        show_chb_error(win, "Error", "Fill all fields.")
+    cement = parse_positive_int(cement_text, "Bag/s of Cement", win)
+    if cement is None:
         return
+
+    blocks = parse_positive_int(blocks_text, "Blocks", win)
+    if blocks is None:
+        return
+
+    pay_rate = parse_positive_number(pay_rate_text, "Salary / 75 Blocks", win)
+    if pay_rate is None:
+        return
+
+    sand = cement * 15
+    pay = cement * pay_rate
 
     ok, error = validate_material_stock(cursor, cement, sand)
     if not ok:
@@ -419,18 +616,30 @@ def update(conn, cursor, win, selected_id, worker_entry, date_var, cement_entry,
         show_chb_error(win, "Error", "Select a record.")
         return
 
-    try:
-        cement = int(cement_entry.get())
-        sand = cement * 15
-        blocks = int(blocks_entry.get())
-        pay_rate = float(pay_rate_var.get())
-        pay = cement * pay_rate
-    except:
-        show_chb_error(win, "Error", "Invalid input.")
+    worker = worker_entry.get().strip()
+    date = date_var.get().strip()
+    cement_text = cement_entry.get().strip()
+    blocks_text = blocks_entry.get().strip()
+    pay_rate_text = get_tk_var_text(pay_rate_var)
+
+    if any(is_blank(value) for value in (worker, date, cement_text, blocks_text, pay_rate_text)):
+        show_chb_error(win, "Error", "All fields must not be empty.")
         return
-    if cement <= 0 or sand <= 0:
-        show_chb_error(win, "Error", "Enter a valid quantity.")
+
+    cement = parse_positive_int(cement_text, "Bag/s of Cement", win)
+    if cement is None:
         return
+
+    blocks = parse_positive_int(blocks_text, "Blocks", win)
+    if blocks is None:
+        return
+
+    pay_rate = parse_positive_number(pay_rate_text, "Salary / 75 Blocks", win)
+    if pay_rate is None:
+        return
+
+    sand = cement * 15
+    pay = cement * pay_rate
 
     old_blocks, old_cement_value, old_sand_value, old_applied = get_production_inventory_values(cursor, selected_id.get())
     old_cement = old_cement_value if old_applied else 0
@@ -442,7 +651,7 @@ def update(conn, cursor, win, selected_id, worker_entry, date_var, cement_entry,
         return
 
     # Confirmation dialog
-    if not ask_chb_confirmation(win, "Confirm Update", f"Update record for {worker_entry.get()}?", confirm_text="Update", cancel_text="Cancel", accent_color="#1e40af"):
+    if not ask_chb_confirmation(win, "Confirm Update", f"Update record for {worker}?", confirm_text="Update", cancel_text="Cancel", accent_color="#1e40af"):
         return
 
     cursor.execute("""
@@ -450,8 +659,8 @@ def update(conn, cursor, win, selected_id, worker_entry, date_var, cement_entry,
         SET production_date=?, worker_name=?, cement_bags=?, fine_sand=?, total_blocks=?, pay=?, pay_rate=?, material_inventory_applied=?, responsible_user=?
         WHERE id=?
     """, (
-        date_var.get(),
-        worker_entry.get(),
+        date,
+        worker,
         cement, sand, blocks, pay, pay_rate, 1, get_responsible_user(),
         selected_id.get()
     ))
@@ -587,9 +796,12 @@ def load_data(event, tree, search_var, sort_var, cursor):
     row_index = 0
     rows = cursor.fetchall()
     if not rows:
+        if keyword:
+            return 0
         tree.insert("", "end", values=("", today, "No production today", "", "", "", "", ""), tags=('oddrow',))
-        return
+        return 0
     for row in rows:
         tag = 'evenrow' if row_index % 2 == 0 else 'oddrow'
         tree.insert("", "end", values=row, tags=(tag,))
         row_index += 1
+    return row_index

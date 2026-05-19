@@ -151,8 +151,28 @@ def open_chb_dashboard():
     )
     total_label.pack(side="left")
 
+    tk.Button(
+        total_frame,
+        text="Adjust CHB Stock",
+        command=lambda: chb_functions.open_chb_adjustment_form(conn, cursor, win, update_total_blocks),
+        bg="#7c3aed",
+        fg="white",
+        font=("Arial", 13, "bold"),
+        padx=12,
+        pady=6,
+        **BUTTON_BORDER
+    ).pack(side="left", padx=(18, 0))
+
     fullscreen_btn = tk.Button(total_frame, text='Full Screen Display', command=lambda: toggle_display_fullscreen(), bg='#0f766e', fg='white', font=('Arial', 13, 'bold'), padx=12, pady=6, **BUTTON_BORDER)
     fullscreen_btn.pack(side="right", padx=(10, 0))
+
+    no_results_label = tk.Label(
+        win,
+        text="No matching production records found.",
+        font=("Arial", 16, "bold"),
+        bg=BG_MAIN,
+        fg="#dc2626"
+    )
 
     # ================= MAIN CONTAINER (51-49 Split) =================
     main_container = tk.Frame(win, bg=CARD_BG, bd=1, relief="solid")
@@ -478,7 +498,11 @@ def open_chb_dashboard():
 
     # ================= LOAD DATA =================
     def load_data(event=None):
-        chb_functions.load_data(event, tree, search_var, sort_var, cursor)
+        row_count = chb_functions.load_data(event, tree, search_var, sort_var, cursor)
+        if search_var.get().strip() and row_count == 0:
+            no_results_label.pack(anchor="w", padx=20, pady=(0, 6), before=main_container)
+        else:
+            no_results_label.pack_forget()
         auto_adjust_columns()
 
     # ✅ BINDINGS (LIVE SEARCH)

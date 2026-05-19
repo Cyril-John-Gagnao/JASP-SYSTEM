@@ -1099,7 +1099,11 @@ def open_invoice_window(ctx, cart_items, total_amount, money_received, change, m
                 (pdf_path, txn_id),
             )
             ctx["conn"].commit()
-            show_pos_success(inv_window, "Receipt Downloaded", f"Receipt saved to:\n{pdf_path}")
+            show_pos_success(
+                inv_window,
+                "PDF Downloaded Successfully",
+                f"The receipt PDF has been downloaded successfully.\n\nSaved to:\n{pdf_path}"
+            )
 
     def void_transaction():
         if not ask_pos_confirmation(

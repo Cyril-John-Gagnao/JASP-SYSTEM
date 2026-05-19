@@ -366,6 +366,26 @@ def log_restock(conn, cursor, name, qty_added, price, raw_price, item_id=None, a
     conn.commit()
 
 
+def product_name_exists(cursor, name, exclude_item_id=None):
+    if exclude_item_id is None:
+        cursor.execute(
+            "SELECT 1 FROM items WHERE LOWER(TRIM(name)) = LOWER(TRIM(?)) LIMIT 1",
+            (name,),
+        )
+    else:
+        cursor.execute(
+            """
+            SELECT 1
+            FROM items
+            WHERE LOWER(TRIM(name)) = LOWER(TRIM(?))
+              AND id <> ?
+            LIMIT 1
+            """,
+            (name, exclude_item_id),
+        )
+    return cursor.fetchone() is not None
+
+
 def fetch_existing_item_for_stack(cursor, name, price_val):
     cursor.execute("SELECT id, quantity FROM items WHERE name = ? AND price = ?", (name, price_val))
     return cursor.fetchone()
