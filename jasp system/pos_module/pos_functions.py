@@ -1220,10 +1220,27 @@ def finalize_transaction(ctx, mode, money_received, platform):
         cursor.execute("UPDATE items SET quantity = quantity - ? WHERE id=?", (stock_qty, item["id"]))
         cursor.execute(
             """
-            INSERT INTO sales (item_name, qty, price, raw_price, total, ts, transaction_id, cashier, payment_status, payment_method)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO sales (
+                item_name, qty, price, raw_price, total, ts,
+                transaction_id, cashier, payment_status, payment_method,
+                payment_received, change_amount
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
-            (item["name"], item["qty"], item["price"], item.get("raw_price", 0), item["total"], now, txn_id, cashier, "Paid", mode),
+            (
+                item["name"],
+                item["qty"],
+                item["price"],
+                item.get("raw_price", 0),
+                item["total"],
+                now,
+                txn_id,
+                cashier,
+                "Paid",
+                mode,
+                money_received,
+                change,
+            ),
         )
         if item["name"] == CHB_ITEM_NAME:
             cursor.execute(

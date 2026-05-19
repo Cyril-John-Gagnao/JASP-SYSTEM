@@ -25,6 +25,10 @@ def init_database():
     sales_cols = {col[1] for col in cursor.fetchall()}
     if "payment_status" not in sales_cols:
         cursor.execute("ALTER TABLE sales ADD COLUMN payment_status TEXT DEFAULT 'Paid'")
+    if "payment_received" not in sales_cols:
+        cursor.execute("ALTER TABLE sales ADD COLUMN payment_received REAL DEFAULT 0")
+    if "change_amount" not in sales_cols:
+        cursor.execute("ALTER TABLE sales ADD COLUMN change_amount REAL DEFAULT 0")
 
     # Expenses table
     cursor.execute("""

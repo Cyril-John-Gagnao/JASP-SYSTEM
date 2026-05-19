@@ -51,6 +51,10 @@ def initialize_pos_database():
         cursor.execute("ALTER TABLE sales ADD COLUMN payment_method TEXT DEFAULT 'Cash'")
     if "receipt_path" not in sales_cols:
         cursor.execute("ALTER TABLE sales ADD COLUMN receipt_path TEXT DEFAULT ''")
+    if "payment_received" not in sales_cols:
+        cursor.execute("ALTER TABLE sales ADD COLUMN payment_received REAL DEFAULT 0")
+    if "change_amount" not in sales_cols:
+        cursor.execute("ALTER TABLE sales ADD COLUMN change_amount REAL DEFAULT 0")
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS chb_production (
         id INTEGER PRIMARY KEY AUTOINCREMENT,

@@ -1,3 +1,4 @@
+import calendar
 import sqlite3
 from datetime import datetime, timedelta
 from tkinter import filedialog
@@ -9,11 +10,20 @@ try:
     from reportlab.lib.pagesizes import letter
     from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
     from reportlab.lib.units import inch
-    from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+    from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, Image
     from reportlab.lib import colors
     HAS_REPORTLAB = True
 except ImportError:
     HAS_REPORTLAB = False
+
+from jasp_theme import logo_path
+
+
+PDF_HEADER_BG = "#2D2D2D"
+PDF_LOGO_CONTAINER_BG = "#676767"
+PDF_TABLE_HEADER_BG = "#2D2D2D"
+PDF_BORDER = "#333333"
+PDF_ROW_ALT = "#f2f2f2"
 
 
 def get_date_range(start_date, end_date):
@@ -26,6 +36,44 @@ def get_date_range(start_date, end_date):
         return (start, end), None
     except ValueError as e:
         return None, f"Invalid date format: {e}"
+
+
+def get_report_date_range(filter_type, reference_date=None, custom_start=None, custom_end=None):
+    """Return validated report start/end dates as YYYY-MM-DD strings."""
+    period = (filter_type or "Custom").strip().lower()
+
+    if period == "custom":
+        date_range, error = get_date_range(custom_start or "", custom_end or "")
+        if error:
+            return None, None, error
+        start, end = date_range
+        return start.strftime("%Y-%m-%d"), end.strftime("%Y-%m-%d"), None
+
+    try:
+        selected = datetime.strptime((reference_date or datetime.now().strftime("%Y-%m-%d")).strip(), "%Y-%m-%d")
+    except ValueError as e:
+        return None, None, f"Invalid date format: {e}"
+
+    if period == "day":
+        start = end = selected
+    elif period == "week":
+        start = selected - timedelta(days=selected.weekday())
+        end = start + timedelta(days=6)
+    elif period == "month":
+        start = selected.replace(day=1)
+        end = selected.replace(day=calendar.monthrange(selected.year, selected.month)[1])
+    else:
+        return None, None, "Invalid report period. Use Day, Week, Month, or Custom."
+
+    return start.strftime("%Y-%m-%d"), end.strftime("%Y-%m-%d"), None
+
+
+def _format_report_quantity(value):
+    try:
+        qty = float(value or 0)
+    except (TypeError, ValueError):
+        return str(value or 0)
+    return f"{qty:,.3f}".rstrip("0").rstrip(".")
 
 
 def _resolve_chb_date_fields(cursor):
@@ -42,9 +90,78 @@ def _resolve_chb_date_fields(cursor):
     return None, None, None, chb_cols
 
 
+def generate_sales_report(start_date, end_date):
+    """Generate transaction-level sales report rows for completed sales."""
+    start_date, end_date, error = get_report_date_range("Custom", custom_start=start_date, custom_end=end_date)
+    if error:
+        return None, error
+
+    conn = sqlite3.connect(DB_NAME)
+    cursor = conn.cursor()
+
+    cursor.execute("""
+        SELECT
+            ts,
+            COALESCE(NULLIF(transaction_id, ''), 'TXN-' || printf('%05d', id)) AS txn_ref,
+            item_name,
+            qty,
+            total,
+            COALESCE(payment_received, 0),
+            COALESCE(change_amount, 0)
+        FROM sales
+        WHERE ts IS NOT NULL
+          AND qty > 0
+          AND total >= 0
+          AND COALESCE(payment_status, 'Paid') <> 'Void'
+          AND DATE(ts) BETWEEN ? AND ?
+        ORDER BY DATE(ts) ASC, ts ASC, id ASC
+    """, (start_date, end_date))
+    rows = cursor.fetchall()
+    conn.close()
+
+    grouped = {}
+    order = []
+    for ts, txn_ref, item_name, qty, total, payment_received, change_amount in rows:
+        key = txn_ref or f"TXN-{len(order) + 1:05d}"
+        if key not in grouped:
+            grouped[key] = {
+                "transaction_date": ts,
+                "transaction_id": key,
+                "items_sold": [],
+                "quantities": [],
+                "total_amount": 0,
+                "payment_received": float(payment_received or 0),
+                "change_amount": float(change_amount or 0),
+            }
+            order.append(key)
+        grouped[key]["items_sold"].append(str(item_name or "-"))
+        grouped[key]["quantities"].append(_format_report_quantity(qty))
+        grouped[key]["total_amount"] += float(total or 0)
+        grouped[key]["payment_received"] = max(grouped[key]["payment_received"], float(payment_received or 0))
+        grouped[key]["change_amount"] = max(grouped[key]["change_amount"], float(change_amount or 0))
+
+    transactions = [
+        {
+            **grouped[key],
+            "items_sold": ", ".join(grouped[key]["items_sold"]),
+            "quantities": ", ".join(grouped[key]["quantities"]),
+        }
+        for key in order
+    ]
+
+    return {
+        "start_date": start_date,
+        "end_date": end_date,
+        "transactions": transactions,
+        "transaction_count": len(transactions),
+        "total_sales": sum(row["total_amount"] for row in transactions),
+        "has_period_data": bool(transactions),
+    }, None
+
+
 def generate_financial_summary(start_date, end_date):
     """REQ-REP-01: Generate Financial Summary Report."""
-    _, error = get_date_range(start_date, end_date)
+    start_date, end_date, error = get_report_date_range("Custom", custom_start=start_date, custom_end=end_date)
     if error:
         return None, error
 
@@ -231,7 +348,7 @@ def generate_weekly_sales(end_date_str):
 
 def generate_chb_production(start_date, end_date):
     """REQ-REP-03: Generate CHB Production Report."""
-    date_range, error = get_date_range(start_date, end_date)
+    start_date, end_date, error = get_report_date_range("Custom", custom_start=start_date, custom_end=end_date)
     if error:
         return None, error
 
@@ -313,6 +430,139 @@ def generate_inventory_status():
     }, None
 
 
+def php_money(value):
+    return f"PHP {float(value or 0):,.2f}"
+
+
+def _pdf_styles():
+    styles = getSampleStyleSheet()
+    styles.add(ParagraphStyle(
+        "ReportTitle",
+        parent=styles["Heading1"],
+        fontName="Helvetica-Bold",
+        fontSize=19,
+        leading=23,
+        textColor=colors.HexColor("#111827"),
+        spaceAfter=6,
+    ))
+    styles.add(ParagraphStyle(
+        "ReportSubtitle",
+        parent=styles["Normal"],
+        fontSize=9,
+        leading=12,
+        textColor=colors.HexColor("#4b5563"),
+    ))
+    styles.add(ParagraphStyle(
+        "SectionHeading",
+        parent=styles["Heading2"],
+        fontName="Helvetica-Bold",
+        fontSize=13,
+        leading=16,
+        textColor=colors.HexColor("#111827"),
+        spaceBefore=8,
+        spaceAfter=4,
+    ))
+    return styles
+
+
+def _build_pdf_header(story, report_type, styles):
+    logo_cell = Paragraph("JASP", ParagraphStyle(
+        "LogoFallback",
+        parent=styles["Normal"],
+        fontName="Helvetica-Bold",
+        fontSize=14,
+        textColor=colors.white,
+        alignment=1,
+    ))
+    path = logo_path()
+    try:
+        logo_cell = Image(path, width=0.55 * inch, height=0.55 * inch)
+    except Exception:
+        pass
+
+    header_data = [[
+        logo_cell,
+        Paragraph("JASP Hardware Management System", ParagraphStyle(
+            "HeaderBrand",
+            parent=styles["Normal"],
+            fontName="Helvetica-Bold",
+            fontSize=13,
+            textColor=colors.white,
+            leading=16,
+        )),
+        Paragraph(f"{report_type} Report", ParagraphStyle(
+            "HeaderReport",
+            parent=styles["Normal"],
+            fontName="Helvetica-Bold",
+            fontSize=12,
+            textColor=colors.white,
+            alignment=2,
+        )),
+    ]]
+    header = Table(header_data, colWidths=[0.85 * inch, 3.25 * inch, 2.4 * inch])
+    header.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor(PDF_HEADER_BG)),
+        ("BACKGROUND", (0, 0), (0, 0), colors.HexColor(PDF_LOGO_CONTAINER_BG)),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("ALIGN", (0, 0), (0, 0), "CENTER"),
+        ("LEFTPADDING", (0, 0), (-1, -1), 10),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 10),
+        ("TOPPADDING", (0, 0), (-1, -1), 10),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 10),
+        ("LINEBELOW", (0, 0), (-1, -1), 1, colors.HexColor(PDF_BORDER)),
+    ]))
+    story.append(header)
+    story.append(Spacer(1, 0.22 * inch))
+    story.append(Paragraph(f"{report_type} Report", styles["ReportTitle"]))
+
+
+def _table_style(row_backgrounds=True):
+    commands = [
+        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor(PDF_TABLE_HEADER_BG)),
+        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+        ("FONTSIZE", (0, 0), (-1, 0), 10),
+        ("BOTTOMPADDING", (0, 0), (-1, 0), 8),
+        ("TOPPADDING", (0, 0), (-1, 0), 8),
+        ("LEFTPADDING", (0, 0), (-1, -1), 7),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 7),
+        ("TOPPADDING", (0, 1), (-1, -1), 5),
+        ("BOTTOMPADDING", (0, 1), (-1, -1), 5),
+        ("GRID", (0, 0), (-1, -1), 0.6, colors.HexColor(PDF_BORDER)),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+    ]
+    if row_backgrounds:
+        commands.append(("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor(PDF_ROW_ALT)]))
+    return TableStyle(commands)
+
+
+def _append_signature_footer(story, styles):
+    story.append(Spacer(1, 0.32 * inch))
+    story.append(Paragraph(f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}", styles["ReportSubtitle"]))
+    story.append(Spacer(1, 0.3 * inch))
+
+    signature = Table(
+        [
+            ["Prepared by", "Checked by", "Approved by"],
+            ["", "", ""],
+            ["Signature over printed name", "Signature over printed name", "Signature over printed name"],
+        ],
+        colWidths=[2.05 * inch, 2.05 * inch, 2.05 * inch],
+    )
+    signature.setStyle(TableStyle([
+        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+        ("TEXTCOLOR", (0, 0), (-1, 0), colors.HexColor("#111827")),
+        ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+        ("LINEABOVE", (0, 1), (-1, 1), 0.8, colors.HexColor(PDF_BORDER)),
+        ("TOPPADDING", (0, 0), (-1, 0), 4),
+        ("TOPPADDING", (0, 1), (-1, 1), 26),
+        ("BOTTOMPADDING", (0, 1), (-1, 1), 4),
+        ("FONTSIZE", (0, 2), (-1, 2), 8),
+        ("TEXTCOLOR", (0, 2), (-1, 2), colors.HexColor("#6b7280")),
+    ]))
+    story.append(signature)
+
+
 def export_to_pdf(report_type, report_data):
     """REQ-REP-05: Export report to PDF."""
     if not HAS_REPORTLAB:
@@ -327,27 +577,19 @@ def export_to_pdf(report_type, report_data):
         if not file_path:
             return False, "Export cancelled."
 
-        # Create PDF
         pdf = SimpleDocTemplate(file_path, pagesize=letter,
                                rightMargin=0.5*inch, leftMargin=0.5*inch,
                                topMargin=0.5*inch, bottomMargin=0.5*inch)
         story = []
-        styles = getSampleStyleSheet()
+        styles = _pdf_styles()
 
-        # Title
-        title_style = ParagraphStyle(
-            'CustomTitle',
-            parent=styles['Heading1'],
-            fontSize=20,
-            textColor=colors.HexColor("#1f2933"),
-            spaceAfter=12
-        )
-        story.append(Paragraph(f"{report_type} Report", title_style))
-        story.append(Spacer(1, 0.2*inch))
+        _build_pdf_header(story, report_type, styles)
 
         # Build content based on report type
         if report_type == "Financial Summary":
             _build_financial_pdf(story, report_data, styles)
+        elif report_type == "Sales Report":
+            _build_sales_report_pdf(story, report_data, styles)
         elif report_type == "Weekly Sales Statistics":
             _build_weekly_sales_pdf(story, report_data, styles)
         elif report_type == "CHB Production":
@@ -355,9 +597,7 @@ def export_to_pdf(report_type, report_data):
         elif report_type == "Inventory Status":
             _build_inventory_pdf(story, report_data, styles)
 
-        story.append(Spacer(1, 0.3*inch))
-        footer = Paragraph(f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}", styles['Normal'])
-        story.append(footer)
+        _append_signature_footer(story, styles)
 
         pdf.build(story)
         return True, f"Report exported successfully:\n{file_path}"
@@ -371,98 +611,104 @@ def _build_financial_pdf(story, data, styles):
     story.append(Spacer(1, 0.2*inch))
 
     summary_data = [
-        ["Metric", "Amount (₱)"],
-        ["Total Sales", f"{data['total_sales']:,.2f}"],
-        ["Cash on Hand (Completed Sales)", f"{data['cash_on_hand']:,.2f}"],
-        ["Material Expenses", f"{data['material_expenses']:,.2f}"],
-        ["Worker Payouts (CHB)", f"{data['worker_payouts']:,.2f}"],
-        ["Total Cost (Materials + Payouts)", f"{(data['material_expenses'] + data['worker_payouts']):,.2f}"],
-        ["Revenue", f"{data['total_revenue']:,.2f}"],
+        ["Metric", "Amount"],
+        ["Total Sales", php_money(data['total_sales'])],
+        ["Cash on Hand (Completed Sales)", php_money(data['cash_on_hand'])],
+        ["Material Expenses", php_money(data['material_expenses'])],
+        ["Worker Payouts (CHB)", php_money(data['worker_payouts'])],
+        ["Total Cost (Materials + Payouts)", php_money(data['material_expenses'] + data['worker_payouts'])],
+        ["Revenue", php_money(data['total_revenue'])],
     ]
 
     table = Table(summary_data, colWidths=[3*inch, 2*inch])
-    table.setStyle(TableStyle([
-        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor("#273142")),
-        ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+    table.setStyle(TableStyle(_table_style().getCommands() + [
         ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-        ('FONTSIZE', (0, 0), (-1, 0), 12),
-        ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
-        ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
-        ('GRID', (0, 0), (-1, -1), 1, colors.black),
     ]))
     story.append(table)
 
     sales_by_product = data.get('sales_by_product', [])
     if sales_by_product:
         story.append(Spacer(1, 0.2*inch))
-        story.append(Paragraph("Products Sold Summary", styles['Heading2']))
+        story.append(Paragraph("Products Sold Summary", styles['SectionHeading']))
         story.append(Spacer(1, 0.1*inch))
 
-        product_rows = [["Product", "Qty Sold", "Amount (₱)"]]
+        product_rows = [["Product", "Qty Sold", "Amount"]]
         for item_name, qty_sold, amount_sold in sales_by_product:
-            product_rows.append([item_name, f"{int(qty_sold):,}", f"{amount_sold:,.2f}"])
+            product_rows.append([item_name, f"{int(qty_sold):,}", php_money(amount_sold)])
 
         product_table = Table(product_rows, colWidths=[2.7*inch, 1.0*inch, 1.3*inch])
-        product_table.setStyle(TableStyle([
-            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor("#273142")),
-            ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+        product_table.setStyle(TableStyle(_table_style().getCommands() + [
             ('ALIGN', (1, 1), (-1, -1), 'RIGHT'),
             ('ALIGN', (0, 0), (0, -1), 'LEFT'),
-            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-            ('GRID', (0, 0), (-1, -1), 1, colors.black),
-            ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.lightgrey]),
         ]))
         story.append(product_table)
 
     sales_transactions = data.get('sales_transactions', [])
     if sales_transactions:
         story.append(Spacer(1, 0.2*inch))
-        story.append(Paragraph("Sales Transactions", styles['Heading2']))
+        story.append(Paragraph("Sales Transactions", styles['SectionHeading']))
         story.append(Spacer(1, 0.1*inch))
 
-        sales_rows = [["Date/Time", "Product", "Qty", "Amount (₱)"]]
+        sales_rows = [["Date/Time", "Product", "Qty", "Amount"]]
         for ts, item_name, qty, _price, _raw_price, total in sales_transactions:
-            sales_rows.append([str(ts)[:19], item_name, f"{int(qty):,}", f"{total:,.2f}"])
+            sales_rows.append([str(ts)[:19], item_name, f"{int(qty):,}", php_money(total)])
 
         sales_table = Table(sales_rows, colWidths=[1.5*inch, 2.1*inch, 0.7*inch, 1.2*inch])
-        sales_table.setStyle(TableStyle([
-            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor("#273142")),
-            ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+        sales_table.setStyle(TableStyle(_table_style(row_backgrounds=False).getCommands() + [
             ('ALIGN', (2, 1), (-1, -1), 'RIGHT'),
             ('ALIGN', (0, 0), (1, -1), 'LEFT'),
             ('FONTSIZE', (0, 0), (-1, -1), 8),
-            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-            ('GRID', (0, 0), (-1, -1), 1, colors.black),
         ]))
         story.append(sales_table)
 
     expense_transactions = data.get('expense_transactions', [])
     if expense_transactions:
         story.append(Spacer(1, 0.2*inch))
-        story.append(Paragraph("Expense Transactions", styles['Heading2']))
+        story.append(Paragraph("Expense Transactions", styles['SectionHeading']))
         story.append(Spacer(1, 0.1*inch))
 
-        expense_rows = [["Date/Time", "Category", "Description", "Amount (₱)"]]
+        expense_rows = [["Date/Time", "Category", "Description", "Amount"]]
         for ts, category, description, amount in expense_transactions:
             expense_rows.append([
                 str(ts)[:19],
                 category or "-",
                 description or "-",
-                f"{amount:,.2f}",
+                php_money(amount),
             ])
 
         expense_table = Table(expense_rows, colWidths=[1.3*inch, 1.1*inch, 2.0*inch, 1.1*inch])
-        expense_table.setStyle(TableStyle([
-            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor("#273142")),
-            ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+        expense_table.setStyle(TableStyle(_table_style(row_backgrounds=False).getCommands() + [
             ('ALIGN', (3, 1), (3, -1), 'RIGHT'),
             ('ALIGN', (0, 0), (2, -1), 'LEFT'),
             ('FONTSIZE', (0, 0), (-1, -1), 8),
-            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-            ('GRID', (0, 0), (-1, -1), 1, colors.black),
         ]))
         story.append(expense_table)
+
+
+def _build_sales_report_pdf(story, data, styles):
+    """Build transaction-level sales report PDF content."""
+    story.append(Paragraph(f"Period: {data['start_date']} to {data['end_date']}", styles['Normal']))
+    story.append(Spacer(1, 0.2*inch))
+
+    sales_rows = [["Date", "Transaction ID", "Items Sold", "Qty", "Total", "Payment", "Change"]]
+    for row in data.get("transactions", []):
+        sales_rows.append([
+            str(row["transaction_date"])[:19],
+            row["transaction_id"],
+            row["items_sold"],
+            row["quantities"],
+            php_money(row["total_amount"]),
+            php_money(row["payment_received"]),
+            php_money(row["change_amount"]),
+        ])
+
+    table = Table(sales_rows, colWidths=[1.0*inch, 1.15*inch, 1.6*inch, 0.7*inch, 0.95*inch, 0.95*inch, 0.85*inch])
+    table.setStyle(TableStyle(_table_style(row_backgrounds=False).getCommands() + [
+        ('ALIGN', (3, 1), (-1, -1), 'RIGHT'),
+        ('ALIGN', (0, 0), (2, -1), 'LEFT'),
+        ('FONTSIZE', (0, 0), (-1, -1), 7),
+    ]))
+    story.append(table)
 
 
 def _build_weekly_sales_pdf(story, data, styles):
@@ -470,18 +716,13 @@ def _build_weekly_sales_pdf(story, data, styles):
     story.append(Paragraph(f"Period: {data['start_date']} to {data['end_date']}", styles['Normal']))
     story.append(Spacer(1, 0.2*inch))
 
-    sales_data = [["Day", "Date", "Revenue (₱)"]]
+    sales_data = [["Day", "Date", "Revenue"]]
     for day, date, revenue in data['daily_data']:
-        sales_data.append([day, date, f"{revenue:,.2f}"])
+        sales_data.append([day, date, php_money(revenue)])
 
     table = Table(sales_data, colWidths=[1.5*inch, 1.5*inch, 2*inch])
-    table.setStyle(TableStyle([
-        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor("#273142")),
-        ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+    table.setStyle(TableStyle(_table_style().getCommands() + [
         ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-        ('GRID', (0, 0), (-1, -1), 1, colors.black),
-        ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.lightgrey]),
     ]))
     story.append(table)
 
@@ -499,19 +740,14 @@ def _build_chb_production_pdf(story, data, styles):
     ]
 
     table = Table(summary_data, colWidths=[3*inch, 2*inch])
-    table.setStyle(TableStyle([
-        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor("#273142")),
-        ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+    table.setStyle(TableStyle(_table_style().getCommands() + [
         ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-        ('GRID', (0, 0), (-1, -1), 1, colors.black),
-        ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
     ]))
     story.append(table)
 
     if data['entries']:
         story.append(Spacer(1, 0.2*inch))
-        story.append(Paragraph("Detailed Entries", styles['Heading2']))
+        story.append(Paragraph("Detailed Entries", styles['SectionHeading']))
         story.append(Spacer(1, 0.1*inch))
 
         entries_data = [["Date/Time", "Cement (kg)", "Blocks (pcs)"]]
@@ -519,12 +755,9 @@ def _build_chb_production_pdf(story, data, styles):
             entries_data.append([ts, f"{cement:,.2f}", f"{blocks:,}"])
 
         entries_table = Table(entries_data, colWidths=[2*inch, 1.5*inch, 1.5*inch])
-        entries_table.setStyle(TableStyle([
-            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor("#273142")),
-            ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+        entries_table.setStyle(TableStyle(_table_style(row_backgrounds=False).getCommands() + [
             ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
             ('FONTSIZE', (0, 0), (-1, -1), 9),
-            ('GRID', (0, 0), (-1, -1), 1, colors.black),
         ]))
         story.append(entries_table)
 
@@ -541,49 +774,37 @@ def _build_inventory_pdf(story, data, styles):
     ]
 
     table = Table(summary_data, colWidths=[3*inch, 2*inch])
-    table.setStyle(TableStyle([
-        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor("#273142")),
-        ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+    table.setStyle(TableStyle(_table_style().getCommands() + [
         ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-        ('GRID', (0, 0), (-1, -1), 1, colors.black),
     ]))
     story.append(table)
 
     if data['low_stock']:
         story.append(Spacer(1, 0.2*inch))
-        story.append(Paragraph("Low Stock Items (< 10 pcs)", styles['Heading2']))
+        story.append(Paragraph("Low Stock Items (< 10 pcs)", styles['SectionHeading']))
         story.append(Spacer(1, 0.1*inch))
 
-        items_data = [["Item Name", "Quantity", "Price (₱)"]]
+        items_data = [["Item Name", "Quantity", "Price"]]
         for name, qty, price in data['low_stock']:
-            items_data.append([name, str(qty), f"{price:,.2f}"])
+            items_data.append([name, str(qty), php_money(price)])
 
         items_table = Table(items_data, colWidths=[2.5*inch, 1*inch, 1.5*inch])
-        items_table.setStyle(TableStyle([
-            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor("#273142")),
-            ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+        items_table.setStyle(TableStyle(_table_style().getCommands() + [
             ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-            ('GRID', (0, 0), (-1, -1), 1, colors.black),
-            ('BACKGROUND', (0, 1), (-1, -1), colors.lightyellow),
         ]))
         story.append(items_table)
 
     story.append(Spacer(1, 0.2*inch))
-    story.append(Paragraph("All Inventory Items", styles['Heading2']))
+    story.append(Paragraph("All Inventory Items", styles['SectionHeading']))
     story.append(Spacer(1, 0.1*inch))
 
-    all_items_data = [["Item Name", "Quantity", "Price (₱)"]]
+    all_items_data = [["Item Name", "Quantity", "Price"]]
     for name, qty, price in data['all_items']:
-        all_items_data.append([name, str(qty), f"{price:,.2f}"])
+        all_items_data.append([name, str(qty), php_money(price)])
 
     all_items_table = Table(all_items_data, colWidths=[2.5*inch, 1*inch, 1.5*inch])
-    all_items_table.setStyle(TableStyle([
-        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor("#273142")),
-        ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+    all_items_table.setStyle(TableStyle(_table_style(row_backgrounds=False).getCommands() + [
         ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
         ('FONTSIZE', (0, 0), (-1, -1), 8),
-        ('GRID', (0, 0), (-1, -1), 1, colors.black),
     ]))
     story.append(all_items_table)
