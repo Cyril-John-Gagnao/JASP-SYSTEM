@@ -56,6 +56,14 @@ def money(val):
     return f"{PESO}{float(val or 0):,.2f}"
 
 
+def quantity(val):
+    try:
+        num = float(val or 0)
+    except (TypeError, ValueError):
+        return str(val or 0)
+    return f"{num:,.3f}".rstrip("0").rstrip(".")
+
+
 def _parse_picker_date(date_text):
     try:
         return datetime.strptime((date_text or "").strip(), "%Y-%m-%d")
@@ -910,21 +918,45 @@ def _build_chb_production_tab(parent):
         details_panel.grid(row=1, column=0, sticky="nsew", padx=(0, SECTION_GAP))
         wrap = tk.Frame(details_panel, bg=BG_CARD)
         wrap.pack(fill="both", expand=True)
-        columns = ("ts", "cement", "blocks")
+        columns = ("production_date", "worker", "cement", "fine_sand", "blocks", "pay")
         headings = [
-            ("ts", "DATE/TIME", 220, "w"),
-            ("cement", "CEMENT", 130, "e"),
-            ("blocks", "BLOCKS", 130, "e"),
+            ("production_date", "PRODUCTION DATE", 135, "center"),
+            ("worker", "WORKER NAME", 180, "w"),
+            ("cement", "CEMENT BAGS", 115, "e"),
+            ("fine_sand", "FINE SAND", 115, "e"),
+            ("blocks", "TOTAL BLOCKS", 130, "e"),
+            ("pay", "WORKER PAY", 125, "e"),
         ]
-        tree = create_tree(wrap, columns, headings, "CHBData.Treeview", height=13)
-        for idx, (ts, cement, blocks) in enumerate(data.get("entries", [])):
-            insert_row(tree, (str(ts), f"{float(cement or 0):,.2f}", f"{int(blocks or 0):,}"), idx)
+        tree = create_tree(
+            wrap,
+            columns,
+            headings,
+            "CHBData.Treeview",
+            height=13,
+            font=("Arial", 12),
+            heading_font=("Arial", 12, "bold"),
+            rowheight=34,
+        )
+        for idx, row in enumerate(data.get("entries", [])):
+            insert_row(
+                tree,
+                (
+                    str(row.get("production_date") or "")[:10],
+                    str(row.get("worker_name") or "N/A"),
+                    quantity(row.get("cement_bags")),
+                    quantity(row.get("fine_sand")),
+                    f"{int(float(row.get('total_blocks') or 0)):,}",
+                    money(row.get("worker_pay")),
+                ),
+                idx,
+            )
 
         sidebar = panel(report_container, "Production Summary")
         sidebar.grid(row=1, column=1, sticky="nsew")
-        summary_row(sidebar, "Total Cement", f"{data['total_cement']:,.2f}")
+        summary_row(sidebar, "Total Cement Bags", quantity(data["total_cement"]))
+        summary_row(sidebar, "Total Fine Sand", quantity(data["total_fine_sand"]))
         summary_row(sidebar, "Total Blocks", f"{data['total_blocks']:,} pcs")
-        summary_row(sidebar, "Efficiency", f"{data['efficiency']:.2f}%", True)
+        summary_row(sidebar, "Worker Pay", money(data["total_worker_pay"]), True)
         make_button(sidebar, "Export to PDF", lambda: _handle_export("CHB Production", data)).pack(fill="x", pady=(8, 0))
 
     bar = create_filter_bar(root, "CHB Production")
@@ -954,6 +986,10 @@ def _build_inventory_status_tab(parent):
             return
 
         clear_report_area()
+        if not data.get("has_inventory_data"):
+            render_empty(report_container)
+            return
+
         report_container.grid_columnconfigure(0, weight=4)
         report_container.grid_columnconfigure(1, weight=1, minsize=300)
         report_container.grid_rowconfigure(1, weight=1)
@@ -967,15 +1003,25 @@ def _build_inventory_status_tab(parent):
         all_items_panel.grid(row=1, column=0, sticky="nsew", padx=(0, SECTION_GAP))
         wrap = tk.Frame(all_items_panel, bg=BG_CARD)
         wrap.pack(fill="both", expand=True)
-        columns = ("name", "qty", "price")
+        columns = ("name", "category", "qty", "status")
         headings = [
-            ("name", "ITEM NAME", 280, "w"),
-            ("qty", "QUANTITY", 120, "e"),
-            ("price", "PRICE", 130, "e"),
+            ("name", "PRODUCT NAME", 260, "w"),
+            ("category", "CATEGORY", 170, "w"),
+            ("qty", "CURRENT STOCK", 130, "e"),
+            ("status", "STOCK STATUS", 145, "center"),
         ]
         tree = create_tree(wrap, columns, headings, "InventoryReport.Treeview", height=14)
-        for idx, (name, qty, price) in enumerate(data.get("all_items", [])):
-            insert_row(tree, (str(name), str(qty), money(price)), idx)
+        for idx, row in enumerate(data.get("all_items", [])):
+            insert_row(
+                tree,
+                (
+                    str(row.get("product_name") or "N/A"),
+                    str(row.get("category") or "N/A"),
+                    quantity(row.get("current_stock")),
+                    row.get("stock_status") or "Normal Stock",
+                ),
+                idx,
+            )
 
         sidebar = panel(report_container, "Snapshot")
         sidebar.grid(row=1, column=1, sticky="nsew")
@@ -994,8 +1040,15 @@ def _build_inventory_status_tab(parent):
                 ("qty", "QTY", 70, "e"),
             ]
             low_tree = create_tree(low_wrap, columns, headings, "LowStock.Treeview", height=7)
-            for idx, (name, qty, _price) in enumerate(data.get("low_stock", [])):
-                insert_row(low_tree, (str(name), str(qty)), idx)
+            for idx, row in enumerate(data.get("low_stock", [])):
+                insert_row(
+                    low_tree,
+                    (
+                        str(row.get("product_name") or "N/A"),
+                        quantity(row.get("current_stock")),
+                    ),
+                    idx,
+                )
         else:
             tk.Label(low_panel, text="No low stock alerts.", bg="#fff8e1", fg="#7c4a03", font=("Arial", 9, "italic")).pack(anchor="w")
 

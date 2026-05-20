@@ -5,6 +5,7 @@ from tkinter import filedialog
 
 from .constants import WORKER_PAYOUT_CATEGORY_NAMES
 from .database import DB_NAME
+from inventory_module.inventory_functions import is_low_stock_item
 
 try:
     from reportlab.lib.pagesizes import letter
@@ -82,11 +83,13 @@ def _resolve_chb_date_fields(cursor):
     chb_cols = {col[1] for col in cursor.fetchall()}
 
     if "ts" in chb_cols and "production_date" in chb_cols:
-        return "DATE(COALESCE(ts, production_date))", "COALESCE(ts, production_date)", "COALESCE(ts, production_date)", chb_cols
+        date_value = "COALESCE(NULLIF(production_date, ''), ts)"
+        return f"DATE({date_value})", date_value, date_value, chb_cols
     if "ts" in chb_cols:
         return "DATE(ts)", "ts", "ts", chb_cols
     if "production_date" in chb_cols:
-        return "DATE(production_date)", "production_date", "production_date", chb_cols
+        date_value = "NULLIF(production_date, '')"
+        return f"DATE({date_value})", date_value, date_value, chb_cols
     return None, None, None, chb_cols
 
 
@@ -372,25 +375,56 @@ def generate_chb_production(start_date, end_date):
         conn.close()
         return None, "CHB table has no date field (ts/production_date)."
 
+    worker_expr = "COALESCE(worker_name, '')" if "worker_name" in col_names else "''"
+    fine_sand_expr = "COALESCE(fine_sand, 0)" if "fine_sand" in col_names else "0"
+    if "pay" in col_names:
+        if "pay_rate" in col_names:
+            pay_expr = f"COALESCE(pay, COALESCE({cement_col}, 0) * COALESCE(pay_rate, 0), 0)"
+        else:
+            pay_expr = "COALESCE(pay, 0)"
+    elif "pay_rate" in col_names:
+        pay_expr = f"COALESCE({cement_col}, 0) * COALESCE(pay_rate, 0)"
+    else:
+        pay_expr = "0"
+
     cursor.execute(f"""
         SELECT
             COALESCE(SUM({cement_col}), 0) as total_cement,
-            COALESCE(SUM({blocks_col}), 0) as total_blocks
+            COALESCE(SUM({fine_sand_expr}), 0) as total_fine_sand,
+            COALESCE(SUM({blocks_col}), 0) as total_blocks,
+            COALESCE(SUM({pay_expr}), 0) as total_worker_pay
         FROM chb_production
         WHERE {date_expr} BETWEEN ? AND ?
     """, (start_date, end_date))
     result = cursor.fetchone()
     total_cement = result[0] or 0
-    total_blocks = result[1] or 0
+    total_fine_sand = result[1] or 0
+    total_blocks = result[2] or 0
+    total_worker_pay = result[3] or 0
 
-    # Get detailed entries
     cursor.execute(f"""
-        SELECT {date_select}, {cement_col}, {blocks_col}
+        SELECT
+            {date_select} AS production_date,
+            {worker_expr} AS worker_name,
+            COALESCE({cement_col}, 0) AS cement_bags,
+            {fine_sand_expr} AS fine_sand,
+            COALESCE({blocks_col}, 0) AS total_blocks,
+            {pay_expr} AS worker_pay
         FROM chb_production
         WHERE {date_expr} BETWEEN ? AND ?
         ORDER BY {date_order} DESC, id DESC
     """, (start_date, end_date))
-    entries = cursor.fetchall()
+    entries = [
+        {
+            "production_date": production_date,
+            "worker_name": worker_name or "N/A",
+            "cement_bags": cement_bags or 0,
+            "fine_sand": fine_sand or 0,
+            "total_blocks": total_blocks_row or 0,
+            "worker_pay": worker_pay or 0,
+        }
+        for production_date, worker_name, cement_bags, fine_sand, total_blocks_row, worker_pay in cursor.fetchall()
+    ]
 
     conn.close()
 
@@ -401,7 +435,9 @@ def generate_chb_production(start_date, end_date):
         "start_date": start_date,
         "end_date": end_date,
         "total_cement": total_cement,
+        "total_fine_sand": total_fine_sand,
         "total_blocks": total_blocks,
+        "total_worker_pay": total_worker_pay,
         "efficiency": efficiency,
         "entries": entries,
         "has_period_data": bool(entries),
@@ -413,13 +449,43 @@ def generate_inventory_status():
     conn = sqlite3.connect(DB_NAME)
     cursor = conn.cursor()
 
-    cursor.execute("""
-        SELECT name, quantity, price FROM items
-        ORDER BY quantity ASC
-    """)
-    all_items = cursor.fetchall()
+    cursor.execute("PRAGMA table_info(items)")
+    item_cols = {col[1] for col in cursor.fetchall()}
+    if "category" in item_cols:
+        category_expr = "COALESCE(NULLIF(category, ''), 'N/A')"
+        category_source = "category"
+    elif "product_type" in item_cols:
+        category_expr = "COALESCE(NULLIF(product_type, ''), 'N/A')"
+        category_source = "product_type"
+    elif "classification" in item_cols:
+        category_expr = "COALESCE(NULLIF(classification, ''), 'N/A')"
+        category_source = "classification"
+    elif "unit" in item_cols:
+        category_expr = "COALESCE(NULLIF(unit, ''), 'N/A')"
+        category_source = "unit"
+    else:
+        category_expr = "'N/A'"
+        category_source = "fallback"
 
-    low_stock = [(name, qty, price) for name, qty, price in all_items if qty < 10]
+    cursor.execute(f"""
+        SELECT
+            COALESCE(name, '') AS product_name,
+            {category_expr} AS category,
+            COALESCE(quantity, 0) AS current_stock
+        FROM items
+        ORDER BY quantity ASC, LOWER(name) ASC
+    """)
+    all_items = []
+    for name, category, qty in cursor.fetchall():
+        stock_status = "Low Stock" if is_low_stock_item(name, qty) else "Normal Stock"
+        all_items.append({
+            "product_name": name or "N/A",
+            "category": category or "N/A",
+            "current_stock": qty or 0,
+            "stock_status": stock_status,
+        })
+
+    low_stock = [row for row in all_items if row["stock_status"] == "Low Stock"]
 
     conn.close()
 
@@ -427,6 +493,8 @@ def generate_inventory_status():
         "all_items": all_items,
         "low_stock": low_stock,
         "total_items": len(all_items),
+        "category_source": category_source,
+        "has_inventory_data": bool(all_items),
     }, None
 
 
@@ -734,9 +802,10 @@ def _build_chb_production_pdf(story, data, styles):
 
     summary_data = [
         ["Metric", "Value"],
-        ["Total Cement Consumed (kg)", f"{data['total_cement']:,.2f}"],
+        ["Total Cement Bags", _format_report_quantity(data['total_cement'])],
+        ["Total Fine Sand", _format_report_quantity(data.get('total_fine_sand', 0))],
         ["Total Blocks Produced (pcs)", f"{data['total_blocks']:,}"],
-        ["Production Efficiency (%)", f"{data['efficiency']:.2f}%"],
+        ["Worker Pay", php_money(data.get('total_worker_pay', 0))],
     ]
 
     table = Table(summary_data, colWidths=[3*inch, 2*inch])
@@ -750,14 +819,22 @@ def _build_chb_production_pdf(story, data, styles):
         story.append(Paragraph("Detailed Entries", styles['SectionHeading']))
         story.append(Spacer(1, 0.1*inch))
 
-        entries_data = [["Date/Time", "Cement (kg)", "Blocks (pcs)"]]
-        for ts, cement, blocks in data['entries']:
-            entries_data.append([ts, f"{cement:,.2f}", f"{blocks:,}"])
+        entries_data = [["Production Date", "Worker", "Cement Bags", "Fine Sand", "Blocks", "Worker Pay"]]
+        for row in data['entries']:
+            entries_data.append([
+                str(row.get("production_date") or "")[:10],
+                row.get("worker_name") or "N/A",
+                _format_report_quantity(row.get("cement_bags")),
+                _format_report_quantity(row.get("fine_sand")),
+                f"{int(float(row.get('total_blocks') or 0)):,}",
+                php_money(row.get("worker_pay")),
+            ])
 
-        entries_table = Table(entries_data, colWidths=[2*inch, 1.5*inch, 1.5*inch])
+        entries_table = Table(entries_data, colWidths=[1.0*inch, 1.2*inch, 0.9*inch, 0.9*inch, 0.9*inch, 1.0*inch])
         entries_table.setStyle(TableStyle(_table_style(row_backgrounds=False).getCommands() + [
-            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-            ('FONTSIZE', (0, 0), (-1, -1), 9),
+            ('ALIGN', (2, 1), (-1, -1), 'RIGHT'),
+            ('ALIGN', (0, 0), (1, -1), 'LEFT'),
+            ('FONTSIZE', (0, 0), (-1, -1), 7),
         ]))
         story.append(entries_table)
 
@@ -781,14 +858,19 @@ def _build_inventory_pdf(story, data, styles):
 
     if data['low_stock']:
         story.append(Spacer(1, 0.2*inch))
-        story.append(Paragraph("Low Stock Items (< 10 pcs)", styles['SectionHeading']))
+        story.append(Paragraph("Low Stock Items", styles['SectionHeading']))
         story.append(Spacer(1, 0.1*inch))
 
-        items_data = [["Item Name", "Quantity", "Price"]]
-        for name, qty, price in data['low_stock']:
-            items_data.append([name, str(qty), php_money(price)])
+        items_data = [["Product Name", "Category", "Current Stock", "Stock Status"]]
+        for row in data['low_stock']:
+            items_data.append([
+                row.get("product_name") or "N/A",
+                row.get("category") or "N/A",
+                _format_report_quantity(row.get("current_stock")),
+                row.get("stock_status") or "Low Stock",
+            ])
 
-        items_table = Table(items_data, colWidths=[2.5*inch, 1*inch, 1.5*inch])
+        items_table = Table(items_data, colWidths=[2.0*inch, 1.3*inch, 1.1*inch, 1.2*inch])
         items_table.setStyle(TableStyle(_table_style().getCommands() + [
             ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
         ]))
@@ -798,11 +880,16 @@ def _build_inventory_pdf(story, data, styles):
     story.append(Paragraph("All Inventory Items", styles['SectionHeading']))
     story.append(Spacer(1, 0.1*inch))
 
-    all_items_data = [["Item Name", "Quantity", "Price"]]
-    for name, qty, price in data['all_items']:
-        all_items_data.append([name, str(qty), php_money(price)])
+    all_items_data = [["Product Name", "Category", "Current Stock", "Stock Status"]]
+    for row in data['all_items']:
+        all_items_data.append([
+            row.get("product_name") or "N/A",
+            row.get("category") or "N/A",
+            _format_report_quantity(row.get("current_stock")),
+            row.get("stock_status") or "Normal Stock",
+        ])
 
-    all_items_table = Table(all_items_data, colWidths=[2.5*inch, 1*inch, 1.5*inch])
+    all_items_table = Table(all_items_data, colWidths=[2.0*inch, 1.3*inch, 1.1*inch, 1.2*inch])
     all_items_table.setStyle(TableStyle(_table_style(row_backgrounds=False).getCommands() + [
         ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
         ('FONTSIZE', (0, 0), (-1, -1), 8),

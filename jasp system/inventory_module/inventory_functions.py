@@ -33,7 +33,7 @@ LOW_STOCK_ROW = "low_stock_row"
 LOW_STOCK_LIMITS = {
     "cement": 20,
     "fine sand": 20,
-    "chb blocks": 200,
+    "chb blocks": 150,
 }
 DEFAULT_LOW_STOCK_LIMIT = 10
 FINE_SAND_BAGS_PER_CUBIC_METER = 40
