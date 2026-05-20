@@ -186,6 +186,133 @@ def center_window(window, width, height, parent=None):
     window.geometry(f"{width}x{height}+{max(x_pos, 0)}+{max(y_pos, 0)}")
 
 
+def render_help_dashboard(parent):
+    intro = tk.Frame(parent, bg=BG_CARD, highlightthickness=1, highlightbackground="black")
+    intro.pack(fill="x", pady=(0, 14))
+    tk.Label(
+        intro,
+        text="How to Use the System",
+        bg=PRIMARY,
+        fg="white",
+        font=("Arial", 18, "bold"),
+    ).pack(fill="x", anchor="w", ipady=10)
+    tk.Label(
+        intro,
+        text="Use this guide as a quick reference for the main JASP workflows.",
+        bg=BG_CARD,
+        fg=TEXT_PRIMARY,
+        font=("Arial", 13, "bold"),
+        anchor="w",
+        justify="left",
+        wraplength=900,
+    ).pack(fill="x", padx=18, pady=14)
+
+    shell = tk.Frame(parent, bg=parent["bg"])
+    shell.pack(fill="both", expand=True)
+
+    canvas = tk.Canvas(shell, bg=parent["bg"], highlightthickness=0)
+    scrollbar = ttk.Scrollbar(shell, orient="vertical", command=canvas.yview)
+    content = tk.Frame(canvas, bg=parent["bg"])
+    content_id = canvas.create_window((0, 0), window=content, anchor="nw")
+    canvas.configure(yscrollcommand=scrollbar.set)
+    canvas.pack(side="left", fill="both", expand=True)
+    scrollbar.pack(side="right", fill="y")
+
+    def sync_scroll_region(_event=None):
+        canvas.configure(scrollregion=canvas.bbox("all"))
+
+    def sync_content_width(event):
+        canvas.itemconfigure(content_id, width=event.width)
+
+    content.bind("<Configure>", sync_scroll_region)
+    canvas.bind("<Configure>", sync_content_width)
+
+    def on_mousewheel(event):
+        if event.num == 4:
+            canvas.yview_scroll(-1, "units")
+        elif event.num == 5:
+            canvas.yview_scroll(1, "units")
+        else:
+            canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
+
+    def bind_mousewheel(_event=None):
+        canvas.bind_all("<MouseWheel>", on_mousewheel)
+        canvas.bind_all("<Button-4>", on_mousewheel)
+        canvas.bind_all("<Button-5>", on_mousewheel)
+
+    def unbind_mousewheel(_event=None):
+        canvas.unbind_all("<MouseWheel>")
+        canvas.unbind_all("<Button-4>")
+        canvas.unbind_all("<Button-5>")
+
+    canvas.bind("<Enter>", bind_mousewheel)
+    canvas.bind("<Leave>", unbind_mousewheel)
+    content.bind("<Enter>", bind_mousewheel)
+    content.bind("<Leave>", unbind_mousewheel)
+
+    sections = [
+        (
+            "Point of Sale (POS)",
+            [
+                "Open Point of Sale from the left menu.",
+                "Search or browse the inventory list, then click Add on the item you want to sell.",
+                "Enter the quantity, review the cart, then click Pay / Checkout to finish the sale.",
+                "Use Clear Cart if you need to restart before checkout.",
+            ],
+        ),
+        (
+            "Inventory Management",
+            [
+                "Open Inventory Management to add, update, delete, or search items.",
+                "Fill in the item details such as name, quantity, cost, price, and unit before saving.",
+                "Select an item from the table to update or delete it.",
+                "Use Summary to review inventory records for a selected day, week, or month.",
+            ],
+        ),
+        (
+            "CHB and Delivery Production",
+            [
+                "Open CHB and Delivery Production to record CHB block production.",
+                "Enter production details, worker count, materials used, and date, then save the record.",
+                "Use Adjust CHB Stock for manual corrections when stock needs to be fixed.",
+                "Open Delivery Section to record delivered CHB blocks or other delivered items.",
+            ],
+        ),
+        (
+            "Reports & Analytics",
+            [
+                "Open Reports & Analytics to generate sales, profit, CHB production, and inventory reports.",
+                "Choose the report type and date range, then generate the report.",
+                "Review the totals and breakdowns shown on screen.",
+                "Use PDF options when you need a printable or downloadable copy.",
+            ],
+        ),
+    ]
+
+    for title, steps in sections:
+        card = tk.Frame(content, bg=BG_CARD, highlightthickness=1, highlightbackground="black")
+        card.pack(fill="x", pady=(0, 14))
+        tk.Label(
+            card,
+            text=title,
+            bg=PRIMARY,
+            fg="white",
+            font=("Arial", 15, "bold"),
+        ).pack(fill="x", anchor="w", padx=0, pady=0, ipady=10)
+        for index, step in enumerate(steps, start=1):
+            tk.Label(
+                card,
+                text=f"{index}. {step}",
+                bg=BG_CARD,
+                fg=TEXT_PRIMARY,
+                font=("Arial", 13),
+                anchor="w",
+                justify="left",
+                wraplength=900,
+            ).pack(fill="x", padx=16, pady=(8 if index == 1 else 4, 4))
+        tk.Frame(card, height=8, bg=BG_CARD).pack(fill="x")
+
+
 def parse_dashboard_date(date_text):
     try:
         return datetime.strptime((date_text or "").strip(), "%Y-%m-%d")

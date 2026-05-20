@@ -2,7 +2,7 @@ import os
 import tkinter as tk
 from datetime import datetime
 
-from user_management.user_gui import open_user_management
+from User_management.user_gui import open_user_management
 from chb_module import open_chb_dashboard
 from inventory_module import open_inventory
 from pos_module import open_pos
@@ -26,6 +26,7 @@ from .main_functions import (
     TEXT_MUTED,
     TEXT_PRIMARY,
     money,
+    render_help_dashboard,
     render_recent_transactions,
     spacer,
     stat_card,
@@ -55,12 +56,12 @@ def logout_to_login(root, logout_callback=None):
             root.destroy()
 
 
-def open_main(root, logout_callback=None):
+def open_main(root, logout_callback=None, view="dashboard"):
     global dashboard_refresh_callback
-    data = fetch_dashboard_data()
-    dashboard_refresh_callback = lambda: root.after(0, lambda: open_main(root, logout_callback)) if root.winfo_exists() else None
+    data = fetch_dashboard_data() if view == "dashboard" else None
+    dashboard_refresh_callback = lambda: root.after(0, lambda: open_main(root, logout_callback, view)) if root.winfo_exists() else None
 
-    root.title("JASP Dashboard")
+    root.title("JASP Dashboard" if view == "dashboard" else "JASP Help")
     try:
         root.state("zoomed")
     except Exception:
@@ -152,7 +153,7 @@ def open_main(root, logout_callback=None):
     sidebar_btn("CHB and Delivery Production", lambda: open_chb_dashboard(root)).pack(fill="x", pady=4)
     sidebar_btn("User Management", lambda: open_user_management(root)).pack(fill="x", pady=4)
     sidebar_btn("Reports & Analytics", lambda: open_reports(root)).pack(fill="x", pady=4)
-    sidebar_btn("Settings & Users", lambda: print("Settings clicked")).pack(fill="x", pady=4)
+    sidebar_btn("Help?", lambda: open_main(root, logout_callback, "help")).pack(fill="x", pady=4)
 
     tk.Label(sidebar, bg=sidebar_bg).pack(expand=True, fill="both")
 
@@ -175,15 +176,15 @@ def open_main(root, logout_callback=None):
     title_block.pack(side="left", padx=22, pady=10)
     tk.Label(title_block, text="JASP Hardware Management System", bg=header_bg, fg="white",
              font=("Arial", 20, "bold")).pack(anchor="w")
-    tk.Label(title_block, text="Dashboard Overview", bg=header_bg,
+    tk.Label(title_block, text="Dashboard Overview" if view == "dashboard" else "Help Guide", bg=header_bg,
              fg="#eff6ff", font=("Arial", 11, "bold")).pack(anchor="w", pady=(2, 0))
 
     tk.Button(
         header,
-        text="🔄 Refresh Data",
-        bg="#16a34a",
+        text="Refresh Data" if view == "dashboard" else "Back to Dashboard",
+        bg="#16a34a" if view == "dashboard" else "#2563eb",
         fg="white",
-        activebackground="#15803d",
+        activebackground="#15803d" if view == "dashboard" else "#1d4ed8",
         activeforeground="white",
         font=("Arial", 11, "bold"),
         relief="solid",
@@ -193,13 +194,17 @@ def open_main(root, logout_callback=None):
         highlightcolor="black",
         padx=14,
         pady=8,
-        command=lambda: open_main(root, logout_callback),
+        command=lambda: open_main(root, logout_callback, "dashboard"),
     ).pack(side="right", padx=18, pady=14)
 
     content_bg = "#fff3e6"
     main_area.configure(bg=content_bg)
     content = tk.Frame(main_area, bg=content_bg)
     content.pack(fill="both", expand=True, padx=18, pady=18)
+
+    if view == "help":
+        render_help_dashboard(content)
+        return
 
     stats_row = tk.Frame(content, bg=content_bg)
     stats_row.pack(fill="x")

@@ -297,6 +297,44 @@ def open_user_management(root):
 
     user_tree.bind("<<TreeviewSelect>>", on_user_select)
 
+    def clear_user_selection():
+        user_functions.clear_user_form(
+            username_entry,
+            password_entry,
+            confirm_password_entry,
+            role_var,
+            contact_entry,
+            selected_user_id
+        )
+        selected_row_id.set("")
+        user_tree.selection_remove(user_tree.selection())
+        user_tree.focus("")
+
+    def clear_on_empty_click(event):
+        widget = event.widget
+        widget_class = widget.winfo_class()
+        if widget is user_tree:
+            if user_tree.identify_row(event.y):
+                return
+            clear_user_selection()
+            return
+
+        ignored_classes = {
+            "Button",
+            "Entry",
+            "TCombobox",
+            "Treeview",
+            "Scrollbar",
+            "TScrollbar",
+            "Label",
+        }
+        if widget_class in ignored_classes:
+            return
+        clear_user_selection()
+
+    for empty_area in (root, main, left, display_frame, right, form):
+        empty_area.bind("<Button-1>", clear_on_empty_click, add="+")
+
     def refresh_display():
         search_text = search_var.get().strip().lower()
         selected_role = role_filter_var.get()
@@ -329,6 +367,7 @@ def open_user_management(root):
 
     btn = tk.Frame(right, bg=FORM_BG)
     btn.pack(pady=18, fill="x", padx=8)
+    btn.bind("<Button-1>", clear_on_empty_click, add="+")
 
     tk.Button(
         btn,
