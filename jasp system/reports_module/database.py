@@ -30,17 +30,6 @@ def init_database():
     if "change_amount" not in sales_cols:
         cursor.execute("ALTER TABLE sales ADD COLUMN change_amount REAL DEFAULT 0")
 
-    # Expenses table
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS expenses (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            category TEXT NOT NULL,
-            description TEXT,
-            amount REAL NOT NULL,
-            ts TEXT NOT NULL
-        )
-    """)
-
     # CHB Production table (aligned with chb_dashboard.py schema)
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS chb_production (

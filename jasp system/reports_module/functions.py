@@ -3,8 +3,9 @@ import sqlite3
 from datetime import datetime, timedelta
 from tkinter import filedialog
 
-from .constants import WORKER_PAYOUT_CATEGORY_NAMES
+from .constants import NO_DATA_PERIOD_MESSAGE
 from .database import DB_NAME
+from chb_module.chb_database import FINE_SAND_BAGS_PER_CUBIC_METER
 from inventory_module.inventory_functions import is_low_stock_item
 
 try:
@@ -91,6 +92,71 @@ def _resolve_chb_date_fields(cursor):
         date_value = "NULLIF(production_date, '')"
         return f"DATE({date_value})", date_value, date_value, chb_cols
     return None, None, None, chb_cols
+
+
+def _safe_float(value):
+    try:
+        return float(value or 0)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _first_positive(row, columns):
+    for column in columns:
+        value = _safe_float(row.get(column, 0))
+        if value > 0:
+            return value, column
+    return 0.0, ""
+
+
+def _fetch_material_cost_basis(cursor):
+    """Return CHB material unit costs from inventory item cost fields."""
+    cursor.execute("PRAGMA table_info(items)")
+    item_cols = {col[1] for col in cursor.fetchall()}
+    if not item_cols:
+        return {
+            "cement_unit_cost": 0.0,
+            "cement_cost_source": "not configured",
+            "fine_sand_bag_cost": 0.0,
+            "fine_sand_cost_source": "not configured",
+        }
+
+    selectable_cols = [
+        col for col in ("price", "raw_price", "fine_sand_bag_price")
+        if col in item_cols
+    ]
+    select_sql = ", ".join(f"COALESCE({col}, 0) AS {col}" for col in selectable_cols)
+
+    def material_row(item_name):
+        if not selectable_cols:
+            return {}
+        cursor.execute(f"""
+            SELECT {select_sql}
+            FROM items
+            WHERE LOWER(TRIM(name)) = LOWER(TRIM(?))
+            ORDER BY id ASC
+            LIMIT 1
+        """, (item_name,))
+        row = cursor.fetchone()
+        return dict(zip(selectable_cols, row)) if row else {}
+
+    cement = material_row("Cement")
+    fine_sand = material_row("Fine Sand")
+
+    cement_unit_cost, cement_source = _first_positive(cement, ("raw_price", "price"))
+    fine_sand_bag_cost, fine_sand_source = _first_positive(fine_sand, ("fine_sand_bag_price",))
+    if fine_sand_bag_cost <= 0:
+        cubic_cost, cubic_source = _first_positive(fine_sand, ("raw_price", "price"))
+        if cubic_cost > 0:
+            fine_sand_bag_cost = cubic_cost / FINE_SAND_BAGS_PER_CUBIC_METER
+            fine_sand_source = f"{cubic_source} / {FINE_SAND_BAGS_PER_CUBIC_METER} bags"
+
+    return {
+        "cement_unit_cost": cement_unit_cost,
+        "cement_cost_source": f"Cement {cement_source}" if cement_source else "not configured",
+        "fine_sand_bag_cost": fine_sand_bag_cost,
+        "fine_sand_cost_source": f"Fine Sand {fine_sand_source}" if fine_sand_source else "not configured",
+    }
 
 
 def generate_sales_report(start_date, end_date):
@@ -183,46 +249,115 @@ def generate_financial_summary(start_date, end_date):
     """, (start_date, end_date))
     total_sales = cursor.fetchone()[0] or 0
 
-    # Material expenses (production materials) are pulled from expense rows,
-    # excluding worker-payout categories to avoid double counting.
-    payout_placeholders = ", ".join(["?"] * len(WORKER_PAYOUT_CATEGORY_NAMES))
-    material_params = (start_date, end_date, *WORKER_PAYOUT_CATEGORY_NAMES)
-
-    cursor.execute(f"""
-        SELECT COALESCE(SUM(amount), 0) FROM expenses
-        WHERE DATE(ts) BETWEEN ? AND ?
-          AND amount > 0
-          AND LOWER(TRIM(COALESCE(category, ''))) NOT IN ({payout_placeholders})
-    """, material_params)
-    material_expenses = cursor.fetchone()[0] or 0
-
-    # Worker payouts are sourced from CHB production records (pay column).
+    # Worker payouts are sourced from CHB production records.
     worker_payouts = 0
     worker_payout_transactions = []
     date_expr, date_select, date_order, chb_cols = _resolve_chb_date_fields(cursor)
-    if date_expr and "pay" in chb_cols:
+    if date_expr:
+        if "pay" in chb_cols:
+            if "pay_rate" in chb_cols and "cement_bags" in chb_cols:
+                pay_expr = "COALESCE(pay, COALESCE(cement_bags, 0) * COALESCE(pay_rate, 0), 0)"
+            else:
+                pay_expr = "COALESCE(pay, 0)"
+        elif "pay_rate" in chb_cols and "cement_bags" in chb_cols:
+            pay_expr = "COALESCE(cement_bags, 0) * COALESCE(pay_rate, 0)"
+        else:
+            pay_expr = "0"
+
         cursor.execute(f"""
-            SELECT COALESCE(SUM(pay), 0)
+            SELECT COALESCE(SUM({pay_expr}), 0)
             FROM chb_production
-            WHERE pay IS NOT NULL
-              AND pay > 0
+            WHERE {pay_expr} > 0
               AND {date_expr} BETWEEN ? AND ?
         """, (start_date, end_date))
         worker_payouts = cursor.fetchone()[0] or 0
 
         cursor.execute(f"""
-            SELECT {date_select}, COALESCE(worker_name, ''), COALESCE(pay, 0)
+            SELECT {date_select}, COALESCE(worker_name, ''), {pay_expr}
             FROM chb_production
-            WHERE pay IS NOT NULL
-              AND pay > 0
+            WHERE {pay_expr} > 0
               AND {date_expr} BETWEEN ? AND ?
             ORDER BY {date_order} ASC, id ASC
         """, (start_date, end_date))
         worker_payout_transactions = cursor.fetchall()
 
+    # Material expenses are computed from CHB production quantities and stored
+    # inventory material costs.
+    material_expenses = 0
+    expense_transactions = []
+    expense_summary_by_date = {}
+    material_cost_basis = _fetch_material_cost_basis(cursor)
+    chb_material_records = []
+    if date_expr:
+        if "cement_bags" in chb_cols:
+            cement_col = "cement_bags"
+        elif "cement_consumed" in chb_cols:
+            cement_col = "cement_consumed"
+        else:
+            cement_col = None
+
+        fine_sand_expr = "COALESCE(fine_sand, 0)" if "fine_sand" in chb_cols else "0"
+        if cement_col:
+            cursor.execute(f"""
+                SELECT {date_select},
+                       COALESCE({cement_col}, 0) AS cement_bags,
+                       {fine_sand_expr} AS fine_sand_bags
+                FROM chb_production
+                WHERE {date_expr} BETWEEN ? AND ?
+                  AND (COALESCE({cement_col}, 0) > 0 OR {fine_sand_expr} > 0)
+                ORDER BY {date_order} ASC, id ASC
+            """, (start_date, end_date))
+            chb_material_records = cursor.fetchall()
+
+    for production_date, cement_bags, fine_sand_bags in chb_material_records:
+        cement_qty = _safe_float(cement_bags)
+        fine_sand_qty = _safe_float(fine_sand_bags)
+        cement_cost = cement_qty * material_cost_basis["cement_unit_cost"]
+        fine_sand_cost = fine_sand_qty * material_cost_basis["fine_sand_bag_cost"]
+        row_total = cement_cost + fine_sand_cost
+        material_expenses += row_total
+
+        date_key = str(production_date or "")[:10]
+        remarks = (
+            f"Cement {_format_report_quantity(cement_qty)} bag/s; "
+            f"Fine Sand {_format_report_quantity(fine_sand_qty)} bag/s"
+        )
+        if row_total <= 0:
+            remarks += "; material costs not configured"
+
+        expense_transactions.append((
+            production_date,
+            "CHB Material Expense",
+            remarks,
+            row_total,
+        ))
+
+        summary = expense_summary_by_date.setdefault(date_key, {
+            "cement": 0.0,
+            "fine_sand": 0.0,
+            "amount": 0.0,
+        })
+        summary["cement"] += cement_qty
+        summary["fine_sand"] += fine_sand_qty
+        summary["amount"] += row_total
+
+    expense_summary_rows = [
+        (
+            date_key,
+            "CHB Material Expense",
+            values["amount"],
+            (
+                f"Cement {_format_report_quantity(values['cement'])} bag/s; "
+                f"Fine Sand {_format_report_quantity(values['fine_sand'])} bag/s"
+            ),
+        )
+        for date_key, values in sorted(expense_summary_by_date.items())
+    ]
+
     # SRS formula:
     # Revenue = Total Sales - (Material Expenses + Worker Payouts)
-    total_revenue = total_sales - (material_expenses + worker_payouts)
+    total_expenses = material_expenses + worker_payouts
+    total_revenue = total_sales - total_expenses
 
     # SRS wording: cash on hand based on completed sales transactions.
     cash_on_hand = total_sales
@@ -254,36 +389,7 @@ def generate_financial_summary(start_date, end_date):
     """, (start_date, end_date))
     sales_by_product = cursor.fetchall()
 
-    # Detailed material expense transactions for the selected date range.
-    cursor.execute(f"""
-        SELECT ts, category, COALESCE(description, ''), amount
-        FROM expenses
-        WHERE DATE(ts) BETWEEN ? AND ?
-          AND amount > 0
-          AND LOWER(TRIM(COALESCE(category, ''))) NOT IN ({payout_placeholders})
-        ORDER BY ts ASC, id ASC
-    """, material_params)
-    expense_transactions = cursor.fetchall()
-
-    # Material expense summary rows for the expense spreadsheet section.
-    cursor.execute(f"""
-        SELECT DATE(ts) as expense_date,
-               CASE
-                   WHEN TRIM(COALESCE(description, '')) = '' THEN category
-                   ELSE description
-               END as expense_name,
-               COALESCE(SUM(amount), 0) as total_amount,
-               COALESCE(category, '') as remarks
-        FROM expenses
-        WHERE DATE(ts) BETWEEN ? AND ?
-          AND amount > 0
-          AND LOWER(TRIM(COALESCE(category, ''))) NOT IN ({payout_placeholders})
-        GROUP BY DATE(ts), expense_name, category
-        ORDER BY DATE(ts) ASC, expense_name ASC
-    """, material_params)
-    expense_summary_rows = cursor.fetchall()
-
-    has_period_data = bool(sales_transactions or expense_transactions or worker_payout_transactions)
+    has_period_data = bool(sales_transactions or chb_material_records or worker_payout_transactions)
 
     conn.close()
 
@@ -293,9 +399,9 @@ def generate_financial_summary(start_date, end_date):
         "total_sales": total_sales,
         "material_expenses": material_expenses,
         "worker_payouts": worker_payouts,
+        "total_expenses": total_expenses,
         "total_revenue": total_revenue,
         # Legacy aliases kept for compatibility with old callers.
-        "total_expenses": material_expenses,
         "chb_payouts": worker_payouts,
         "cash_on_hand": cash_on_hand,
         "sales_transactions": sales_transactions,
@@ -303,6 +409,8 @@ def generate_financial_summary(start_date, end_date):
         "expense_transactions": expense_transactions,
         "expense_summary_rows": expense_summary_rows,
         "worker_payout_transactions": worker_payout_transactions,
+        "material_cost_basis": material_cost_basis,
+        "material_expense_source": "Option B: CHB production usage multiplied by inventory material costs",
         "has_period_data": has_period_data,
     }, None
 
@@ -533,7 +641,12 @@ def _pdf_styles():
     return styles
 
 
+def _pdf_report_title(report_type):
+    return report_type if str(report_type).strip().lower().endswith("report") else f"{report_type} Report"
+
+
 def _build_pdf_header(story, report_type, styles):
+    report_title = _pdf_report_title(report_type)
     logo_cell = Paragraph("JASP", ParagraphStyle(
         "LogoFallback",
         parent=styles["Normal"],
@@ -558,7 +671,7 @@ def _build_pdf_header(story, report_type, styles):
             textColor=colors.white,
             leading=16,
         )),
-        Paragraph(f"{report_type} Report", ParagraphStyle(
+        Paragraph(report_title, ParagraphStyle(
             "HeaderReport",
             parent=styles["Normal"],
             fontName="Helvetica-Bold",
@@ -581,7 +694,7 @@ def _build_pdf_header(story, report_type, styles):
     ]))
     story.append(header)
     story.append(Spacer(1, 0.22 * inch))
-    story.append(Paragraph(f"{report_type} Report", styles["ReportTitle"]))
+    story.append(Paragraph(report_title, styles["ReportTitle"]))
 
 
 def _table_style(row_backgrounds=True):
@@ -631,6 +744,11 @@ def _append_signature_footer(story, styles):
     story.append(signature)
 
 
+def _append_no_data_message(story, styles):
+    story.append(Spacer(1, 0.15 * inch))
+    story.append(Paragraph(NO_DATA_PERIOD_MESSAGE, styles["ReportSubtitle"]))
+
+
 def export_to_pdf(report_type, report_data):
     """REQ-REP-05: Export report to PDF."""
     if not HAS_REPORTLAB:
@@ -678,14 +796,19 @@ def _build_financial_pdf(story, data, styles):
     story.append(Paragraph(f"Period: {data['start_date']} to {data['end_date']}", styles['Normal']))
     story.append(Spacer(1, 0.2*inch))
 
+    if not data.get("has_period_data"):
+        _append_no_data_message(story, styles)
+        return
+
+    total_expenses = data.get('total_expenses', data.get('material_expenses', 0) + data.get('worker_payouts', 0))
     summary_data = [
         ["Metric", "Amount"],
         ["Total Sales", php_money(data['total_sales'])],
         ["Cash on Hand (Completed Sales)", php_money(data['cash_on_hand'])],
         ["Material Expenses", php_money(data['material_expenses'])],
         ["Worker Payouts (CHB)", php_money(data['worker_payouts'])],
-        ["Total Cost (Materials + Payouts)", php_money(data['material_expenses'] + data['worker_payouts'])],
-        ["Revenue", php_money(data['total_revenue'])],
+        ["Total Expenses", php_money(total_expenses)],
+        ["Total Revenue", php_money(data['total_revenue'])],
     ]
 
     table = Table(summary_data, colWidths=[3*inch, 2*inch])
@@ -694,60 +817,62 @@ def _build_financial_pdf(story, data, styles):
     ]))
     story.append(table)
 
-    sales_by_product = data.get('sales_by_product', [])
-    if sales_by_product:
-        story.append(Spacer(1, 0.2*inch))
-        story.append(Paragraph("Products Sold Summary", styles['SectionHeading']))
-        story.append(Spacer(1, 0.1*inch))
-
-        product_rows = [["Product", "Qty Sold", "Amount"]]
-        for item_name, qty_sold, amount_sold in sales_by_product:
-            product_rows.append([item_name, f"{int(qty_sold):,}", php_money(amount_sold)])
-
-        product_table = Table(product_rows, colWidths=[2.7*inch, 1.0*inch, 1.3*inch])
-        product_table.setStyle(TableStyle(_table_style().getCommands() + [
-            ('ALIGN', (1, 1), (-1, -1), 'RIGHT'),
-            ('ALIGN', (0, 0), (0, -1), 'LEFT'),
-        ]))
-        story.append(product_table)
-
     sales_transactions = data.get('sales_transactions', [])
     if sales_transactions:
         story.append(Spacer(1, 0.2*inch))
-        story.append(Paragraph("Sales Transactions", styles['SectionHeading']))
+        story.append(Paragraph("Items Sold", styles['SectionHeading']))
         story.append(Spacer(1, 0.1*inch))
 
-        sales_rows = [["Date/Time", "Product", "Qty", "Amount"]]
+        sales_rows = [["Date", "Product", "Unit", "Purchased", "JASP", "Qty", "Total Purchased", "Total JASP", "Markup"]]
         for ts, item_name, qty, _price, _raw_price, total in sales_transactions:
-            sales_rows.append([str(ts)[:19], item_name, f"{int(qty):,}", php_money(total)])
+            qty_val = _safe_float(qty)
+            purchased_unit = _safe_float(_raw_price)
+            jasp_unit = _safe_float(_price)
+            jasp_total = _safe_float(total)
+            purchased_total = purchased_unit * qty_val
+            markup = jasp_total - purchased_total
+            sales_rows.append([
+                str(ts)[:10],
+                item_name or "-",
+                "pc",
+                php_money(purchased_unit),
+                php_money(jasp_unit),
+                _format_report_quantity(qty_val),
+                php_money(purchased_total),
+                php_money(jasp_total),
+                php_money(markup),
+            ])
 
-        sales_table = Table(sales_rows, colWidths=[1.5*inch, 2.1*inch, 0.7*inch, 1.2*inch])
+        sales_table = Table(
+            sales_rows,
+            colWidths=[0.65*inch, 1.15*inch, 0.35*inch, 0.72*inch, 0.65*inch, 0.45*inch, 0.9*inch, 0.75*inch, 0.75*inch],
+        )
         sales_table.setStyle(TableStyle(_table_style(row_backgrounds=False).getCommands() + [
-            ('ALIGN', (2, 1), (-1, -1), 'RIGHT'),
-            ('ALIGN', (0, 0), (1, -1), 'LEFT'),
-            ('FONTSIZE', (0, 0), (-1, -1), 8),
+            ('ALIGN', (3, 1), (-1, -1), 'RIGHT'),
+            ('ALIGN', (0, 0), (2, -1), 'LEFT'),
+            ('FONTSIZE', (0, 0), (-1, -1), 6),
         ]))
         story.append(sales_table)
 
-    expense_transactions = data.get('expense_transactions', [])
-    if expense_transactions:
+    expense_summary_rows = data.get('expense_summary_rows', [])
+    if expense_summary_rows:
         story.append(Spacer(1, 0.2*inch))
-        story.append(Paragraph("Expense Transactions", styles['SectionHeading']))
+        story.append(Paragraph("Material Expenses", styles['SectionHeading']))
         story.append(Spacer(1, 0.1*inch))
 
-        expense_rows = [["Date/Time", "Category", "Description", "Amount"]]
-        for ts, category, description, amount in expense_transactions:
+        expense_rows = [["Date", "Expense Name", "Total", "Remarks"]]
+        for expense_date, expense_name, total_amount, remarks in expense_summary_rows:
             expense_rows.append([
-                str(ts)[:19],
-                category or "-",
-                description or "-",
-                php_money(amount),
+                str(expense_date)[:10],
+                expense_name or "-",
+                php_money(total_amount),
+                remarks or "-",
             ])
 
-        expense_table = Table(expense_rows, colWidths=[1.3*inch, 1.1*inch, 2.0*inch, 1.1*inch])
+        expense_table = Table(expense_rows, colWidths=[0.85*inch, 1.55*inch, 1.1*inch, 2.7*inch])
         expense_table.setStyle(TableStyle(_table_style(row_backgrounds=False).getCommands() + [
-            ('ALIGN', (3, 1), (3, -1), 'RIGHT'),
-            ('ALIGN', (0, 0), (2, -1), 'LEFT'),
+            ('ALIGN', (2, 1), (2, -1), 'RIGHT'),
+            ('ALIGN', (0, 0), (1, -1), 'LEFT'),
             ('FONTSIZE', (0, 0), (-1, -1), 8),
         ]))
         story.append(expense_table)
@@ -757,6 +882,10 @@ def _build_sales_report_pdf(story, data, styles):
     """Build transaction-level sales report PDF content."""
     story.append(Paragraph(f"Period: {data['start_date']} to {data['end_date']}", styles['Normal']))
     story.append(Spacer(1, 0.2*inch))
+
+    if not data.get("has_period_data"):
+        _append_no_data_message(story, styles)
+        return
 
     sales_rows = [["Date", "Transaction ID", "Items Sold", "Qty", "Total", "Payment", "Change"]]
     for row in data.get("transactions", []):
@@ -799,6 +928,10 @@ def _build_chb_production_pdf(story, data, styles):
     """Build CHB production PDF content."""
     story.append(Paragraph(f"Period: {data['start_date']} to {data['end_date']}", styles['Normal']))
     story.append(Spacer(1, 0.2*inch))
+
+    if not data.get("has_period_data"):
+        _append_no_data_message(story, styles)
+        return
 
     summary_data = [
         ["Metric", "Value"],
@@ -843,6 +976,10 @@ def _build_inventory_pdf(story, data, styles):
     """Build inventory status PDF content."""
     story.append(Paragraph(f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}", styles['Normal']))
     story.append(Spacer(1, 0.2*inch))
+
+    if not data.get("has_inventory_data"):
+        _append_no_data_message(story, styles)
+        return
 
     summary_data = [
         ["Metric", "Value"],

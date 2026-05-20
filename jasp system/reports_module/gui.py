@@ -438,11 +438,15 @@ def render_metric_strip(parent, metrics):
     strip = panel(parent, "Key Metrics", pad=True)
     metrics_grid = tk.Frame(strip, bg=BG_CARD)
     metrics_grid.pack(fill="x")
-    for col in range(len(metrics)):
+    if not metrics:
+        return strip
+    columns_per_row = 3 if len(metrics) > 3 else len(metrics)
+    for col in range(columns_per_row):
         metrics_grid.grid_columnconfigure(col, weight=1, uniform="metric")
     for index, (label, value) in enumerate(metrics):
+        row, col = divmod(index, columns_per_row)
         cell = tk.Frame(metrics_grid, bg=SUMMARY_BG, padx=10, pady=8)
-        cell.grid(row=1, column=index, sticky="ew", padx=(0 if index == 0 else 6, 0))
+        cell.grid(row=row, column=col, sticky="ew", padx=(0 if col == 0 else 6, 0), pady=(0 if row == 0 else 6, 0))
         tk.Label(cell, text=label.upper(), bg=SUMMARY_BG, fg=TEXT_MUTED, font=("Arial", 10, "bold")).pack(anchor="w")
         tk.Label(cell, text=value, bg=SUMMARY_BG, fg=TEXT_PRIMARY, font=("Arial", 18, "bold")).pack(anchor="w")
     return strip
@@ -614,6 +618,8 @@ def _build_financial_summary_tab(parent):
                 ("Cash On Hand", money(data["cash_on_hand"])),
                 ("Material Expenses", money(data["material_expenses"])),
                 ("Worker Payouts", money(data["worker_payouts"])),
+                ("Total Expenses", money(data["total_expenses"])),
+                ("Total Revenue", money(data["total_revenue"])),
             ],
         )
         metrics.grid(row=1, column=0, sticky="ew", pady=(0, SECTION_GAP), padx=(0, SECTION_GAP))
@@ -694,8 +700,8 @@ def _build_financial_summary_tab(parent):
             ("Cash On Hand", money(data["cash_on_hand"]), False),
             ("Material Expenses", f"-{money(data['material_expenses'])}", False),
             ("Worker Payouts", f"-{money(data['worker_payouts'])}", False),
-            ("Total Cost", f"-{money(data['material_expenses'] + data['worker_payouts'])}", False),
-            ("Revenue", money(data["total_revenue"]), True),
+            ("Total Expenses", f"-{money(data['total_expenses'])}", False),
+            ("Total Revenue", money(data["total_revenue"]), True),
         ]:
             summary_row(sidebar, label, value, highlight)
 
