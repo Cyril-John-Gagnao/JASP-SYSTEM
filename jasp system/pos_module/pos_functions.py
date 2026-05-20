@@ -321,6 +321,9 @@ def load_inventory(ctx, search_query=""):
     inventory_trees = [tree for tree in (chb_inv_tree, inv_tree) if tree and tree.winfo_exists()]
     cursor = ctx["cursor"]
     sort_var = ctx["sort_var"]
+    no_results_label = ctx.get("inventory_no_results_label")
+    if no_results_label and no_results_label.winfo_exists():
+        no_results_label.place_forget()
     clear_inventory_buttons(ctx)
     for tree in inventory_trees:
         for row in tree.get_children():
@@ -373,6 +376,7 @@ def load_inventory(ctx, search_query=""):
 
     cursor.execute(query, params)
     other_rows = cursor.fetchall()
+    show_no_matching_product = bool(search_query.strip()) and not other_rows
     if not chb_rows and not other_rows:
         empty_message = "No items found"
         if search_query:
@@ -397,6 +401,9 @@ def load_inventory(ctx, search_query=""):
         if ctx.get("inventory_column_specs"):
             for tree in inventory_trees:
                 auto_fit_tree_columns(tree, ctx["inventory_column_specs"])
+        if show_no_matching_product and no_results_label and no_results_label.winfo_exists():
+            no_results_label.place(relx=0.5, rely=0.12, anchor="n")
+            no_results_label.lift()
         schedule_inventory_buttons(ctx)
         return
 
@@ -415,7 +422,11 @@ def load_inventory(ctx, search_query=""):
             display_row = display_inventory_row(row)
             inv_tree.insert("", tk.END, values=display_row + ("",), tags=(tag,))
     else:
-        inv_tree.insert("", tk.END, values=("", "No other items found", "", "", "", ""), tags=("emptyrow",))
+        if show_no_matching_product and no_results_label and no_results_label.winfo_exists():
+            no_results_label.place(relx=0.5, rely=0.12, anchor="n")
+            no_results_label.lift()
+        else:
+            inv_tree.insert("", tk.END, values=("", "No other items found", "", "", "", ""), tags=("emptyrow",))
 
     refresh_inventory_names(ctx)
     if ctx.get("inventory_column_specs"):

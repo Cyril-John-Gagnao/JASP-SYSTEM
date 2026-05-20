@@ -4,6 +4,7 @@ from tkinter import ttk
 import sqlite3
 from datetime import datetime
 from delivery_section import open_delivery_window
+from window_utils import close_window_and_focus_parent
 from jasp_theme import (
     DASHBOARD_CONTENT_BG,
     DASHBOARD_HEADER_BG,
@@ -33,14 +34,17 @@ BUTTON_BORDER = {
 
 
 # ================= MAIN =================
-def open_chb_dashboard():
+def open_chb_dashboard(parent=None):
     init_db()
 
-    win = tk.Toplevel()
+    win = tk.Toplevel(parent) if parent is not None else tk.Toplevel()
     win.title("CHB Production Module")
     win.state("zoomed")
     win.configure(bg=BG_MAIN)
     win.option_add("*TCombobox*Listbox.font", ("Arial", 16))
+    if parent is not None:
+        win.transient(parent)
+    win.protocol("WM_DELETE_WINDOW", lambda: close_window_and_focus_parent(win, parent))
 
     conn = sqlite3.connect(DB_NAME)
     cursor = conn.cursor()
@@ -98,7 +102,7 @@ def open_chb_dashboard():
     tk.Button(
         btn_container,
         text="← Back",
-        command=lambda: chb_functions.go_back(win),
+        command=lambda: close_window_and_focus_parent(win, parent),
         bg="#2563eb",
         fg="white",
         font=("Arial", 13, "bold"),
@@ -165,14 +169,6 @@ def open_chb_dashboard():
 
     fullscreen_btn = tk.Button(total_frame, text='Full Screen Display', command=lambda: toggle_display_fullscreen(), bg='#0f766e', fg='white', font=('Arial', 13, 'bold'), padx=12, pady=6, **BUTTON_BORDER)
     fullscreen_btn.pack(side="right", padx=(10, 0))
-
-    no_results_label = tk.Label(
-        win,
-        text="No matching production records found.",
-        font=("Arial", 16, "bold"),
-        bg=BG_MAIN,
-        fg="#dc2626"
-    )
 
     # ================= MAIN CONTAINER (51-49 Split) =================
     main_container = tk.Frame(win, bg=CARD_BG, bd=1, relief="solid")
@@ -381,6 +377,18 @@ def open_chb_dashboard():
     tree_frame.grid(row=0, column=0, sticky="nsew")
     tree_frame.columnconfigure(0, weight=1)
     tree_frame.rowconfigure(0, weight=1)
+
+    no_results_label = tk.Label(
+        tree_frame,
+        text="No matching production records found.",
+        font=("Arial", 16, "bold"),
+        bg="#fef2f2",
+        fg="#dc2626",
+        padx=18,
+        pady=10,
+        bd=1,
+        relief="solid"
+    )
     
     # Create vertical scrollbar
     vsb = ttk.Scrollbar(tree_frame, orient="vertical")
@@ -500,9 +508,10 @@ def open_chb_dashboard():
     def load_data(event=None):
         row_count = chb_functions.load_data(event, tree, search_var, sort_var, cursor)
         if search_var.get().strip() and row_count == 0:
-            no_results_label.pack(anchor="w", padx=20, pady=(0, 6), before=main_container)
+            no_results_label.place(relx=0.5, rely=0.12, anchor="n")
+            no_results_label.lift()
         else:
-            no_results_label.pack_forget()
+            no_results_label.place_forget()
         auto_adjust_columns()
 
     # ✅ BINDINGS (LIVE SEARCH)

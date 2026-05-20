@@ -147,6 +147,18 @@ def open_user_management(root):
     y_scrollbar.grid(row=0, column=1, sticky="ns")
     x_scrollbar.grid(row=1, column=0, sticky="ew")
 
+    no_results_label = tk.Label(
+        display_frame,
+        text="No matching user found.",
+        font=("Arial", 16, "bold"),
+        bg="#fef2f2",
+        fg="#dc2626",
+        padx=18,
+        pady=10,
+        bd=1,
+        relief="solid"
+    )
+
     column_widths = {
         "ID": 90,
         "Username": 260,
@@ -325,6 +337,11 @@ def open_user_management(root):
         if selected_iid:
             user_tree.selection_set(selected_iid)
             user_tree.focus(selected_iid)
+        if (search_text or selected_role != "All Users") and not users:
+            no_results_label.place(relx=0.5, rely=0.12, anchor="n")
+            no_results_label.lift()
+        else:
+            no_results_label.place_forget()
         schedule_table_buttons()
 
     btn = tk.Frame(right, bg=FORM_BG)

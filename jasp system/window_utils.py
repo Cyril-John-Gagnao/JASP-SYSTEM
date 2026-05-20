@@ -41,3 +41,32 @@ def enable_centered_toplevels():
     tk.Toplevel = _CenteredToplevel
     _CENTERING_ENABLED = True
 
+
+def close_window_and_focus_parent(window, parent=None):
+    parent_window = parent
+    if parent_window is None:
+        try:
+            parent_window = window.master
+        except tk.TclError:
+            parent_window = None
+
+    try:
+        if window.grab_current() is window:
+            window.grab_release()
+    except tk.TclError:
+        pass
+
+    if window and window.winfo_exists():
+        try:
+            window.destroy()
+        except tk.TclError:
+            pass
+
+    if parent_window and parent_window.winfo_exists():
+        try:
+            parent_window.deiconify()
+            parent_window.lift()
+            parent_window.focus_force()
+        except tk.TclError:
+            pass
+

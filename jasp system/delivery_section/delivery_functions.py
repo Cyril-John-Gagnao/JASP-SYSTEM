@@ -13,6 +13,7 @@ from .delivery_database import (
     fetch_delivery_rows,
     fetch_other_item_delivery_rows,
 )
+from window_utils import close_window_and_focus_parent
 from inventory_module.inventory_database import (
     open_inventory_connection,
     fetch_inventory_unit_options,
@@ -117,7 +118,7 @@ def ask_delivery_confirmation(parent, title, message, confirm_text="Yes"):
 
 
 def go_back(delivery_win):
-    delivery_win.destroy()
+    close_window_and_focus_parent(delivery_win)
 
 
 def refresh_data(load_data):
@@ -687,7 +688,8 @@ def load_data(event, cursor, tree, search_var, sort_var, delivery_win):
 
         row_index = 0
         if not rows:
-            tree.insert("", "end", values=("", today, today, "No deliveries for today", "", "", "", "", "", ""), tags=('oddrow',))
+            message = "No matching records found." if keyword else "No deliveries for today"
+            tree.insert("", "end", values=("", today, today, message, "", "", "", "", "", ""), tags=('oddrow',))
             return
 
         for row in rows:
@@ -709,7 +711,8 @@ def load_other_items_data(event, cursor, tree, search_var, sort_var, delivery_wi
         rows = fetch_other_item_delivery_rows(cursor, keyword, sort_option, today)
 
         if not rows:
-            tree.insert("", "end", values=("", today, today, "No other item deliveries for today", "", "", "", "", "", "", ""), tags=("oddrow",))
+            message = "No matching records found." if keyword else "No other item deliveries for today"
+            tree.insert("", "end", values=("", today, today, message, "", "", "", "", "", "", ""), tags=("oddrow",))
             return
 
         for row_index, row in enumerate(rows):
@@ -721,4 +724,4 @@ def load_other_items_data(event, cursor, tree, search_var, sort_var, delivery_wi
 
 def on_closing(conn, delivery_win):
     conn.close()
-    delivery_win.destroy()
+    close_window_and_focus_parent(delivery_win)

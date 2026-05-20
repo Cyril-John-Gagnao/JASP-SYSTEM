@@ -4,7 +4,7 @@ from tkinter import ttk
 from pos_module import pos_functions
 from pos_module.pos_database import initialize_pos_database
 from pos_module.pos_summary import open_pos_summary
-from window_utils import enable_centered_toplevels
+from window_utils import close_window_and_focus_parent, enable_centered_toplevels
 from jasp_theme import (
     DASHBOARD_CONTENT_BG,
     DASHBOARD_HEADER_BG,
@@ -27,7 +27,7 @@ CART_PANEL_BG = "#e0f2fe"
 CART_HEADER_BG = "#bfdbfe"
 
 # ==================== POS WINDOW ====================
-def open_pos():
+def open_pos(parent=None):
     global pos_refresh_callback
     conn, cursor = initialize_pos_database()
 
@@ -56,16 +56,22 @@ def open_pos():
     )
 
     # ---------- GUI ----------
-    root = tk.Toplevel()
+    root = tk.Toplevel(parent) if parent is not None else tk.Toplevel()
     root.title("POS System")
     root.state("zoomed")  # Fullscreen
     root.configure(bg=DASHBOARD_CONTENT_BG)
     root.option_add("*TCombobox*Listbox.font", ("Arial", 17))
 
-    root.transient()        # link to main window
+    if parent is not None:
+        root.transient(parent)
     root.grab_set()         # lock focus to POS
     ctx["root"] = root
-    root.protocol("WM_DELETE_WINDOW", lambda: (globals().__setitem__("pos_refresh_callback", None), root.destroy()))
+
+    def close_pos_window():
+        globals().__setitem__("pos_refresh_callback", None)
+        close_window_and_focus_parent(root, parent)
+
+    root.protocol("WM_DELETE_WINDOW", close_pos_window)
 
     # ====== Header ======
     header_frame = tk.Frame(
@@ -90,7 +96,7 @@ def open_pos():
     ).pack(side=tk.LEFT)
 
     tk.Button(header_frame, text="← Back", bg="#2563eb", fg="white", activebackground="#1d4ed8", activeforeground="white", font=("Arial", 13, "bold"),
-              command=lambda: (globals().__setitem__("pos_refresh_callback", None), root.destroy()), padx=12, pady=8, **BUTTON_BORDER).pack(side=tk.RIGHT, padx=6)
+              command=close_pos_window, padx=12, pady=8, **BUTTON_BORDER).pack(side=tk.RIGHT, padx=6)
     tk.Button(header_frame, text="🔄 Refresh", bg="#16a34a", fg="white", font=("Arial", 13, "bold"),
               command=lambda: pos_functions.load_inventory(ctx, search_entry.get()), padx=12, pady=8, **BUTTON_BORDER).pack(side=tk.RIGHT, padx=6)
 
@@ -393,8 +399,20 @@ def open_pos():
     inv_section, inv_table_frame, inv_tree = create_inventory_section(right_frame, "Other Items", 5, include_fullscreen=True)
     inv_section.pack_configure(fill="both", expand=True)
     inv_table_frame.pack_configure(fill="both", expand=True)
+    inventory_no_results_label = tk.Label(
+        inv_table_frame,
+        text="No matching product found.",
+        font=("Arial", 16, "bold"),
+        bg="#fef2f2",
+        fg="#dc2626",
+        padx=18,
+        pady=10,
+        bd=1,
+        relief="solid",
+    )
     ctx["chb_inv_tree"] = chb_inv_tree
     ctx["inv_tree"] = inv_tree
+    ctx["inventory_no_results_label"] = inventory_no_results_label
 
     def refresh_cart_table_layout():
         pos_functions.auto_fit_tree_columns(cart_tree, cart_column_specs)

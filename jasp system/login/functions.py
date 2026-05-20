@@ -1,23 +1,36 @@
+import html
 import re
+from urllib.parse import unquote_plus
 from tkinter import messagebox
 
 
 def contains_malicious_input(value):
-    value_lower = value.lower()
+    if value is None:
+        return False
+
+    decoded_value = str(value)
+    for _ in range(2):
+        decoded_value = html.unescape(unquote_plus(decoded_value))
+
+    value_lower = decoded_value.lower()
     harmful_patterns = [
-        r"<\s*script",
-        r"<\s*/\s*script",
-        r"<\s*marquee",
+        r"<\s*/?\s*script\b",
+        r"<\s*/?\s*marquee\b",
+        r"<\s*/?\s*iframe\b",
+        r"<\s*/?\s*object\b",
+        r"<\s*/?\s*embed\b",
+        r"<\s*/?\s*svg\b",
+        r"<\s*/?\s*img\b",
+        r"<\s*/?\s*link\b",
+        r"<\s*/?\s*meta\b",
         r"javascript\s*:",
         r"vbscript\s*:",
+        r"data\s*:\s*text/html",
         r"on\w+\s*=",
         r"document\s*\.",
         r"window\s*\.",
         r"eval\s*\(",
         r"alert\s*\(",
-        r"<\s*iframe",
-        r"<\s*object",
-        r"<\s*embed",
     ]
     return any(re.search(pattern, value_lower) for pattern in harmful_patterns)
 

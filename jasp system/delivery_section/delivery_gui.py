@@ -82,7 +82,7 @@ def open_delivery_window(parent_win, bg_main, card_bg, primary):
     tk.Button(
         btn_container,
         text="← Back",
-        command=lambda: delivery_functions.go_back(delivery_win),
+        command=lambda: delivery_functions.on_closing(conn, delivery_win),
         bg=primary,
         fg="white",
         font=("Arial", 13, "bold"),
@@ -336,6 +336,18 @@ def open_delivery_window(parent_win, bg_main, card_bg, primary):
     tree_frame.columnconfigure(0, weight=1)
     tree_frame.rowconfigure(0, weight=1)
 
+    no_results_label = tk.Label(
+        tree_frame,
+        text="No matching records found.",
+        bg="#fef2f2",
+        fg="#dc2626",
+        font=("Arial", 16, "bold"),
+        padx=18,
+        pady=10,
+        bd=1,
+        relief="solid"
+    )
+
     # Create vertical scrollbar
     vsb = ttk.Scrollbar(tree_frame, orient="vertical")
     vsb.grid(row=0, column=1, sticky="ns")
@@ -504,6 +516,13 @@ def open_delivery_window(parent_win, bg_main, card_bg, primary):
             delivery_functions.load_other_items_data(event, cursor, tree, search_var, sort_var, delivery_win)
         else:
             delivery_functions.load_data(event, cursor, tree, search_var, sort_var, delivery_win)
+        has_search = bool(search_var.get().strip())
+        has_real_rows = any((tree.item(item, "values") or [""])[0] for item in tree.get_children())
+        if has_search and not has_real_rows:
+            no_results_label.place(relx=0.5, rely=0.12, anchor="n")
+            no_results_label.lift()
+        else:
+            no_results_label.place_forget()
         auto_adjust_columns()
         update_total_delivered_today()
 

@@ -238,15 +238,8 @@ def parse_positive_number(value, field_name, parent):
 
 
 def go_back(win):
-    parent = win.master if win.master and win.master.winfo_exists() else None
-    win.destroy()
-    from main_dashboard.main_gui import open_main
-    if parent:
-        open_main(parent)
-    else:
-        root = tk.Tk()
-        open_main(root)
-        root.mainloop()
+    from window_utils import close_window_and_focus_parent
+    close_window_and_focus_parent(win)
 
 
 def refresh_data(load_data, update_total_blocks):

@@ -448,6 +448,9 @@ def forgot_password():
     def show_reset_error(message):
         show_reset_popup("Error", message, RED)
 
+    def show_invalid_reset_input(_title="Error", message="Invalid input detected."):
+        show_reset_error(message)
+
     def show_reset_success(message):
         show_reset_popup("Success", message, GREEN)
 
@@ -586,7 +589,7 @@ def forgot_password():
         if reset_username == "" or contact_number == "":
             show_reset_error("All fields are required.")
             return
-        if not validate_common_inputs(reset_username, contact_number):
+        if not validate_common_inputs(reset_username, contact_number, error_callback=show_invalid_reset_input):
             return
         if not is_valid_username(reset_username) or not is_valid_contact_number(contact_number):
             show_reset_error("Invalid input detected.")
@@ -622,7 +625,13 @@ def forgot_password():
         if reset_username == "" or contact_number == "" or new_password.strip() == "" or confirm_password.strip() == "":
             show_reset_error("All fields are required.")
             return
-        if not validate_common_inputs(reset_username, contact_number, new_password, confirm_password):
+        if not validate_common_inputs(
+            reset_username,
+            contact_number,
+            new_password,
+            confirm_password,
+            error_callback=show_invalid_reset_input,
+        ):
             return
         if (
             not is_valid_username(reset_username)
@@ -750,7 +759,7 @@ def show_login_screen():
 
     tk.Label(
         main_frame,
-        text="INVENTORY AND SALES MANAGEMENT",
+        text="Sales and Inventory Management",
         font=("Arial", 24, "bold"),
         bg=LOGIN_PAGE_BG,
         fg="#9a3412"

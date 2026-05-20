@@ -169,14 +169,6 @@ def open_inventory(parent=None):
         command=lambda: show_all_items()
     ).pack(side="left", padx=(10, 0))
 
-    no_results_label = tk.Label(
-        left_frame,
-        text="No matching products found.",
-        font=("Arial", 16, "bold"),
-        bg=DASHBOARD_CONTENT_BG,
-        fg="#dc2626"
-    )
-
     fullscreen_btn = tk.Button(
         stock_counts_frame,
         text="Full Screen Display",
@@ -231,7 +223,7 @@ def open_inventory(parent=None):
         textvariable=chb_items_count_var,
         font=("Arial", 14, "bold"),
         bg="white",
-        fg="#475569"
+        fg="#15803d"
     ).pack(side="left", padx=(14, 0))
 
     chb_tree_frame = tk.Frame(chb_section, bg="white")
@@ -265,7 +257,7 @@ def open_inventory(parent=None):
         textvariable=other_items_count_var,
         font=("Arial", 14, "bold"),
         bg="white",
-        fg="#475569"
+        fg="#15803d"
     ).pack(side="left", padx=(14, 0))
 
     other_items_fullscreen = tk.BooleanVar(value=False)
@@ -280,8 +272,7 @@ def open_inventory(parent=None):
             other_items_fullscreen.set(False)
         else:
             if display_fullscreen.get():
-                right_frame.pack(side="right", fill="y", padx=(10, 0))
-                table_area.pack_configure(side="left", fill="both", expand=True, padx=(0, 10))
+                restore_normal_inventory_layout()
                 fullscreen_btn.config(text="Full Screen Display", bg="#0f766e", activebackground="#0f766e")
                 display_fullscreen.set(False)
             chb_section.pack_forget()
@@ -320,16 +311,28 @@ def open_inventory(parent=None):
         relief="flat",
         highlightthickness=0
     )
+    right_frame.configure(width=294)
+    right_frame.pack_propagate(False)
+    right_frame.grid_propagate(False)
+    right_frame.grid_columnconfigure(0, weight=1)
     right_frame.pack(side="right", fill="y", padx=(10, 0))
     table_area.pack(side="left", fill="both", expand=True, padx=(0, 10))
 
     display_fullscreen = tk.BooleanVar(value=False)
 
+    def restore_normal_inventory_layout():
+        clear_status_labels()
+        table_area.pack_forget()
+        right_frame.pack_forget()
+        right_frame.pack(side="right", fill="y", padx=(10, 0))
+        table_area.pack(side="left", fill="both", expand=True, padx=(0, 10))
+        right_frame.lift()
+        inventory_window.update_idletasks()
+
     def toggle_display_fullscreen():
         clear_status_labels()
         if display_fullscreen.get():
-            right_frame.pack(side="right", fill="y", padx=(10, 0))
-            table_area.pack_configure(side="left", fill="both", expand=True, padx=(0, 10))
+            restore_normal_inventory_layout()
             fullscreen_btn.config(text="Full Screen Display", bg="#0f766e", activebackground="#0f766e")
             display_fullscreen.set(False)
         else:
@@ -339,8 +342,9 @@ def open_inventory(parent=None):
                 lower_section.pack(fill="both", expand=True)
                 other_fullscreen_btn.config(text="Full Screen", bg="#0f766e", activebackground="#0f766e")
                 other_items_fullscreen.set(False)
+            table_area.pack_forget()
             right_frame.pack_forget()
-            table_area.pack_configure(side="left", fill="both", expand=True, padx=0)
+            table_area.pack(side="left", fill="both", expand=True, padx=0)
             fullscreen_btn.config(text="Exit Full Screen", bg="#334155", activebackground="#334155")
             display_fullscreen.set(True)
         inventory_window.after(50, lambda: (auto_adjust_columns(chb_tree), auto_adjust_columns(tree), schedule_status_labels()))
@@ -378,6 +382,18 @@ def open_inventory(parent=None):
     tree_frame.grid_columnconfigure(0, weight=1)
     tree_frame.grid_rowconfigure(0, weight=1)
 
+    no_results_label = tk.Label(
+        tree_frame,
+        text="No matching product found.",
+        font=("Arial", 16, "bold"),
+        bg="#fef2f2",
+        fg="#dc2626",
+        padx=18,
+        pady=10,
+        bd=1,
+        relief="solid"
+    )
+
     style = ttk.Style()
     style.configure("Inventory.Treeview", font=("Arial", 14), rowheight=40)
     style.configure("Inventory.Treeview.Heading", font=("Arial", 15, "bold"))
@@ -401,6 +417,7 @@ def open_inventory(parent=None):
 
     overlay_widgets = {}
     status_render_job = {"id": None}
+    column_adjust_job = {"id": None}
     status_rendering = {"active": False}
     selected_action_tree = {"tree": tree}
     selection_syncing = {"active": False}
@@ -487,12 +504,12 @@ def open_inventory(parent=None):
             width = min(width, max_widths[col])
             measured_widths[col] = width
 
-        if target_tree is tree and (other_items_fullscreen.get() or display_fullscreen.get()):
+        if target_tree is tree:
             target_tree.update_idletasks()
             total_width = sum(measured_widths.values())
             available_width = max(target_tree.winfo_width() - 24, total_width)
             if available_width > total_width:
-                flexible_columns = ["Name", "Unit", "Quantity", "Price", "Raw Price", "Status"]
+                flexible_columns = ["Name", "Unit", "Quantity", "Price", "Raw Price", "Status", "Restock"]
                 extra_width = available_width - total_width
                 per_column = extra_width // len(flexible_columns)
                 remainder = extra_width % len(flexible_columns)
@@ -501,6 +518,22 @@ def open_inventory(parent=None):
 
         for col in columns:
             target_tree.column(col, width=measured_widths[col], minwidth=measured_widths[col], stretch=False)
+
+    def schedule_column_adjust(target_tree=None):
+        if column_adjust_job["id"] is not None:
+            return
+
+        def run_adjust():
+            column_adjust_job["id"] = None
+            if target_tree is not None:
+                auto_adjust_columns(target_tree)
+            else:
+                auto_adjust_columns(chb_tree)
+                auto_adjust_columns(tree)
+            schedule_status_labels(target_tree)
+
+        parent_widget = target_tree if target_tree is not None else inventory_window
+        column_adjust_job["id"] = parent_widget.after_idle(run_adjust)
 
     def clear_status_labels():
         for widget in overlay_widgets.values():
@@ -542,18 +575,13 @@ def open_inventory(parent=None):
 
         chb_count = 0
         placeholders = ", ".join("?" for _ in CHB_SECTION_ITEMS)
-        search_text = search_entry.get().strip()
-        search_clause = ""
         params = [item_name.lower() for item_name in CHB_SECTION_ITEMS]
-        if search_text:
-            search_clause = " AND LOWER(name) LIKE ?"
-            params.append(f"%{search_text.lower()}%")
 
         cursor.execute(
             f"""
             SELECT id, name, unit, quantity, price, raw_price, COALESCE(status, 'Active'), COALESCE(fine_sand_bag_price, 0)
             FROM items
-            WHERE LOWER(name) IN ({placeholders}){search_clause}
+            WHERE LOWER(name) IN ({placeholders})
             ORDER BY CASE LOWER(name)
                 WHEN 'cement' THEN 1
                 WHEN 'fine sand' THEN 2
@@ -616,11 +644,12 @@ def open_inventory(parent=None):
 
     def update_no_results_message():
         has_search = bool(search_entry.get().strip())
-        has_results = bool(tree.get_children() or chb_tree.get_children())
-        if has_search and not has_results:
-            no_results_label.pack(anchor="w", pady=(0, 6), before=content_frame)
+        has_other_results = bool(tree.get_children())
+        if has_search and not has_other_results:
+            no_results_label.place(relx=0.5, rely=0.12, anchor="n")
+            no_results_label.lift()
         else:
-            no_results_label.pack_forget()
+            no_results_label.place_forget()
 
     def show_low_stock_items():
         low_stock_filter["active"] = True
@@ -846,6 +875,7 @@ def open_inventory(parent=None):
         apply_low_stock_filter()
         update_low_stock_count()
         update_no_results_message()
+        schedule_column_adjust()
         schedule_status_labels()
 
     def sort_and_render(column, numeric=False):
@@ -874,14 +904,16 @@ def open_inventory(parent=None):
         yscrollcommand=lambda *args: (chb_v_scroll.set(*args), schedule_status_labels(chb_tree)),
         xscrollcommand=lambda *args: (chb_h_scroll.set(*args), schedule_status_labels(chb_tree))
     )
-    tree.bind("<Configure>", lambda event: schedule_status_labels(tree))
+    tree.bind("<Configure>", lambda event: schedule_column_adjust(tree))
     tree.bind("<MouseWheel>", lambda event: schedule_status_labels(tree))
     tree.bind("<B1-Motion>", lambda event: schedule_status_labels(tree))
     tree.bind("<ButtonRelease-1>", lambda event: schedule_status_labels(tree))
-    chb_tree.bind("<Configure>", lambda event: schedule_status_labels(chb_tree))
+    tree_frame.bind("<Configure>", lambda event: schedule_column_adjust(tree))
+    chb_tree.bind("<Configure>", lambda event: schedule_column_adjust(chb_tree))
     chb_tree.bind("<MouseWheel>", lambda event: schedule_status_labels(chb_tree))
     chb_tree.bind("<B1-Motion>", lambda event: schedule_status_labels(chb_tree))
     chb_tree.bind("<ButtonRelease-1>", lambda event: schedule_status_labels(chb_tree))
+    chb_tree_frame.bind("<Configure>", lambda event: schedule_column_adjust(chb_tree))
     tree.bind("<<TreeviewSelect>>", lambda event: set_selected_action_tree(tree))
     chb_tree.bind("<<TreeviewSelect>>", lambda event: set_selected_action_tree(chb_tree))
 
@@ -891,7 +923,6 @@ def open_inventory(parent=None):
 
     # ---------- Buttons ----------
     button_options = {
-        "width": 21,
         "font": ("Arial", 13, "bold"),
         "bd": 2,
         "relief": "solid",
@@ -901,9 +932,9 @@ def open_inventory(parent=None):
         "padx": 8,
         "pady": 12,
     }
-    tk.Button(right_frame, text="Add Item", bg="#00c853", fg="white", command=lambda: inventory_functions.add_item(conn, cursor, inventory_window, tree, refresh_view), **button_options).grid(row=0, column=0, pady=12, padx=4)
-    tk.Button(right_frame, text="Edit Item", bg="#2196f3", fg="white", command=lambda: inventory_functions.update_item(conn, cursor, inventory_window, selected_action_tree["tree"], refresh_view), **button_options).grid(row=1, column=0, pady=12, padx=4)
-    tk.Button(right_frame, text="Delete Item", bg="#ff1744", fg="white", command=lambda: inventory_functions.delete_item(conn, cursor, inventory_window, selected_action_tree["tree"], refresh_view), **button_options).grid(row=2, column=0, pady=12, padx=4)
+    tk.Button(right_frame, text="Add Item", bg="#00c853", fg="white", command=lambda: inventory_functions.add_item(conn, cursor, inventory_window, tree, refresh_view), **button_options).grid(row=0, column=0, sticky="ew", pady=12, padx=4)
+    tk.Button(right_frame, text="Edit Item", bg="#2196f3", fg="white", command=lambda: inventory_functions.update_item(conn, cursor, inventory_window, selected_action_tree["tree"], refresh_view), **button_options).grid(row=1, column=0, sticky="ew", pady=12, padx=4)
+    tk.Button(right_frame, text="Delete Item", bg="#ff1744", fg="white", command=lambda: inventory_functions.delete_item(conn, cursor, inventory_window, selected_action_tree["tree"], refresh_view), **button_options).grid(row=2, column=0, sticky="ew", pady=12, padx=4)
 
     inventory_window.protocol("WM_DELETE_WINDOW", close_inventory_window)
     refresh_view()

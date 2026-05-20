@@ -147,11 +147,11 @@ def open_main(root, logout_callback=None):
             pady=12,
         )
 
-    sidebar_btn("Point of Sale (POS)", open_pos).pack(fill="x", pady=4)
+    sidebar_btn("Point of Sale (POS)", lambda: open_pos(root)).pack(fill="x", pady=4)
     sidebar_btn("Inventory Management", lambda: open_inventory(root)).pack(fill="x", pady=4)
-    sidebar_btn("CHB and Delivery Production", open_chb_dashboard).pack(fill="x", pady=4)
+    sidebar_btn("CHB and Delivery Production", lambda: open_chb_dashboard(root)).pack(fill="x", pady=4)
     sidebar_btn("User Management", lambda: open_user_management(root)).pack(fill="x", pady=4)
-    sidebar_btn("Reports & Analytics", open_reports).pack(fill="x", pady=4)
+    sidebar_btn("Reports & Analytics", lambda: open_reports(root)).pack(fill="x", pady=4)
     sidebar_btn("Settings & Users", lambda: print("Settings clicked")).pack(fill="x", pady=4)
 
     tk.Label(sidebar, bg=sidebar_bg).pack(expand=True, fill="both")

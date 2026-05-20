@@ -37,6 +37,7 @@ from jasp_theme import (
     DASHBOARD_HEADER_SUBTLE_FG,
     add_header_logo,
 )
+from window_utils import close_window_and_focus_parent
 
 _ACTIVE_DATE_PICKER = None
 
@@ -450,12 +451,15 @@ def fmt_short_date(ts_value):
     return text[:10]
 
 
-def open_reports():
-    reports_window = tk.Toplevel()
+def open_reports(parent=None):
+    reports_window = tk.Toplevel(parent) if parent is not None else tk.Toplevel()
     reports_window.title("Reports & Analytics")
     reports_window.state("zoomed")
     reports_window.configure(bg=BG_PAGE)
     reports_window.option_add("*TCombobox*Listbox.font", ("Arial", 18))
+    if parent is not None:
+        reports_window.transient(parent)
+    reports_window.protocol("WM_DELETE_WINDOW", lambda: close_window_and_focus_parent(reports_window, parent))
 
     init_database()
     refresh_callbacks = {}
@@ -513,7 +517,7 @@ def open_reports():
         text="← Back",
         bg=ACTION_BG,
         fg="white",
-        command=reports_window.destroy,
+        command=lambda: close_window_and_focus_parent(reports_window, parent),
         **header_button_options,
     ).pack(side="right", padx=(6, 0))
     tk.Button(
