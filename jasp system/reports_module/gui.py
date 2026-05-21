@@ -1,4 +1,5 @@
 import calendar
+import os
 import tkinter as tk
 from datetime import datetime, timedelta
 from tkinter import messagebox, ttk
@@ -48,8 +49,10 @@ ACTION_PURPLE = "#8b5cf6"
 PANEL_PAD = 8
 SECTION_GAP = 10
 REPORT_TITLE_FG = "#2563eb"
-REPORTS_HEADER_BG = "#2D2D2D"
+REPORTS_HEADER_BG = DASHBOARD_HEADER_BG
 PESO = "\u20b1"
+SUCCESS_GREEN = "#16a34a"
+ERROR_RED = "#dc3545"
 
 
 def money(val):
@@ -331,12 +334,38 @@ def make_button(parent, text, command, secondary=False, purple=False):
     )
 
 
-def create_report_area(parent):
+def create_report_area(parent, scrollable=False):
     area = tk.Frame(parent, bg=BG_PAGE)
     area.grid(row=1, column=0, sticky="nsew", pady=(SECTION_GAP, 0))
     area.grid_columnconfigure(0, weight=1)
     area.grid_rowconfigure(0, weight=1)
-    return area
+    if not scrollable:
+        return area
+
+    canvas = tk.Canvas(area, bg=BG_PAGE, highlightthickness=0)
+    scroll = ttk.Scrollbar(area, orient="vertical", command=canvas.yview)
+    content = tk.Frame(canvas, bg=BG_PAGE)
+    content_window = canvas.create_window((0, 0), window=content, anchor="nw")
+
+    canvas.configure(yscrollcommand=scroll.set)
+    canvas.grid(row=0, column=0, sticky="nsew")
+    scroll.grid(row=0, column=1, sticky="ns")
+
+    def sync_scroll_region(_event=None):
+        canvas.configure(scrollregion=canvas.bbox("all"))
+
+    def sync_content_width(event):
+        canvas.itemconfigure(content_window, width=event.width)
+
+    def on_mousewheel(event):
+        canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
+
+    content.bind("<Configure>", sync_scroll_region)
+    canvas.bind("<Configure>", sync_content_width)
+    canvas.bind("<Enter>", lambda _event: canvas.bind_all("<MouseWheel>", on_mousewheel))
+    canvas.bind("<Leave>", lambda _event: canvas.unbind_all("<MouseWheel>"))
+    content.grid_columnconfigure(0, weight=1)
+    return content
 
 
 def clear_frame(frame):
@@ -452,6 +481,93 @@ def render_metric_strip(parent, metrics):
     return strip
 
 
+def center_popup(window, width=560, height=320, parent=None):
+    window.update_idletasks()
+    if parent and parent.winfo_exists():
+        parent.update_idletasks()
+        x_pos = parent.winfo_rootx() + (parent.winfo_width() // 2) - (width // 2)
+        y_pos = parent.winfo_rooty() + (parent.winfo_height() // 2) - (height // 2)
+    else:
+        x_pos = (window.winfo_screenwidth() // 2) - (width // 2)
+        y_pos = (window.winfo_screenheight() // 2) - (height // 2)
+    window.geometry(f"{width}x{height}+{x_pos}+{y_pos}")
+
+
+def show_report_popup(parent, title, message, accent_color):
+    if parent is None or not parent.winfo_exists():
+        if accent_color == SUCCESS_GREEN:
+            messagebox.showinfo(title, message)
+        else:
+            messagebox.showerror(title, message)
+        return
+
+    popup = tk.Toplevel(parent)
+    popup.title(title)
+    popup.transient(parent)
+    popup.grab_set()
+    popup.configure(bg=BG_CARD)
+    popup.resizable(False, False)
+
+    tk.Frame(popup, bg=accent_color, height=12).pack(fill="x")
+
+    content = tk.Frame(popup, bg=BG_CARD, padx=48, pady=36)
+    content.pack(fill="both", expand=True)
+
+    tk.Label(
+        content,
+        text=title,
+        bg=BG_CARD,
+        fg=accent_color,
+        font=("Arial", 26, "bold"),
+    ).pack(pady=(0, 14))
+    tk.Label(
+        content,
+        text=message,
+        bg=BG_CARD,
+        fg="#111827",
+        font=("Arial", 15),
+        wraplength=470,
+        justify="center",
+    ).pack(pady=(0, 28))
+
+    def close_popup():
+        popup.destroy()
+
+    ok_btn = tk.Button(
+        content,
+        text="OK",
+        command=close_popup,
+        bg=accent_color,
+        fg="white",
+        activebackground=accent_color,
+        activeforeground="white",
+        font=("Arial", 14, "bold"),
+        relief="flat",
+        width=14,
+        pady=8,
+    )
+    ok_btn.pack()
+    ok_btn.focus_set()
+
+    popup.bind("<Return>", lambda _event: close_popup())
+    popup.bind("<Escape>", lambda _event: close_popup())
+    popup.protocol("WM_DELETE_WINDOW", close_popup)
+    center_popup(popup, 590, 330, parent)
+    parent.wait_window(popup)
+
+
+def show_pdf_success_message(parent, report_name, file_path):
+    message = (
+        f"The {report_name} PDF has been exported successfully.\n\n"
+        f"Saved to:\n{file_path}"
+    )
+    show_report_popup(parent, "PDF Export Successful", message, SUCCESS_GREEN)
+
+
+def show_pdf_error_message(parent, message):
+    show_report_popup(parent, "PDF Export Failed", message, ERROR_RED)
+
+
 def fmt_short_date(ts_value):
     text = str(ts_value or "")
     for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d"):
@@ -516,12 +632,12 @@ def open_reports(parent=None):
     ).pack(side="left", padx=(18, 0))
 
     header_button_options = {
-        "width": 10,
-        "font": ("Arial", 10, "bold"),
+        "width": 12,
+        "font": ("Arial", 13, "bold"),
         "bd": 2,
         "relief": "solid",
-        "padx": 6,
-        "pady": 5,
+        "padx": 10,
+        "pady": 7,
     }
 
     tk.Button(
@@ -575,7 +691,7 @@ def open_reports(parent=None):
 
 def _build_financial_summary_tab(parent):
     root = create_tab_root(parent)
-    report_container = create_report_area(root)
+    report_container = create_report_area(root, scrollable=True)
 
     def clear_report_area():
         clear_frame(report_container)
@@ -603,8 +719,8 @@ def _build_financial_summary_tab(parent):
 
         report_container.grid_columnconfigure(0, weight=4)
         report_container.grid_columnconfigure(1, weight=1, minsize=300)
-        report_container.grid_rowconfigure(2, weight=5, minsize=255)
-        report_container.grid_rowconfigure(3, weight=1, minsize=130)
+        report_container.grid_rowconfigure(2, weight=3, minsize=245)
+        report_container.grid_rowconfigure(3, weight=2, minsize=210)
 
         title_bar = panel(report_container, pad=True)
         title_bar.grid(row=0, column=0, columnspan=2, sticky="ew", pady=(0, SECTION_GAP))
@@ -645,7 +761,7 @@ def _build_financial_summary_tab(parent):
             sales_columns,
             sales_headings,
             "FinancialData.Treeview",
-            height=12,
+            height=8,
             font=("Arial", 12),
             heading_font=("Arial", 13, "bold"),
             rowheight=30,
@@ -684,7 +800,16 @@ def _build_financial_summary_tab(parent):
             ("total_expense", "TOTAL", 110, "e"),
             ("remarks", "REMARKS", 165, "w"),
         ]
-        exp_tree = create_tree(exp_wrap, exp_columns, exp_headings, "FinancialExpense.Treeview", height=3)
+        exp_tree = create_tree(
+            exp_wrap,
+            exp_columns,
+            exp_headings,
+            "FinancialExpense.Treeview",
+            height=4,
+            font=("Arial", 12),
+            heading_font=("Arial", 13, "bold"),
+            rowheight=30,
+        )
         for idx, (expense_date, expense_name, total_amount, remarks) in enumerate(data.get("expense_summary_rows", [])):
             insert_row(exp_tree, (fmt_short_date(expense_date), str(expense_name or "-"), money(total_amount), str(remarks or "")), idx)
 
@@ -709,7 +834,7 @@ def _build_financial_summary_tab(parent):
         total.pack(fill="x", pady=(8, 6))
         tk.Label(total, text="TOTAL REVENUE", bg=HIGHLIGHT_BG, fg=HIGHLIGHT_FG, font=("Arial", 12, "bold")).pack(anchor="w")
         tk.Label(total, text=money(data["total_revenue"]), bg=HIGHLIGHT_BG, fg=HIGHLIGHT_FG, font=("Arial", 18, "bold")).pack(anchor="w")
-        make_button(sidebar, "Export to PDF", lambda: _handle_export("Financial Summary", data)).pack(fill="x")
+        make_button(sidebar, "Export to PDF", lambda: _handle_export("Financial Summary", data, report_container.winfo_toplevel())).pack(fill="x")
 
     bar = create_filter_bar(root, "Financial Summary")
     start_var, end_var, period_var = add_date_range_controls(
@@ -805,7 +930,7 @@ def _build_sales_report_tab(parent):
         total.pack(fill="x", pady=(8, 6))
         tk.Label(total, text="TOTAL SALES", bg=HIGHLIGHT_BG, fg=HIGHLIGHT_FG, font=("Arial", 12, "bold")).pack(anchor="w")
         tk.Label(total, text=money(data["total_sales"]), bg=HIGHLIGHT_BG, fg=HIGHLIGHT_FG, font=("Arial", 18, "bold")).pack(anchor="w")
-        make_button(sidebar, "Export to PDF", lambda: _handle_export("Sales Report", data)).pack(fill="x")
+        make_button(sidebar, "Export to PDF", lambda: _handle_export("Sales Report", data, report_container.winfo_toplevel())).pack(fill="x")
 
     bar = create_filter_bar(root, "Sales Report")
     start_var, end_var, period_var = add_date_range_controls(
@@ -872,7 +997,7 @@ def _build_weekly_sales_tab(parent):
         total.pack(fill="x", pady=(8, 6))
         tk.Label(total, text="TOTAL WEEKLY REVENUE", bg=HIGHLIGHT_BG, fg=HIGHLIGHT_FG, font=("Arial", 12, "bold")).pack(anchor="w")
         tk.Label(total, text=money(total_revenue), bg=HIGHLIGHT_BG, fg=HIGHLIGHT_FG, font=("Arial", 18, "bold")).pack(anchor="w")
-        make_button(sidebar, "Export to PDF", lambda: _handle_export("Weekly Sales Statistics", data)).pack(fill="x")
+        make_button(sidebar, "Export to PDF", lambda: _handle_export("Weekly Sales Statistics", data, report_container.winfo_toplevel())).pack(fill="x")
 
     bar = create_filter_bar(root, "Weekly Sales")
     tk.Label(bar, text="Week Ending:", bg=BG_PAGE, fg=TEXT_PRIMARY, font=("Arial", 16, "bold")).grid(row=0, column=1, sticky="e", padx=(0, 10))
@@ -963,7 +1088,7 @@ def _build_chb_production_tab(parent):
         summary_row(sidebar, "Total Fine Sand", quantity(data["total_fine_sand"]))
         summary_row(sidebar, "Total Blocks", f"{data['total_blocks']:,} pcs")
         summary_row(sidebar, "Worker Pay", money(data["total_worker_pay"]), True)
-        make_button(sidebar, "Export to PDF", lambda: _handle_export("CHB Production", data)).pack(fill="x", pady=(8, 0))
+        make_button(sidebar, "Export to PDF", lambda: _handle_export("CHB Production", data, report_container.winfo_toplevel())).pack(fill="x", pady=(8, 0))
 
     bar = create_filter_bar(root, "CHB Production")
     start_var, end_var, period_var = add_date_range_controls(
@@ -1058,7 +1183,7 @@ def _build_inventory_status_tab(parent):
         else:
             tk.Label(low_panel, text="No low stock alerts.", bg="#fff8e1", fg="#7c4a03", font=("Arial", 9, "italic")).pack(anchor="w")
 
-        make_button(sidebar, "Export to PDF", lambda: _handle_export("Inventory Status", data)).pack(fill="x")
+        make_button(sidebar, "Export to PDF", lambda: _handle_export("Inventory Status", data, report_container.winfo_toplevel())).pack(fill="x")
 
     bar = create_filter_bar(root, "Inventory Status")
     make_button(bar, "Generate Report", generate_report).grid(row=0, column=100, sticky="e")
@@ -1066,9 +1191,13 @@ def _build_inventory_status_tab(parent):
     return generate_report
 
 
-def _handle_export(report_type, data):
+def _handle_export(report_type, data, parent=None):
     success, message = export_to_pdf(report_type, data)
     if success:
-        messagebox.showinfo("PDF Downloaded Successfully", message)
-    else:
-        messagebox.showerror("Export Failed", message)
+        if not os.path.isfile(message) or os.path.getsize(message) == 0:
+            show_pdf_error_message(parent, f"The PDF export finished, but the saved file could not be found.\n\nExpected path:\n{message}")
+            return
+        show_pdf_success_message(parent, report_type, message)
+        return
+    if message != "Export cancelled.":
+        show_pdf_error_message(parent, message)

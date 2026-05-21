@@ -1,4 +1,5 @@
 import calendar
+import os
 import sqlite3
 from datetime import datetime, timedelta
 from tkinter import filedialog
@@ -786,7 +787,9 @@ def export_to_pdf(report_type, report_data):
         _append_signature_footer(story, styles)
 
         pdf.build(story)
-        return True, f"The PDF has been downloaded successfully.\n\nSaved to:\n{file_path}"
+        if not os.path.isfile(file_path) or os.path.getsize(file_path) == 0:
+            return False, f"PDF export failed: the file was not created.\n\nExpected path:\n{file_path}"
+        return True, file_path
     except Exception as e:
         return False, f"PDF export failed: {str(e)}"
 
