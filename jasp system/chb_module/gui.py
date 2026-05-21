@@ -309,7 +309,7 @@ def open_chb_dashboard(parent=None):
 
     # Build the bottom action button row for the production form.
     btn_frame = tk.Frame(form_card, bg=CARD_BG)
-    btn_frame.pack(side="bottom", pady=(0, 16), fill="x")
+    btn_frame.pack(side="bottom", pady=(0, 48), fill="x")
     btn_frame.columnconfigure(0, weight=1)
     btn_frame.columnconfigure(1, weight=1)
     btn_frame.columnconfigure(2, weight=1)

@@ -36,21 +36,34 @@ USER_COLUMNS = ("ID", "Username", "Contact Number", "Role", "Update", "Delete")
 
 
 def open_user_management(root):
-    # Clear the current screen and prepare the user-management page.
-    for widget in root.winfo_children():
-        widget.destroy()
-
-    root.title("User Management")
-    root.configure(bg=BG)
-
-    # Block non-admin users from opening user management.
-    if user_functions.current_user_role != "Admin":
+    # Confirm access before clearing the current dashboard screen.
+    try:
+        from main_dashboard import session
+        active_role = session.current_user.get("role") or user_functions.current_user_role
+    except Exception:
+        active_role = user_functions.current_user_role
+    if active_role != "Admin":
         user_functions.show_user_error(root, "Error", "Access denied. Unauthorized action.")
         return
 
-    # Open the user database and initialize page state variables.
-    conn, cursor = user_database.open_user_connection()
-    user_database.setup_user_database(conn, cursor)
+    # Open the user database before clearing the screen so failures keep the dashboard visible.
+    try:
+        conn, cursor = user_database.open_user_connection()
+        user_database.setup_user_database(conn, cursor)
+    except Exception as exc:
+        user_functions.show_user_error(root, "Error", f"Unable to open User Management.\n\n{exc}")
+        return
+
+    # Clear the current screen and prepare the user-management page.
+    for widget in list(root.winfo_children()):
+        try:
+            if widget.winfo_exists():
+                widget.destroy()
+        except tk.TclError:
+            pass
+
+    root.title("User Management")
+    root.configure(bg=BG)
     root.option_add("*TCombobox*Listbox.font", ("Arial", 15))
 
     selected_user_id = tk.StringVar()

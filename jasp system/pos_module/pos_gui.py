@@ -294,7 +294,7 @@ def open_pos(parent=None):
         padx=14,
         pady=5,
         **BUTTON_BORDER,
-    ).pack(side=tk.RIGHT)
+    ).pack(side=tk.LEFT, padx=(10, 0))
 
     inventory_fullscreen = tk.BooleanVar(value=False)
     other_items_fullscreen = tk.BooleanVar(value=False)
@@ -369,7 +369,7 @@ def open_pos(parent=None):
             other_fullscreen_btn.pack(side="right")
             ctx["other_fullscreen_btn"] = other_fullscreen_btn
         table_frame = tk.Frame(section, bg="white")
-        table_frame.pack(fill="x")
+        table_frame.pack(fill="x", padx=(0, 8), pady=(0, 8))
         table_frame.grid_columnconfigure(0, weight=1)
         table_frame.grid_rowconfigure(0, weight=1)
         tree = ttk.Treeview(
@@ -414,7 +414,7 @@ def open_pos(parent=None):
     global chb_inv_tree, inv_tree
     chb_inv_section, chb_inv_table_frame, chb_inv_tree = create_inventory_section(right_frame, "CHB Items", 3)
     inv_section, inv_table_frame, inv_tree = create_inventory_section(right_frame, "Other Items", 5, include_fullscreen=True)
-    inv_section.pack_configure(fill="both", expand=True)
+    inv_section.pack_configure(fill="both", expand=True, pady=(0, 14))
     inv_table_frame.pack_configure(fill="both", expand=True)
     inventory_no_results_label = tk.Label(
         inv_table_frame,
@@ -486,7 +486,7 @@ def open_pos(parent=None):
         chb_inv_section.pack_forget()
         inv_section.pack_forget()
         chb_inv_section.pack(fill="x", pady=(0, 10))
-        inv_section.pack(fill="both", expand=True, pady=(0, 10))
+        inv_section.pack(fill="both", expand=True, pady=(0, 14))
         inv_table_frame.pack_configure(fill="both", expand=True)
         inv_tree._fill_available_width = bool(inventory_fullscreen.get())
         ctx["other_fullscreen_btn"].config(text="Full Screen", bg="#0f766e", activebackground="#0f766e")
@@ -525,7 +525,7 @@ def open_pos(parent=None):
                 fullscreen_btn.config(text="Full Screen Display", bg="#0f766e", activebackground="#0f766e")
                 inventory_fullscreen.set(False)
             chb_inv_section.pack_forget()
-            inv_section.pack_configure(fill="both", expand=True, pady=(0, 10))
+            inv_section.pack_configure(fill="both", expand=True, pady=(0, 14))
             inv_table_frame.pack_configure(fill="both", expand=True)
             inv_tree._fill_available_width = True
             ctx["other_fullscreen_btn"].config(text="Exit Full Screen", bg="#334155", activebackground="#334155")
@@ -562,7 +562,9 @@ def open_pos(parent=None):
     cart_tree.bind("<Double-1>", lambda event: pos_functions.open_cart_item_modal(ctx, event))
 
     pos_functions.load_inventory(ctx)
-    root.mainloop()
+    if parent is None:
+        root.mainloop()
+    return root
 
 
 if __name__ == "__main__":

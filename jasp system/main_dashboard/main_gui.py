@@ -1,6 +1,7 @@
 import os
 import tkinter as tk
 from datetime import datetime
+from tkinter import messagebox
 
 from user_management.user_gui import open_user_management
 from chb_module import open_chb_dashboard
@@ -74,8 +75,12 @@ def open_main(root, logout_callback=None, view="dashboard"):
     root.configure(bg=BG_PAGE)
 
     # Clear any previous screen before drawing dashboard chrome.
-    for child in root.winfo_children():
-        child.destroy()
+    for child in list(root.winfo_children()):
+        try:
+            if child.winfo_exists():
+                child.destroy()
+        except tk.TclError:
+            pass
 
     # Define local dashboard colors for cards, headers, and navigation.
     dashboard_chrome_bg = "#072a4e"
@@ -161,11 +166,19 @@ def open_main(root, logout_callback=None, view="dashboard"):
             pady=12,
         )
 
+    def launch_user_management():
+        # Open User Management and restore the dashboard if the page fails to draw.
+        try:
+            open_user_management(root)
+        except Exception as exc:
+            messagebox.showerror("User Management Error", f"Unable to open User Management:\n\n{exc}")
+            open_main(root, logout_callback, "dashboard")
+
     # Add navigation buttons for each major system module.
     sidebar_btn("Point of Sale (POS)", lambda: open_pos(root)).pack(fill="x", pady=4)
     sidebar_btn("Inventory Management", lambda: open_inventory(root)).pack(fill="x", pady=4)
     sidebar_btn("CHB and Delivery Production", lambda: open_chb_dashboard(root)).pack(fill="x", pady=4)
-    sidebar_btn("User Management", lambda: open_user_management(root)).pack(fill="x", pady=4)
+    sidebar_btn("User Management", launch_user_management).pack(fill="x", pady=4)
     sidebar_btn("Reports & Analytics", lambda: open_reports(root)).pack(fill="x", pady=4)
     sidebar_btn("Help?", lambda: open_main(root, logout_callback, "help")).pack(fill="x", pady=4)
 
