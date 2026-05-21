@@ -502,6 +502,68 @@ def restock_item_record(conn, cursor, item_id, qty_added):
     return name, current_qty, new_qty
 
 
+def adjust_stock_record(conn, cursor, item_id, adjustment_type, qty, reason):
+    # Increase or decrease stock manually and log the reason.
+    ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    cursor.execute(
+        "SELECT name, quantity, COALESCE(status, 'Active') FROM items WHERE id=?",
+        (item_id,)
+    )
+    row = cursor.fetchone()
+    if not row:
+        return None
+
+    name, current_qty, status = row
+    if status != "Active":
+        return "inactive"
+
+    current_qty = float(current_qty or 0)
+    qty = float(qty or 0)
+    if qty <= 0:
+        return "invalid"
+
+    if adjustment_type == "Decrease Stock":
+        if qty > current_qty:
+            return "not_enough"
+        new_qty = current_qty - qty
+        action_status = f"{reason} - Decrease Stock"
+    else:
+        new_qty = current_qty + qty
+        action_status = f"{reason} - Increase Stock"
+
+    cursor.execute(
+        "UPDATE items SET quantity=?, date_added=? WHERE id=?",
+        (new_qty, ts, item_id)
+    )
+
+    if name == CHB_ITEM_NAME:
+        # Keep CHB inventory state aligned with manual stock corrections.
+        if adjustment_type == "Decrease Stock":
+            cursor.execute(
+                """
+                UPDATE chb_inventory_state
+                SET available = MAX(available - ?, 0),
+                    updated_ts = ?
+                WHERE id = ?
+                """,
+                (qty, ts, CHB_STATE_ID)
+            )
+        else:
+            cursor.execute(
+                """
+                UPDATE chb_inventory_state
+                SET available = available + ?,
+                    updated_ts = ?
+                WHERE id = ?
+                """,
+                (qty, ts, CHB_STATE_ID)
+            )
+
+    log_inventory_action(conn, cursor, item_id, name, qty, action_status, ts)
+    conn.commit()
+    return name, current_qty, new_qty
+
+
 def delete_item_record(conn, cursor, item_id):
     # Log and delete an inventory item record.
     cursor.execute("SELECT name, quantity FROM items WHERE id=?", (item_id,))

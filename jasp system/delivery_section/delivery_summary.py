@@ -88,6 +88,7 @@ def open_delivery_summary(parent_win, cursor, bg_main, text_color):
     period_var = tk.StringVar(value="day")
     date_sel = tk.StringVar(value=datetime.now().strftime("%Y-%m-%d"))
     summary_display_var = tk.StringVar(value="chb")
+    summary_title_var = tk.StringVar()
     pdf_download_module = "delivery_summary"
     ensure_pdf_download_table(cursor)
     cursor.connection.commit()
@@ -128,6 +129,7 @@ def open_delivery_summary(parent_win, cursor, bg_main, text_color):
             summary_tree.delete(row_id)
 
         start, end = compute_range()
+        summary_title_var.set(get_summary_title())
         empty_text = "No deliveries today" if period_var.get() == "day" else "No deliveries in this period"
 
         if summary_display_var.get() == "other":
@@ -199,7 +201,7 @@ def open_delivery_summary(parent_win, cursor, bg_main, text_color):
                     tags=(tag,)
                 )
 
-            totals_var.set(f"TOTAL: {total_blocks:,} blocks | Delivery Fee: {money(total_fee)} | Worker Salary: {money(total_salary)}")
+            totals_var.set(f"TOTAL: {total_blocks:,} blocks | Delivery Fee: {money(total_fee)} | Helper Salary: {money(total_salary)}")
         auto_adjust_summary_columns(summary_tree)
 
     def get_summary_title():
@@ -242,12 +244,12 @@ def open_delivery_summary(parent_win, cursor, bg_main, text_color):
             total_salary += parse_money(values[7])
 
         table_data = [[
-            "Transaction Date", "Delivery Date", "Worker Name", "Driver Name",
-            "Address", "Blocks", "Delivery Fee", "Worker Salary", "User"
+            "Transaction Date", "Delivery Date", "Helper", "Driver Name",
+            "Address", "Blocks", "Delivery Fee", "Helper Salary", "User"
         ]]
         table_data.extend(rows)
         table_data.append(["", "", "", "", "TOTAL", f"{total_blocks:,}", money(total_fee), money(total_salary), ""])
-        return table_data, rows, f"TOTAL: {total_blocks:,} blocks | Delivery Fee: {money(total_fee)} | Worker Salary: {money(total_salary)}", [0.8*inch, 0.75*inch, 0.85*inch, 0.85*inch, 1.0*inch, 0.75*inch, 0.55*inch, 0.7*inch, 0.75*inch]
+        return table_data, rows, f"TOTAL: {total_blocks:,} blocks | Delivery Fee: {money(total_fee)} | Helper Salary: {money(total_salary)}", [0.8*inch, 0.75*inch, 0.85*inch, 0.85*inch, 1.0*inch, 0.75*inch, 0.55*inch, 0.7*inch, 0.75*inch]
 
     def save_summary_pdf(file_path, title_text, table_data, col_widths):
         # Render the current delivery summary into a PDF file.
@@ -443,9 +445,18 @@ def open_delivery_summary(parent_win, cursor, bg_main, text_color):
 
     tk.Label(date_frame, text="Date:", bg=bg_main, font=("Arial", 16, "bold"), fg=text_color).pack(side="left", padx=(0, 6))
     tk.Entry(date_frame, textvariable=date_sel, width=15, font=("Arial", 15), relief="solid", bd=1).pack(side="left", padx=4)
-    tk.Button(date_frame, text="Calendar", command=lambda: open_date_calendar(summary_win, date_sel), bg="#3b82f6", fg="white", font=("Arial", 13, "bold"), padx=10, pady=6, **button_border).pack(side="left", padx=4)
+    tk.Button(date_frame, text="Calendar", command=lambda: open_date_calendar(summary_win, date_sel, load_summary), bg="#3b82f6", fg="white", font=("Arial", 13, "bold"), padx=10, pady=6, **button_border).pack(side="left", padx=4)
     tk.Button(date_frame, text="Apply", command=load_summary, bg="#1e3a8a", fg="white", font=("Arial", 13, "bold"), width=9, padx=8, pady=6, **button_border).pack(side="left", padx=4)
     tk.Button(top_frame, text="Close", command=summary_win.destroy, bg="#dc2626", fg="white", font=("Arial", 13, "bold"), padx=18, pady=6, **button_border).pack(side="right", padx=4)
+
+    # Show the active delivery summary date range above the action buttons.
+    tk.Label(
+        summary_win,
+        textvariable=summary_title_var,
+        bg=bg_main,
+        fg="#2563eb",
+        font=("Arial", 16, "bold")
+    ).pack(anchor="w", padx=12, pady=(0, 8))
 
     # Build the summary export and downloaded-PDF action buttons.
     action_frame = tk.Frame(summary_win, bg=bg_main)
@@ -466,12 +477,12 @@ def open_delivery_summary(parent_win, cursor, bg_main, text_color):
     chb_summary_headings = {
         "transaction": "Transaction Date",
         "delivery": "Delivery Date",
-        "worker": "Worker Name",
+        "worker": "Helper",
         "driver": "Driver Name",
         "address": "Address",
         "blocks": "Blocks",
         "fee": "Delivery Fee",
-        "salary": "Worker Salary",
+        "salary": "Helper Salary",
         "user": "User",
     }
     other_summary_headings = {
@@ -641,7 +652,10 @@ def open_delivery_summary(parent_win, cursor, bg_main, text_color):
         pdf_win.configure(bg=bg_main)
         pdf_win.transient(summary_win)
 
-        tk.Label(pdf_win, text="Downloaded PDF Files", bg=bg_main, fg="#1e40af", font=("Arial", 22, "bold")).pack(anchor="w", padx=14, pady=(14, 8))
+        pdf_header = tk.Frame(pdf_win, bg=bg_main)
+        pdf_header.pack(fill="x", padx=14, pady=(14, 8))
+        tk.Label(pdf_header, text="Downloaded PDF Files", bg=bg_main, fg="#1e40af", font=("Arial", 22, "bold")).pack(side="left")
+        tk.Button(pdf_header, text="Close", command=pdf_win.destroy, bg="#dc2626", fg="white", font=("Arial", 12, "bold"), padx=14, pady=6, **button_border).pack(side="right")
         tk.Label(
             pdf_win,
             text="Click the PDF location to open or view the downloaded PDF.",
@@ -738,7 +752,6 @@ def open_delivery_summary(parent_win, cursor, bg_main, text_color):
 
         pdf_tree.bind("<ButtonRelease-1>", on_pdf_click)
         load_pdf_records()
-        tk.Button(pdf_win, text="Close", command=pdf_win.destroy, bg="#dc2626", fg="white", font=("Arial", 12, "bold"), padx=14, pady=6, **button_border).pack(anchor="e", padx=14, pady=(0, 12))
 
     # Build the main summary table with scrollbars.
     tree_frame = tk.Frame(summary_win, bg=bg_main)

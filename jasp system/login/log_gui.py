@@ -45,6 +45,24 @@ password_entry = None
 login_btn = None
 
 
+def clear_root_widgets():
+    # Remove the current screen safely before drawing a new login or dashboard view.
+    if root is None:
+        return
+    try:
+        grabbed_widget = root.grab_current()
+        if grabbed_widget and grabbed_widget.winfo_exists():
+            grabbed_widget.grab_release()
+    except tk.TclError:
+        pass
+    for child in list(root.winfo_children()):
+        try:
+            if child.winfo_exists():
+                child.destroy()
+        except tk.TclError:
+            pass
+
+
 def open_main_in_place(user_role):
     # Route authenticated users to the correct workspace by role.
     try:
@@ -84,8 +102,7 @@ def open_cashier_dashboard():
     root.configure(bg=DASHBOARD_CONTENT_BG)
 
     # Clear the current root contents before drawing the cashier dashboard.
-    for child in root.winfo_children():
-        child.destroy()
+    clear_root_widgets()
 
     # Build the cashier dashboard header.
     header = tk.Frame(
@@ -762,6 +779,7 @@ def show_login_screen():
 
     session.clear_current_user()
 
+    root.deiconify()
     root.title("Login")
     try:
         root.state("zoomed")
@@ -770,8 +788,7 @@ def show_login_screen():
     root.configure(bg=LOGIN_PAGE_BG)
 
     # Clear current root contents before drawing the login page.
-    for child in root.winfo_children():
-        child.destroy()
+    clear_root_widgets()
 
     # Build the login header with logo and exit button.
     header = tk.Frame(root, bg=LOGIN_HEADER_BG, height=112, highlightthickness=1, highlightbackground="#041d36")
@@ -919,6 +936,7 @@ def show_login_screen():
     login_btn.bind("<Enter>", on_enter)
     login_btn.bind("<Leave>", on_leave)
     root.bind("<Return>", lambda _event: login())
+    root.update_idletasks()
 
 
 def run_app():

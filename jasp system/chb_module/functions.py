@@ -856,6 +856,8 @@ def load_data(event, tree, search_var, sort_var, cursor):
         return 0
     for row in rows:
         tag = 'evenrow' if row_index % 2 == 0 else 'oddrow'
-        tree.insert("", "end", values=row, tags=(tag,))
+        display_row = list(row)
+        display_row[6] = f"{chr(8369)}{float(display_row[6] or 0):,.2f}"
+        tree.insert("", "end", values=display_row, tags=(tag,))
         row_index += 1
     return row_index

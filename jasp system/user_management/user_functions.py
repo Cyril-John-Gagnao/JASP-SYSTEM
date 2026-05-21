@@ -179,6 +179,8 @@ def get_filtered_users(cursor, role, search_text=""):
 
 def clear_user_form(username_entry, password_entry, confirm_password_entry, role_var, contact_entry, selected_user_id):
     # Reset the user form fields and clear the selected user id.
+    password_entry.config(state="normal")
+    confirm_password_entry.config(state="normal")
     username_entry.delete(0, "end")
     password_entry.delete(0, "end")
     confirm_password_entry.delete(0, "end")
@@ -194,10 +196,14 @@ def load_user_by_id(cursor, user_id, selected_user_id, username_entry, password_
         return
 
     selected_user_id.set(user[0])
+    password_entry.config(state="normal")
+    confirm_password_entry.config(state="normal")
     username_entry.delete(0, "end")
     username_entry.insert(0, user[1])
     password_entry.delete(0, "end")
     confirm_password_entry.delete(0, "end")
+    password_entry.config(state="disabled")
+    confirm_password_entry.config(state="disabled")
     role_var.set(user[3])
     contact_entry.delete(0, "end")
     contact_entry.insert(0, user[5])
@@ -232,19 +238,17 @@ def create_user(conn, cursor, username_entry, password_entry, confirm_password_e
 
 
 def update_user(conn, cursor, selected_user_id, username_entry, password_entry, confirm_password_entry, role_var, contact_entry, refresh_callback):
-    # Validate the form and update the currently selected user.
+    # Validate the form and update selected user details without changing the password.
     parent = get_popup_parent(username_entry)
     if not selected_user_id.get():
         show_user_error(parent, "Error", "Select a user to update.")
         return
 
     username = username_entry.get().strip()
-    password = password_entry.get()
-    confirm_password = confirm_password_entry.get()
     role = role_var.get()
     contact_number = contact_entry.get().strip()
 
-    normalized_contact = validate_user_form(parent, username, password, confirm_password, role, contact_number, require_password=False)
+    normalized_contact = validate_user_form(parent, username, "", "", role, contact_number, require_password=False)
     if not normalized_contact:
         return
 
@@ -256,15 +260,12 @@ def update_user(conn, cursor, selected_user_id, username_entry, password_entry, 
     existing_user = user_database.get_user_by_id(cursor, selected_user_id.get())
     security_question = existing_user[4] if existing_user and existing_user[4] else DEFAULT_SECURITY_QUESTION
 
-    # Save account changes with or without replacing the password.
+    # Save only account information; password changes use the Change Password form.
     try:
-        if password or confirm_password:
-            user_database.update_user_record(conn, cursor, selected_user_id.get(), username, password, role, security_question, normalized_contact)
-        else:
-            user_database.update_user_record_without_password(conn, cursor, selected_user_id.get(), username, role, security_question, normalized_contact)
+        user_database.update_user_record_without_password(conn, cursor, selected_user_id.get(), username, role, security_question, normalized_contact)
         refresh_callback()
         clear_user_form(username_entry, password_entry, confirm_password_entry, role_var, contact_entry, selected_user_id)
-        show_user_success(parent, "Success", "User updated successfully!")
+        show_user_success(parent, "Success", "User information updated successfully!")
     except sqlite3.IntegrityError:
         show_user_error(parent, "Error", "Username already exists.")
 

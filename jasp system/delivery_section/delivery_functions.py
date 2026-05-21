@@ -37,6 +37,28 @@ def get_delivery_unit_options():
             conn.close()
 
 
+def get_delivery_item_options():
+    # Load active POS other-item names and units for the editable delivery dropdown.
+    conn = None
+    try:
+        conn, cursor = open_inventory_connection()
+        cursor.execute("""
+            SELECT name, COALESCE(unit, '')
+            FROM items
+            WHERE COALESCE(status, 'Active') = 'Active'
+              AND COALESCE(TRIM(name), '') <> ''
+              AND LOWER(name) NOT IN ('cement', 'fine sand', 'chb blocks')
+            GROUP BY LOWER(name)
+            ORDER BY LOWER(name) ASC
+        """)
+        return [(row[0], row[1]) for row in cursor.fetchall()]
+    except Exception:
+        return []
+    finally:
+        if conn:
+            conn.close()
+
+
 def center_window(window, width=560, height=430, parent=None):
     # Center a delivery popup over its parent window or the screen.
     window.update_idletasks()
@@ -178,8 +200,12 @@ def parse_positive_int(value, field_name, parent):
 
 def parse_positive_number(value, field_name, parent, allow_zero=False):
     # Validate that a form value is numeric and optionally allow zero.
+    normalized_value = str(value or "").strip().lower()
+    if allow_zero and normalized_value in ("free", "none", "no fee", "n/a", "na"):
+        return 0
     try:
-        parsed = float(str(value).strip())
+        normalized_value = normalized_value.replace("₱", "").replace(",", "")
+        parsed = float(normalized_value)
     except (TypeError, ValueError):
         show_delivery_error(parent, "Error", f"{field_name} must be a numeric number.")
         return None
@@ -191,6 +217,14 @@ def parse_positive_number(value, field_name, parent, allow_zero=False):
         show_delivery_error(parent, "Error", f"{field_name} must be greater than zero.")
         return None
     return parsed
+
+
+def format_delivery_money(value):
+    # Format delivery monetary values with a peso sign for table display.
+    try:
+        return f"₱{float(value or 0):,.2f}"
+    except (TypeError, ValueError):
+        return "₱0.00"
 
 
 def open_date_calendar(parent, date_var, on_select=None):
@@ -394,15 +428,127 @@ def open_other_items_form(parent_win, conn, cursor, load_data, display_option_va
     ).pack(side="left", padx=(5, 0))
     date_frame.winfo_children()[-1].config(text="Calendar", font=("Arial", 10, "bold"), padx=6)
 
+    # Build a searchable item field that filters active POS item names while allowing manual input.
+    item_name_options = get_delivery_item_options()
+    item_unit_by_name = {name: unit for name, unit in item_name_options}
+    item_name_list = [name for name, _unit in item_name_options]
+    item_name_var = tk.StringVar()
+    unit_of_measurement_var = tk.StringVar()
+    delivery_fee_var = tk.StringVar()
+    item_name_frame = tk.Frame(form, bg="#fef3c7")
+    item_name_entry = tk.Entry(
+        item_name_frame,
+        textvariable=item_name_var,
+        width=26,
+        font=("Arial", 13),
+        bd=1,
+        relief="solid",
+        bg="white"
+    )
+    item_name_entry.pack(side="left", fill="x", expand=True)
+    item_suggestion_box = tk.Listbox(
+        form,
+        height=5,
+        font=("Arial", 13),
+        bd=1,
+        relief="solid",
+        activestyle="none"
+    )
+
+    def matching_item_names():
+        # Return matching inventory names for the typed item search text.
+        typed_text = item_name_var.get().strip().lower()
+        if typed_text:
+            return [name for name in item_name_list if typed_text in name.lower()]
+        return item_name_list
+
+    def hide_item_suggestions():
+        # Hide the item search dropdown.
+        item_suggestion_box.place_forget()
+
+    def show_item_suggestions(options=None):
+        # Show matching item names under the Item Name field.
+        options = matching_item_names() if options is None else options
+        item_suggestion_box.delete(0, tk.END)
+        for option in options:
+            item_suggestion_box.insert(tk.END, option)
+        if not options:
+            hide_item_suggestions()
+            return
+        form.update_idletasks()
+        x_pos = item_name_frame.winfo_x()
+        y_pos = item_name_frame.winfo_y() + item_name_frame.winfo_height()
+        item_suggestion_box.place(x=x_pos, y=y_pos, width=item_name_frame.winfo_width(), height=min(150, 30 * len(options)))
+        item_suggestion_box.lift()
+
+    def select_item_suggestion(event=None):
+        # Copy the selected suggested item into the field and fill its unit.
+        selection = item_suggestion_box.curselection()
+        if selection:
+            selected_name = item_suggestion_box.get(selection[0])
+            item_name_var.set(selected_name)
+            unit_of_measurement_var.set(item_unit_by_name.get(selected_name, ""))
+        hide_item_suggestions()
+        item_name_entry.focus_set()
+        item_name_entry.icursor(tk.END)
+
+    def autofill_unit_for_typed_item():
+        # Fill unit when the typed item exactly matches an inventory item.
+        typed_name = item_name_var.get().strip().lower()
+        for item_name, unit in item_unit_by_name.items():
+            if item_name.lower() == typed_name:
+                unit_of_measurement_var.set(unit)
+                return
+
+    def filter_item_name_options(event=None):
+        # Update suggestions as the user types in the item name field.
+        ignored_keys = {"Left", "Right", "Return", "Escape", "Tab"}
+        if event and event.keysym in ignored_keys:
+            if event.keysym == "Escape":
+                hide_item_suggestions()
+            return
+        if event and event.keysym == "Down" and item_suggestion_box.winfo_ismapped():
+            item_suggestion_box.focus_set()
+            item_suggestion_box.selection_set(0)
+            return
+        show_item_suggestions()
+
+    def toggle_item_suggestions():
+        # Open or close the full searchable item list.
+        if item_suggestion_box.winfo_ismapped():
+            hide_item_suggestions()
+        else:
+            show_item_suggestions(item_name_list)
+            item_name_entry.focus_set()
+
+    tk.Button(
+        item_name_frame,
+        text="▼",
+        command=toggle_item_suggestions,
+        bg="#e2e8f0",
+        fg="#1e293b",
+        font=("Arial", 10, "bold"),
+        width=2,
+        bd=1,
+        relief="solid"
+    ).pack(side="left", padx=(4, 0))
+    item_name_entry.bind("<KeyRelease>", filter_item_name_options)
+    item_name_entry.bind("<FocusIn>", lambda event: show_item_suggestions(matching_item_names()) if item_name_var.get().strip() else None)
+    item_name_entry.bind("<FocusOut>", lambda event: (autofill_unit_for_typed_item(), form_win.after(150, hide_item_suggestions)))
+    item_name_entry.bind("<Return>", lambda event: (autofill_unit_for_typed_item(), hide_item_suggestions()))
+    item_suggestion_box.bind("<ButtonRelease-1>", select_item_suggestion)
+    item_suggestion_box.bind("<Return>", select_item_suggestion)
+    item_suggestion_box.bind("<Escape>", lambda event: hide_item_suggestions())
+
     # Define the remaining other-item delivery input fields.
     fields = [
-        ("Item Name", tk.Entry(form, width=28, font=("Arial", 13), bd=1, relief="solid", bg="white")),
+        ("Item Name", item_name_frame),
         ("Quantity", tk.Entry(form, width=28, font=("Arial", 13), bd=1, relief="solid", bg="white")),
-        ("Unit of Measurement", ttk.Combobox(form, values=get_delivery_unit_options(), width=26, font=("Arial", 13))),
+        ("Unit of Measurement", ttk.Combobox(form, textvariable=unit_of_measurement_var, values=get_delivery_unit_options(), width=26, font=("Arial", 13))),
         ("Delivery Address", tk.Entry(form, width=28, font=("Arial", 13), bd=1, relief="solid", bg="white")),
         ("Delivery Driver", tk.Entry(form, width=28, font=("Arial", 13), bd=1, relief="solid", bg="white")),
         ("Helper", tk.Entry(form, width=28, font=("Arial", 13), bd=1, relief="solid", bg="white")),
-        ("Delivery Fee", tk.Entry(form, width=28, font=("Arial", 13), bd=1, relief="solid", bg="white")),
+        ("Delivery Fee", ttk.Combobox(form, textvariable=delivery_fee_var, values=["Free", "0", "50", "100", "150", "200"], width=26, font=("Arial", 13))),
     ]
 
     # Render labels and inputs, then keep references by label name.
@@ -426,19 +572,19 @@ def open_other_items_form(parent_win, conn, cursor, load_data, display_option_va
         # Fill form inputs with the selected record when editing.
         transaction_date_var.set(str(record_values[1])[:10])
         delivery_date_var.set(str(record_values[2])[:10])
-        entry_by_label["Item Name"].insert(0, record_values[3])
+        item_name_var.set(record_values[3])
         entry_by_label["Quantity"].insert(0, record_values[4])
-        entry_by_label["Unit of Measurement"].insert(0, record_values[5])
+        unit_of_measurement_var.set(record_values[5])
         entry_by_label["Delivery Address"].insert(0, record_values[6])
         entry_by_label["Delivery Driver"].insert(0, record_values[7])
         entry_by_label["Helper"].insert(0, record_values[8])
-        entry_by_label["Delivery Fee"].insert(0, record_values[9])
+        delivery_fee_var.set(record_values[9])
 
     def get_other_item_form_values():
         # Read and validate all other-item delivery form values.
         transaction_date = transaction_date_var.get().strip()
         delivery_date = delivery_date_var.get().strip()
-        item_name = entry_by_label["Item Name"].get().strip()
+        item_name = item_name_var.get().strip()
         quantity_text = entry_by_label["Quantity"].get().strip()
         unit_of_measurement = entry_by_label["Unit of Measurement"].get().strip()
         delivery_address = entry_by_label["Delivery Address"].get().strip()
@@ -532,7 +678,7 @@ def open_other_items_form(parent_win, conn, cursor, load_data, display_option_va
 
     def delete_other_item_delivery():
         # Confirm and delete the selected non-CHB delivery record.
-        item_name = entry_by_label["Item Name"].get().strip() or "this item"
+        item_name = item_name_var.get().strip() or "this item"
         if not ask_delivery_confirmation(form_win, "Confirm Delete", f"Delete delivery record for {item_name}?\n\nThis action cannot be undone.", "Delete"):
             return
 
@@ -554,17 +700,17 @@ def open_other_items_form(parent_win, conn, cursor, load_data, display_option_va
 
 
 def auto_calc(event, blocks_entry, payment_var, result_label):
-    # Recalculate worker salary from delivered blocks and salary per block.
+    # Recalculate helper salary from delivered blocks and salary per block.
     try:
         blocks = int(blocks_entry.get() or 0)
         payment_per = float(payment_var.get() or 2.0)
         total = blocks * payment_per
 
-        result_label.config(text=f"Total Payment for Worker: ₱{total:,.2f}")
+        result_label.config(text=f"Total Payment for Helper: ₱{total:,.2f}")
 
     except:
         blocks_entry.delete(0, tk.END)
-        result_label.config(text="Total Payment for Worker: ₱0")
+        result_label.config(text="Total Payment for Helper: ₱0")
 
 
 def clear_form(transaction_date_var, date_var, worker_entry, driver_entry, address_entry, blocks_entry, delivery_fee_entry, payment_var, result_label, selected_id):
@@ -615,7 +761,7 @@ def save_delivery(conn, cursor, delivery_win, transaction_date_var, worker_entry
     if delivery_fee is None:
         return
 
-    payment_per = parse_positive_number(payment_text, "Worker salary", delivery_win)
+    payment_per = parse_positive_number(payment_text, "Helper salary", delivery_win)
     if payment_per is None:
         return
 
@@ -670,7 +816,7 @@ def update_delivery(conn, cursor, delivery_win, selected_id, transaction_date_va
     if delivery_fee is None:
         return
 
-    payment_per = parse_positive_number(payment_text, "Worker salary", delivery_win)
+    payment_per = parse_positive_number(payment_text, "Helper salary", delivery_win)
     if payment_per is None:
         return
 
@@ -725,7 +871,7 @@ def on_select(event, tree, selected_id, transaction_date_var, date_var, worker_e
         blocks_entry.delete(0, tk.END)
         blocks_entry.insert(0, values[6])
         delivery_fee_entry.delete(0, tk.END)
-        delivery_fee_entry.insert(0, values[7])
+        delivery_fee_entry.insert(0, str(values[7]).replace("₱", "").replace(",", ""))
         auto_calc()
 
 
@@ -750,7 +896,10 @@ def load_data(event, cursor, tree, search_var, sort_var, delivery_win):
 
         for row in rows:
             tag = 'evenrow' if row_index % 2 == 0 else 'oddrow'
-            tree.insert("", "end", values=tuple(row), tags=(tag,))
+            display_row = list(row)
+            display_row[7] = format_delivery_money(display_row[7])
+            display_row[8] = format_delivery_money(display_row[8])
+            tree.insert("", "end", values=tuple(display_row), tags=(tag,))
             row_index += 1
     except Exception as e:
         show_delivery_error(delivery_win, "Error", f"Failed to load data: {str(e)}")
@@ -776,7 +925,9 @@ def load_other_items_data(event, cursor, tree, search_var, sort_var, delivery_wi
 
         for row_index, row in enumerate(rows):
             tag = "evenrow" if row_index % 2 == 0 else "oddrow"
-            tree.insert("", "end", values=tuple(row), tags=(tag,))
+            display_row = list(row)
+            display_row[9] = format_delivery_money(display_row[9])
+            tree.insert("", "end", values=tuple(display_row), tags=(tag,))
     except Exception as e:
         show_delivery_error(delivery_win, "Error", f"Failed to load other item deliveries: {str(e)}")
 

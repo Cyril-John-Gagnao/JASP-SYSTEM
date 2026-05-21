@@ -32,7 +32,7 @@ BUTTON_BORDER = {
 }
 
 # Define the columns shown in the user list.
-USER_COLUMNS = ("ID", "Username", "Contact Number", "Role", "Update", "Delete")
+USER_COLUMNS = ("ID", "Username", "Contact Number", "Role", "Edit", "Delete")
 
 
 def open_user_management(root):
@@ -175,7 +175,7 @@ def open_user_management(root):
         "Username": 260,
         "Contact Number": 250,
         "Role": 150,
-        "Update": 120,
+        "Edit": 120,
         "Delete": 120,
     }
     for column in USER_COLUMNS:
@@ -186,7 +186,7 @@ def open_user_management(root):
     user_tree.tag_configure("evenrow", background="#e0f2fe")
 
     def clear_table_buttons():
-        # Remove overlay Update/Delete buttons before redrawing them.
+        # Remove overlay Edit/Delete buttons before redrawing them.
         for button in table_buttons:
             if button.winfo_exists():
                 button.destroy()
@@ -197,7 +197,7 @@ def open_user_management(root):
         user_tree.after_idle(render_table_buttons)
 
     def render_table_buttons():
-        # Place Update and Delete buttons over their table cells.
+        # Place Edit and Delete buttons over their table cells.
         clear_table_buttons()
         user_tree.update_idletasks()
         for item in user_tree.get_children():
@@ -205,13 +205,13 @@ def open_user_management(root):
             if not values:
                 continue
             user_id = values[0]
-            update_bbox = user_tree.bbox(item, "Update")
+            update_bbox = user_tree.bbox(item, "Edit")
             delete_bbox = user_tree.bbox(item, "Delete")
             if update_bbox:
                 x, y, width, height = update_bbox
                 button = tk.Button(
                     user_tree,
-                    text="Update",
+                    text="Save" if str(selected_user_id.get()) == str(user_id) else "Edit",
                     command=lambda item_id=user_id: table_update_user(item_id),
                     bg=PRIMARY,
                     fg="white",
@@ -268,11 +268,21 @@ def open_user_management(root):
     confirm_password_entry = tk.Entry(form, font=("Arial", 13), show="*", width=24, bd=1, relief="solid")
     confirm_password_entry.grid(row=2, column=1, sticky="ew", pady=8, padx=(12, 0), ipady=3)
 
-    tk.Label(form, text="Contact Number", bg=FORM_BG, font=("Arial", 13, "bold"), fg=TEXT).grid(row=3, column=0, sticky="w", pady=8)
-    contact_entry = tk.Entry(form, font=("Arial", 13), width=24, bd=1, relief="solid")
-    contact_entry.grid(row=3, column=1, sticky="ew", pady=8, padx=(12, 0), ipady=3)
+    tk.Label(
+        form,
+        text="Password fields are for new users only. Use Change Password for existing users.",
+        bg=FORM_BG,
+        fg="#92400e",
+        font=("Arial", 10, "bold"),
+        wraplength=280,
+        justify="left",
+    ).grid(row=3, column=0, columnspan=2, sticky="w", pady=(0, 6))
 
-    tk.Label(form, text="Role", bg=FORM_BG, font=("Arial", 13, "bold"), fg=TEXT).grid(row=4, column=0, sticky="w", pady=8)
+    tk.Label(form, text="Contact Number", bg=FORM_BG, font=("Arial", 13, "bold"), fg=TEXT).grid(row=4, column=0, sticky="w", pady=8)
+    contact_entry = tk.Entry(form, font=("Arial", 13), width=24, bd=1, relief="solid")
+    contact_entry.grid(row=4, column=1, sticky="ew", pady=8, padx=(12, 0), ipady=3)
+
+    tk.Label(form, text="Role", bg=FORM_BG, font=("Arial", 13, "bold"), fg=TEXT).grid(row=5, column=0, sticky="w", pady=8)
     role_var = tk.StringVar(value="Select Role")
     ttk.Combobox(
         form,
@@ -281,7 +291,7 @@ def open_user_management(root):
         state="readonly",
         font=("Arial", 15),
         width=18
-    ).grid(row=4, column=1, sticky="ew", pady=8, padx=(12, 0), ipady=3)
+    ).grid(row=5, column=1, sticky="ew", pady=8, padx=(12, 0), ipady=3)
     form.columnconfigure(1, weight=1)
 
     def load_user(user_id):

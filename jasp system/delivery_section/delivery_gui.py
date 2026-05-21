@@ -115,7 +115,7 @@ def open_delivery_window(parent_win, bg_main, card_bg, primary):
     sort_menu = ttk.Combobox(
         search_frame,
         textvariable=sort_var,
-        values=["Date (Latest)", "Worker Name"],
+        values=["Date (Latest)", "Helper Name"],
         state="readonly",
         width=22,
         font=("Arial", 14)
@@ -211,8 +211,8 @@ def open_delivery_window(parent_win, bg_main, card_bg, primary):
     date_entry.pack(side="left", fill="x", expand=True)
     tk.Button(date_frame, text="📅", command=lambda: delivery_functions.open_date_calendar(delivery_win, date_var), bg="#3b82f6", fg="white", font=("Arial", 11, "bold"), width=3, padx=4, pady=2, **BUTTON_BORDER).pack(side="left", padx=(5, 0))
 
-    # Worker name input for the delivery record.
-    tk.Label(form, text="Worker Name", bg="#fef3c7", font=("Arial", 13, "bold"), fg="#1e293b").grid(row=2, column=0, sticky="w", pady=5)
+    # Helper name input for the delivery record.
+    tk.Label(form, text="Helper", bg="#fef3c7", font=("Arial", 13, "bold"), fg="#1e293b").grid(row=2, column=0, sticky="w", pady=5)
     worker_entry = tk.Entry(form, width=20, font=("Arial", 13), bd=1, relief="solid", bg="white")
     worker_entry.grid(row=2, column=1, sticky="ew", padx=12, pady=5)
 
@@ -226,7 +226,7 @@ def open_delivery_window(parent_win, bg_main, card_bg, primary):
     address_entry = tk.Entry(form, width=20, font=("Arial", 13), bd=1, relief="solid", bg="white")
     address_entry.grid(row=4, column=1, sticky="ew", padx=12, pady=5)
 
-    # Blocks input used to calculate worker salary.
+    # Blocks input used to calculate helper salary.
     tk.Label(form, text="Blocks to be Delivered", bg="#fef3c7", font=("Arial", 13, "bold"), fg="#1e293b").grid(row=5, column=0, sticky="w", pady=5)
     blocks_entry = tk.Entry(form, width=20, font=("Arial", 13), bd=1, relief="solid", bg="white")
     blocks_entry.grid(row=5, column=1, sticky="ew", padx=12, pady=5)
@@ -236,16 +236,16 @@ def open_delivery_window(parent_win, bg_main, card_bg, primary):
     delivery_fee_entry = tk.Entry(form, width=20, font=("Arial", 13), bd=1, relief="solid", bg="white")
     delivery_fee_entry.grid(row=6, column=1, sticky="ew", padx=12, pady=5)
 
-    # Worker salary per block input.
-    tk.Label(form, text="Worker Salary / Block (₱)", bg="#fef3c7", font=("Arial", 13, "bold"), fg="#1e293b").grid(row=7, column=0, sticky="w", pady=5)
+    # Helper salary per block input.
+    tk.Label(form, text="Helper Salary / Block (₱)", bg="#fef3c7", font=("Arial", 13, "bold"), fg="#1e293b").grid(row=7, column=0, sticky="w", pady=5)
     payment_var = tk.DoubleVar(value=2.0)
     payment_entry = tk.Entry(form, textvariable=payment_var, width=20, font=("Arial", 13), bd=1, relief="solid", bg="white")
     payment_entry.grid(row=7, column=1, sticky="ew", padx=12, pady=5)
 
-    # Show the computed worker salary for the current form values.
+    # Show the computed helper salary for the current form values.
     result_label = tk.Label(
         form_card,
-        text="Total Salary of Worker: ₱0",
+        text="Total Salary of Helper: ₱0",
         font=("Arial", 14, "bold"),
         bg="#e0f2fe",
         fg="#0369a1",
@@ -383,6 +383,8 @@ def open_delivery_window(parent_win, bg_main, card_bg, primary):
 
     # Define user-facing column labels for both delivery table modes.
     column_headings = {col: col.title() for col in columns}
+    column_headings["worker"] = "Helper"
+    column_headings["total Salary"] = "Helper Salary"
     other_column_headings = {col: col.title() for col in other_columns}
 
     def configure_table_columns():

@@ -415,24 +415,29 @@ def load_inventory(ctx, search_query=""):
     cursor.execute(query, params)
     other_rows = cursor.fetchall()
     show_no_matching_product = bool(search_query.strip()) and not other_rows
+    inactive_match_count = 0
+    unavailable_message = "No matching product found."
+    if show_no_matching_product:
+        # Check whether the search matched inactive inventory instead of no inventory.
+        cursor.execute(
+            """
+            SELECT COUNT(*)
+            FROM items
+            WHERE COALESCE(status, 'Active') <> 'Active'
+              AND name LIKE ?
+            """,
+            ("%" + search_query + "%",)
+        )
+        inactive_match_count = int(cursor.fetchone()[0] or 0)
+        if inactive_match_count:
+            unavailable_message = "The item is currently not available or inactive."
+    if no_results_label and no_results_label.winfo_exists():
+        no_results_label.config(text=unavailable_message)
     if not chb_rows and not other_rows:
         # Show empty-state rows when no active inventory matches.
         empty_message = "No items found"
-        if search_query:
-            cursor.execute(
-                """
-                SELECT COUNT(*)
-                FROM items
-                WHERE COALESCE(status, 'Active') <> 'Active'
-                  AND name LIKE ?
-                """,
-                ("%" + search_query + "%",)
-            )
-            inactive_count = int(cursor.fetchone()[0] or 0)
-            if inactive_count == 1:
-                empty_message = "Matching item is currently unavailable"
-            elif inactive_count > 1:
-                empty_message = "Matching items are currently unavailable"
+        if inactive_match_count:
+            empty_message = unavailable_message
         if chb_inv_tree and chb_inv_tree.winfo_exists():
             chb_inv_tree.insert("", tk.END, values=("", "No CHB items found", "", "", "", ""), tags=("emptyrow",))
         inv_tree.insert("", tk.END, values=("", empty_message, "", "", "", ""), tags=("emptyrow",))
@@ -1068,8 +1073,8 @@ def generate_invoice_pdf(cart_items, total_amount, money_received, change, mode,
     pdf.set_font("Arial", "B", 14)
     pdf.cell(0, 8, "JASP Hardware", ln=True)
     pdf.set_font("Arial", "", 11)
-    pdf.cell(0, 6, "123 Business St, City", ln=True)
-    pdf.cell(0, 6, "email@example.com | +63-900-000-0000", ln=True)
+    pdf.cell(0, 6, "Malublub, Badiangan, Iloilo", ln=True)
+    pdf.cell(0, 6, "jasphardware@gmail.com | 09853475487", ln=True)
     pdf.ln(4)
     pdf.cell(0, 6, f"Date/Time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}", ln=True)
     pdf.cell(0, 6, f"Transaction ID: {display_txn_id}", ln=True)

@@ -243,8 +243,8 @@ def fetch_delivery_rows(cursor, keyword, sort_option, delivery_date=None):
     if where_clauses:
         query += " WHERE " + " AND ".join(where_clauses)
 
-    # Sort CHB deliveries by worker name or newest delivery date.
-    if sort_option == "Worker Name":
+    # Sort CHB deliveries by helper name or newest delivery date.
+    if sort_option == "Helper Name":
         query += " ORDER BY worker_name ASC"
     else:
         query += " ORDER BY DATE(COALESCE(NULLIF(delivery_date, ''), transaction_date, ts)) DESC, ts DESC"
@@ -288,7 +288,7 @@ def fetch_other_item_delivery_rows(cursor, keyword, sort_option, delivery_date=N
         query += " WHERE " + " AND ".join(where_clauses)
 
     # Sort other-item deliveries by item name or newest delivery date.
-    if sort_option == "Worker Name":
+    if sort_option == "Helper Name":
         query += " ORDER BY item_name ASC"
     else:
         query += " ORDER BY DATE(COALESCE(NULLIF(delivery_date, ''), transaction_date, delivery_datetime, ts)) DESC, ts DESC"

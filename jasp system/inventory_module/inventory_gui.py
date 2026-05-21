@@ -279,6 +279,10 @@ def open_inventory(parent=None):
         # Toggle the Other Inventory Items section into fullscreen mode.
         clear_status_labels()
         if other_items_fullscreen.get():
+            table_area.pack_forget()
+            right_frame.pack_forget()
+            right_frame.pack(side="right", fill="y", padx=(10, 0))
+            table_area.pack(side="left", fill="both", expand=True, padx=(0, 10))
             lower_section.pack_forget()
             chb_section.pack(fill="x", pady=(0, 10))
             lower_section.pack(fill="both", expand=True)
@@ -290,6 +294,9 @@ def open_inventory(parent=None):
                 fullscreen_btn.config(text="Full Screen Display", bg="#0f766e", activebackground="#0f766e")
                 display_fullscreen.set(False)
             chb_section.pack_forget()
+            table_area.pack_forget()
+            right_frame.pack_forget()
+            table_area.pack(side="left", fill="both", expand=True, padx=0)
             lower_section.pack_configure(fill="both", expand=True)
             other_fullscreen_btn.config(text="Exit Full Screen", bg="#334155", activebackground="#334155")
             other_items_fullscreen.set(True)
@@ -989,7 +996,8 @@ def open_inventory(parent=None):
     }
     tk.Button(right_frame, text="Add Item", bg="#00c853", fg="white", command=lambda: inventory_functions.add_item(conn, cursor, inventory_window, tree, refresh_view), **button_options).grid(row=0, column=0, sticky="ew", pady=12, padx=4)
     tk.Button(right_frame, text="Edit Item", bg="#2196f3", fg="white", command=lambda: inventory_functions.update_item(conn, cursor, inventory_window, selected_action_tree["tree"], refresh_view), **button_options).grid(row=1, column=0, sticky="ew", pady=12, padx=4)
-    tk.Button(right_frame, text="Delete Item", bg="#ff1744", fg="white", command=lambda: inventory_functions.delete_item(conn, cursor, inventory_window, selected_action_tree["tree"], refresh_view), **button_options).grid(row=2, column=0, sticky="ew", pady=12, padx=4)
+    tk.Button(right_frame, text="Adjust Stock", bg="#f59e0b", fg="white", command=lambda: inventory_functions.open_adjust_stock_form(conn, cursor, inventory_window, selected_action_tree["tree"].item(selected_action_tree["tree"].focus(), "values") if selected_action_tree["tree"].focus() else None, refresh_view), **button_options).grid(row=2, column=0, sticky="ew", pady=12, padx=4)
+    tk.Button(right_frame, text="Delete Item", bg="#ff1744", fg="white", command=lambda: inventory_functions.delete_item(conn, cursor, inventory_window, selected_action_tree["tree"], refresh_view), **button_options).grid(row=3, column=0, sticky="ew", pady=12, padx=4)
 
     # Close cleanly and load the initial inventory data.
     inventory_window.protocol("WM_DELETE_WINDOW", close_inventory_window)

@@ -228,8 +228,10 @@ def open_pos(parent=None):
 
     checkout_button_frame = tk.Frame(left_frame, bg=CART_PANEL_BG)
     checkout_button_frame.pack(fill="x", pady=(0, 6))
+    checkout_button_inner = tk.Frame(checkout_button_frame, bg=CART_PANEL_BG)
+    checkout_button_inner.pack(fill="x")
     clear_cart_btn = tk.Button(
-        checkout_button_frame,
+        checkout_button_inner,
         text="Clear Cart",
         bg="#dc3545",
         fg="white",
@@ -243,7 +245,7 @@ def open_pos(parent=None):
     )
     clear_cart_btn.pack(side="left", fill="x", expand=True, padx=(0, 5))
     pay_checkout_btn = tk.Button(
-        checkout_button_frame,
+        checkout_button_inner,
         text="Pay / Checkout",
         bg="#ffc107",
         fg="black",
@@ -441,6 +443,10 @@ def open_pos(parent=None):
         cart_table_frame.pack_configure(fill="x", expand=False, pady=(3, 4))
         cart_table_frame.configure(height=270)
         cart_table_frame.pack_propagate(False)
+        checkout_button_frame.pack_configure(pady=(0, 6))
+        checkout_button_inner.pack_configure(fill="x")
+        clear_cart_btn.pack_configure(fill="x", expand=True, padx=(0, 5), ipadx=0)
+        pay_checkout_btn.pack_configure(fill="x", expand=True, padx=(5, 0), ipadx=0)
         cart_tree._fill_available_width = False
         for button in (clear_cart_btn, pay_checkout_btn):
             button.config(font=("Arial", 16, "bold"), pady=12)
@@ -469,10 +475,14 @@ def open_pos(parent=None):
         # Expand the cart panel to fullscreen mode.
         left_frame.pack_forget()
         right_outer.pack_forget()
-        cart_table_frame.pack_configure(fill="both", expand=True, pady=5)
+        cart_table_frame.pack_configure(fill="both", expand=True, pady=(5, 0))
         cart_tree._fill_available_width = True
+        checkout_button_frame.pack_configure(pady=(0, 48))
+        checkout_button_inner.pack_configure(fill="none")
+        clear_cart_btn.pack_configure(fill="none", expand=False, padx=(0, 10), ipadx=80)
+        pay_checkout_btn.pack_configure(fill="none", expand=False, padx=(10, 0), ipadx=80)
         for button in (clear_cart_btn, pay_checkout_btn):
-            button.config(font=("Arial", 14, "bold"), pady=7)
+            button.config(font=("Arial", 15, "bold"), pady=8)
         cart_fullscreen_btn.config(text="Exit Full Screen", bg="#334155", activebackground="#334155")
         cart_fullscreen.set(True)
         left_frame.pack(side="left", fill="both", expand=True, padx=0)

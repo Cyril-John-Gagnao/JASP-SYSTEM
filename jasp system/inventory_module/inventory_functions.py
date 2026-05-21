@@ -22,6 +22,7 @@ from .inventory_database import (
     update_item_record,
     update_fine_sand_item_record,
     restock_item_record,
+    adjust_stock_record,
     delete_item_record,
 )
 
@@ -48,9 +49,9 @@ def is_fine_sand(item_name):
 
 
 def parse_inventory_quantity(quantity, item_name):
-    # Parse quantities as float for fine sand and integer for other items.
+    # Parse inventory quantities as decimals while keeping display text clean.
     quantity_text = str(quantity).strip().split(" ", 1)[0].replace(",", "")
-    return float(quantity_text) if is_fine_sand(item_name) else int(quantity_text)
+    return float(quantity_text)
 
 
 def fine_sand_to_cubic_meters(quantity, unit):
@@ -539,8 +540,17 @@ def open_item_form(conn, cursor, inventory_window, tree, mode, item_values=None,
         except ValueError:
             show_inventory_error(form, "Error", "Quantity must be numeric and prices must be numeric.")
             return
-        if quantity_val <= 0:
-            show_inventory_error(form, "Error", "Quantity must be greater than zero.")
+        if quantity_val < 0:
+            show_inventory_error(form, "Error", "Quantity cannot be negative.")
+            return
+        if price_val < 0:
+            show_inventory_error(form, "Error", "Selling Price cannot be negative.")
+            return
+        if raw_val < 0:
+            show_inventory_error(form, "Error", "Raw Price cannot be negative.")
+            return
+        if bag_price_val < 0:
+            show_inventory_error(form, "Error", "Bag Price cannot be negative.")
             return
 
         if mode == "edit" and item_values and item_values[1] == CHB_ITEM_NAME:
@@ -727,6 +737,109 @@ def open_restock_form(conn, cursor, inventory_window, item_values, refresh_view=
     form.bind("<Return>", lambda _event: confirm_restock())
     form.bind("<Escape>", lambda _event: form.destroy())
     center_window(form, 650, 420 if is_fine_sand(item_name) else 360, inventory_window)
+
+
+def open_adjust_stock_form(conn, cursor, inventory_window, item_values, refresh_view=None):
+    # Open a stock adjustment form for defects, damage, and manual corrections.
+    if not item_values:
+        show_inventory_error(inventory_window, "Error", "Select an item to adjust stock.")
+        return
+
+    item_id = item_values[0]
+    item_name = item_values[1]
+    unit = item_values[2]
+    current_qty = fetch_item_quantity(cursor, item_id) if is_fine_sand(item_name) else parse_inventory_quantity(item_values[3], item_name)
+    status = item_values[6] if len(item_values) > 6 and item_values[6] else "Active"
+    if status != "Active":
+        show_inventory_error(inventory_window, "Inactive Item", "Inactive items cannot be adjusted.")
+        return
+
+    form = tk.Toplevel(inventory_window)
+    form.title("Adjust Stock")
+    form.configure(bg=FORM_BG)
+    form.transient(inventory_window)
+    form.grab_set()
+    form.resizable(False, False)
+
+    form_card = tk.Frame(form, bg=FORM_BG, padx=28, pady=24)
+    form_card.pack(fill="both", expand=True)
+    tk.Label(form_card, text="Adjust Stock", font=("Arial", 24, "bold"), bg=FORM_BG, fg="#1e40af").grid(row=0, column=0, columnspan=2, sticky="w", pady=(0, 14))
+    tk.Label(form_card, text=f"Item: {item_name}", font=("Arial", 14, "bold"), bg=FORM_BG).grid(row=1, column=0, columnspan=2, sticky="w", pady=4)
+    tk.Label(form_card, text=f"Current Stock: {format_inventory_quantity(current_qty)} {unit}", font=("Arial", 14, "bold"), bg=FORM_BG, fg="#15803d").grid(row=2, column=0, columnspan=2, sticky="w", pady=(0, 14))
+
+    adjustment_var = tk.StringVar(value="Decrease Stock")
+    reason_var = tk.StringVar(value="Defective")
+    transaction_unit_var = tk.StringVar(value=FINE_SAND_BASE_UNIT)
+
+    tk.Label(form_card, text="Action", font=("Arial", 14, "bold"), bg=FORM_BG).grid(row=3, column=0, sticky="w", pady=8)
+    ttk.Combobox(form_card, textvariable=adjustment_var, values=["Decrease Stock", "Increase Stock"], state="readonly", width=24, font=("Arial", 14)).grid(row=3, column=1, sticky="ew", padx=(12, 0), pady=8)
+    tk.Label(form_card, text="Quantity", font=("Arial", 14, "bold"), bg=FORM_BG).grid(row=4, column=0, sticky="w", pady=8)
+    qty_entry = tk.Entry(form_card, width=26, font=("Arial", 15), bd=1, relief="solid")
+    qty_entry.grid(row=4, column=1, sticky="ew", padx=(12, 0), pady=8, ipady=3)
+
+    if is_fine_sand(item_name):
+        tk.Label(form_card, text="Quantity Unit", font=("Arial", 14, "bold"), bg=FORM_BG).grid(row=5, column=0, sticky="w", pady=8)
+        ttk.Combobox(form_card, textvariable=transaction_unit_var, values=FINE_SAND_TRANSACTION_UNITS, state="readonly", width=24, font=("Arial", 14)).grid(row=5, column=1, sticky="ew", padx=(12, 0), pady=8)
+        reason_row = 6
+        button_row = 7
+    else:
+        reason_row = 5
+        button_row = 6
+
+    tk.Label(form_card, text="Reason", font=("Arial", 14, "bold"), bg=FORM_BG).grid(row=reason_row, column=0, sticky="w", pady=8)
+    ttk.Combobox(
+        form_card,
+        textvariable=reason_var,
+        values=["Defective", "Damaged", "Lost", "Manual Correction", "Returned to Supplier"],
+        width=24,
+        font=("Arial", 14),
+    ).grid(row=reason_row, column=1, sticky="ew", padx=(12, 0), pady=8)
+
+    def confirm_adjustment():
+        # Validate and apply the manual stock adjustment.
+        try:
+            qty = parse_inventory_quantity(qty_entry.get(), item_name)
+        except ValueError:
+            show_inventory_error(form, "Error", "Quantity must be numeric.")
+            return
+        if qty <= 0:
+            show_inventory_error(form, "Error", "Quantity must be greater than zero.")
+            return
+        reason = reason_var.get().strip()
+        if not reason:
+            show_inventory_error(form, "Error", "Reason is required.")
+            return
+        if is_fine_sand(item_name):
+            qty = fine_sand_to_cubic_meters(qty, transaction_unit_var.get())
+
+        result = adjust_stock_record(conn, cursor, item_id, adjustment_var.get(), qty, reason)
+        if result == "inactive":
+            show_inventory_error(form, "Inactive Item", "Inactive items cannot be adjusted.")
+            return
+        if result == "not_enough":
+            show_inventory_error(form, "Error", "Adjustment quantity is greater than current stock.")
+            return
+        if result in (None, "invalid"):
+            show_inventory_error(form, "Error", "Unable to adjust this item.")
+            return
+
+        form.destroy()
+        show_inventory_success(inventory_window, "Success", f"{item_name} stock adjusted successfully!")
+        inventory_window.lift()
+        inventory_window.focus_force()
+        if callable(refresh_view):
+            refresh_view()
+
+    button_frame = tk.Frame(form_card, bg=FORM_BG)
+    button_frame.grid(row=button_row, column=0, columnspan=2, pady=(24, 0))
+    tk.Button(button_frame, text="Save Adjustment", width=17, bg=SAVE_GREEN, fg="white", font=("Arial", 14, "bold"), bd=2, relief="solid", command=confirm_adjustment, padx=8, pady=8).grid(row=0, column=0, padx=8)
+    tk.Button(button_frame, text="Cancel", width=12, bg=CANCEL_RED, fg="white", font=("Arial", 14, "bold"), bd=2, relief="solid", command=form.destroy, padx=8, pady=8).grid(row=0, column=1, padx=8)
+
+    form_card.columnconfigure(1, weight=1)
+    qty_entry.focus_set()
+    form.bind("<Return>", lambda _event: confirm_adjustment())
+    form.bind("<Escape>", lambda _event: form.destroy())
+    center_window(form, 620, 460 if is_fine_sand(item_name) else 410, inventory_window)
 
 
 def delete_item(conn, cursor, inventory_window, tree, refresh_view=None):

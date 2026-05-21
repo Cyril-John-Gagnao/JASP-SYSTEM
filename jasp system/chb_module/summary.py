@@ -295,6 +295,7 @@ def open_period_summary(win, cursor, BG_MAIN, TEXT):
 
         start, end = compute_range()
         configure_summary_columns()
+        summary_title_var.set(get_summary_title())
         summary_type = summary_type_var.get()
         rows = fetch_chb_adjustment_summary(cursor, start, end) if summary_type == "adjustment" else fetch_production_summary(cursor, start, end)
         total_blocks = 0
@@ -329,7 +330,7 @@ def open_period_summary(win, cursor, BG_MAIN, TEXT):
             totals_var.set(f"TOTAL ADDED: {total_added:,} | TOTAL SUBTRACTED: {total_subtracted:,} | NET: {net_adjustment:,}")
         else:
             # Display production totals as total blocks and total pay.
-            totals_var.set(f"TOTAL: {total_blocks:,} blocks | {chr(8369)}{total_pay:,.2f}")
+            totals_var.set(f"TOTAL BLOCKS: {total_blocks:,} | TOTAL WORKER PAY: {chr(8369)}{total_pay:,.2f}")
     def get_summary_title():
         # Build a PDF/window title from the selected period and summary type.
         p = period_var.get()
@@ -492,7 +493,7 @@ def open_period_summary(win, cursor, BG_MAIN, TEXT):
                 total_text = f"TOTAL ADDED: {first_total:,} | TOTAL SUBTRACTED: {second_total:,} | NET: {net_total:,}"
             else:
                 # Display production totals below the preview table.
-                total_text = f"TOTAL: {first_total:,} blocks | {chr(8369)}{second_total:,.2f}"
+                total_text = f"TOTAL BLOCKS: {first_total:,} | TOTAL WORKER PAY: {chr(8369)}{second_total:,.2f}"
             tk.Label(
                 preview_win,
                 text=total_text,
@@ -576,6 +577,7 @@ def open_period_summary(win, cursor, BG_MAIN, TEXT):
     # Store selected period, summary type, and PDF history module key.
     period_var = tk.StringVar(value='day')
     summary_type_var = tk.StringVar(value='production')
+    summary_title_var = tk.StringVar()
     pdf_download_module = 'chb_summary'
 
     # Build the date selector and close button row.
@@ -594,6 +596,15 @@ def open_period_summary(win, cursor, BG_MAIN, TEXT):
     tk.Button(date_frame, text='Calendar', command=lambda: open_date_calendar(summary_win, date_sel, load_summary), bg='#3b82f6', fg='white', font=('Arial', 13, 'bold'), padx=10, pady=5, **SUMMARY_BUTTON_BORDER).pack(side='left', padx=4)
     tk.Button(date_frame, text='Apply', command=load_summary, bg='#2563eb', fg='white', font=('Arial', 13, 'bold'), padx=12, pady=5, **SUMMARY_BUTTON_BORDER).pack(side='left', padx=4)
     tk.Button(top_frame, text='Close', command=summary_win.destroy, bg='#dc2626', fg='white', font=('Arial', 13, 'bold'), padx=18, pady=5, **SUMMARY_BUTTON_BORDER).pack(side='right', padx=4)
+
+    # Show the active CHB summary date range above the action buttons.
+    tk.Label(
+        summary_win,
+        textvariable=summary_title_var,
+        bg=BG_MAIN,
+        fg='#2563eb',
+        font=('Arial', 16, 'bold')
+    ).pack(anchor='w', padx=12, pady=(0, 8))
 
     # Build the summary export and downloaded-PDF action buttons.
     btn_frame = tk.Frame(summary_win, bg=BG_MAIN)
@@ -667,7 +678,10 @@ def open_period_summary(win, cursor, BG_MAIN, TEXT):
         pdf_win.configure(bg=BG_MAIN)
         pdf_win.transient(summary_win)
 
-        tk.Label(pdf_win, text='Downloaded PDF Files', bg=BG_MAIN, fg='#1e40af', font=('Arial', 22, 'bold')).pack(anchor='w', padx=14, pady=(14, 8))
+        pdf_header = tk.Frame(pdf_win, bg=BG_MAIN)
+        pdf_header.pack(fill='x', padx=14, pady=(14, 8))
+        tk.Label(pdf_header, text='Downloaded PDF Files', bg=BG_MAIN, fg='#1e40af', font=('Arial', 22, 'bold')).pack(side='left')
+        tk.Button(pdf_header, text='Close', command=pdf_win.destroy, bg='#dc2626', fg='white', font=('Arial', 12, 'bold'), padx=14, pady=6, **SUMMARY_BUTTON_BORDER).pack(side='right')
         tk.Label(
             pdf_win,
             text='Click the PDF location to open or view the downloaded PDF.',
@@ -764,7 +778,6 @@ def open_period_summary(win, cursor, BG_MAIN, TEXT):
 
         pdf_tree.bind('<ButtonRelease-1>', on_pdf_click)
         load_pdf_records()
-        tk.Button(pdf_win, text='Close', command=pdf_win.destroy, bg='#dc2626', fg='white', font=('Arial', 12, 'bold'), padx=14, pady=6, **SUMMARY_BUTTON_BORDER).pack(anchor='e', padx=14, pady=(0, 12))
 
     # Show summary totals below the table.
     totals_var = tk.StringVar(value='')

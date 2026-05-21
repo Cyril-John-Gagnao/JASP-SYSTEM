@@ -2,6 +2,7 @@ import calendar
 import os
 import sqlite3
 import tkinter as tk
+from tkinter import font as tkfont
 from tkinter import ttk, messagebox, filedialog
 from datetime import datetime, timedelta
 
@@ -292,6 +293,7 @@ def open_inventory_summary(parent, anchor_parent=None):
     # Store selected period, date, and PDF history module key.
     period_var = tk.StringVar(value="Day")
     date_var = tk.StringVar(value=datetime.now().strftime("%Y-%m-%d"))
+    summary_title_var = tk.StringVar()
     pdf_download_module = "inventory_summary"
 
     def compute_range():
@@ -339,15 +341,18 @@ def open_inventory_summary(parent, anchor_parent=None):
             summary_tree.delete(row)
 
         start, end = compute_range()
+        summary_title_var.set(title_text())
         rows = fetch_summary_rows(cursor, start, end)
         if not rows:
             # Show a friendly empty row when there is no inventory activity.
             summary_tree.insert("", "end", values=(NO_INVENTORY_ACTIVITY_TEXT, "", "", "", "", ""), tags=("blue_row",))
+            auto_adjust_summary_columns()
             return
 
         for index, (item_name, unit, qty, ts, status, responsible_user) in enumerate(rows):
             tag = "blue_row" if index % 2 == 0 else "white_row"
             summary_tree.insert("", "end", values=(item_name, unit, qty, ts, status, responsible_user), tags=(tag,))
+        auto_adjust_summary_columns()
 
     def export_pdf(file_path, rows, title):
         # Render the current inventory summary into a PDF file.
@@ -486,6 +491,15 @@ def open_inventory_summary(parent, anchor_parent=None):
     tk.Button(top_frame, text="Apply", bg="#1e3a8a", command=load_summary, **filter_button_options).pack(side="left", padx=4)
     tk.Button(top_frame, text="Close", bg="#dc2626", command=lambda: on_close(), **filter_button_options).pack(side="right", padx=4)
 
+    # Show the active summary date range above the PDF action buttons.
+    tk.Label(
+        summary_win,
+        textvariable=summary_title_var,
+        bg=DASHBOARD_CONTENT_BG,
+        fg="#2563eb",
+        font=("Arial", 16, "bold"),
+    ).pack(anchor="w", padx=16, pady=(0, 8))
+
     # Build PDF action buttons.
     pdf_button_frame = tk.Frame(summary_win, bg=DASHBOARD_CONTENT_BG)
     pdf_button_frame.pack(fill="x", padx=16, pady=(0, 8))
@@ -514,6 +528,36 @@ def open_inventory_summary(parent, anchor_parent=None):
     summary_tree.tag_configure("blue_row", background="#93c5fd", foreground="#000000")
     summary_tree.tag_configure("white_row", background="#ffffff", foreground="#000000")
 
+    def auto_adjust_summary_columns():
+        # Resize summary columns based on visible heading and row text lengths.
+        body_font = tkfont.Font(font=("Arial", 13))
+        heading_font = tkfont.Font(font=("Arial", 13, "bold"))
+        max_widths = {
+            "Item Name": 360,
+            "Unit": 220,
+            "Quantity Added": 190,
+            "Date Added": 240,
+            "Status": 360,
+            "User": 240,
+        }
+        min_widths = {
+            "Item Name": 180,
+            "Unit": 100,
+            "Quantity Added": 130,
+            "Date Added": 170,
+            "Status": 110,
+            "User": 120,
+        }
+        column_ids = list(summary_tree["columns"])
+        for col in column_ids:
+            col_index = column_ids.index(col)
+            width = max(min_widths[col], heading_font.measure(col) + 36)
+            for item_id in summary_tree.get_children():
+                values = summary_tree.item(item_id, "values")
+                if col_index < len(values):
+                    width = max(width, body_font.measure(str(values[col_index])) + 42)
+            summary_tree.column(col, width=min(width, max_widths[col]), minwidth=min_widths[col], anchor="center", stretch=False)
+
     def open_pdf_location(path):
         # Open a saved PDF path when it still exists on disk.
         if not path or path == "Not downloaded":
@@ -534,7 +578,10 @@ def open_inventory_summary(parent, anchor_parent=None):
         pdf_win.configure(bg=DASHBOARD_CONTENT_BG)
         pdf_win.transient(summary_win)
 
-        tk.Label(pdf_win, text="Downloaded PDF Files", bg=DASHBOARD_CONTENT_BG, fg="#1e40af", font=("Arial", 22, "bold")).pack(anchor="w", padx=14, pady=(14, 8))
+        header_frame = tk.Frame(pdf_win, bg=DASHBOARD_CONTENT_BG)
+        header_frame.pack(fill="x", padx=14, pady=(14, 8))
+        tk.Label(header_frame, text="Downloaded PDF Files", bg=DASHBOARD_CONTENT_BG, fg="#1e40af", font=("Arial", 22, "bold")).pack(side="left")
+        tk.Button(header_frame, text="Close", bg="#dc2626", fg="white", font=("Arial", 12, "bold"), bd=2, relief="solid", command=pdf_win.destroy, padx=14, pady=6).pack(side="right")
         tk.Label(
             pdf_win,
             text="Click the PDF location to open or view the downloaded PDF.",
@@ -631,7 +678,6 @@ def open_inventory_summary(parent, anchor_parent=None):
 
         pdf_tree.bind("<ButtonRelease-1>", on_pdf_click)
         load_pdf_records()
-        tk.Button(pdf_win, text="Close", bg="#dc2626", fg="white", font=("Arial", 12, "bold"), bd=2, relief="solid", command=pdf_win.destroy, padx=14, pady=6).pack(anchor="e", padx=14, pady=(0, 12))
         center_window(pdf_win, 980, 540, summary_win)
 
     # Load initial data and center the summary window.

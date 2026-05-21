@@ -146,6 +146,8 @@ def open_chb_dashboard(parent=None):
     # Add shortcuts for CHB summaries and the delivery section.
     tk.Button(search_frame, text='Summary', command=lambda: chb_functions.open_period_summary(win, cursor, BG_MAIN, TEXT), bg='#8b5cf6', fg='white', font=('Arial', 13, 'bold'), padx=12, pady=6, **BUTTON_BORDER).pack(side='left', padx=10)
     tk.Button(search_frame, text='Open Delivery Section', command=lambda: open_delivery_window(win, BG_MAIN, CARD_BG, PRIMARY), bg='#f59e0b', fg='white', font=('Arial', 13, 'bold'), padx=12, pady=6, **BUTTON_BORDER, cursor='hand2').pack(side='left', padx=(0, 10), pady=10)
+    fullscreen_btn = tk.Button(search_frame, text='Full Screen Display', command=lambda: toggle_display_fullscreen(), bg='#0f766e', fg='white', font=('Arial', 13, 'bold'), padx=12, pady=6, **BUTTON_BORDER)
+    fullscreen_btn.pack(side="left", padx=(0, 10), pady=10)
 
     # ================= TOTAL HOLLOW BLOCKS DISPLAY =================
     # Show current CHB availability and stock adjustment/fullscreen actions.
@@ -174,9 +176,6 @@ def open_chb_dashboard(parent=None):
         pady=6,
         **BUTTON_BORDER
     ).pack(side="left", padx=(18, 0))
-
-    fullscreen_btn = tk.Button(total_frame, text='Full Screen Display', command=lambda: toggle_display_fullscreen(), bg='#0f766e', fg='white', font=('Arial', 13, 'bold'), padx=12, pady=6, **BUTTON_BORDER)
-    fullscreen_btn.pack(side="right", padx=(10, 0))
 
     # ================= MAIN CONTAINER (51-49 Split) =================
     # Create the main split area for the production table and input form.
