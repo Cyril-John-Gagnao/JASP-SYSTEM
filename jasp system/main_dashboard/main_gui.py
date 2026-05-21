@@ -109,22 +109,19 @@ def open_main(root, logout_callback=None, view="dashboard"):
     sidebar.pack(side="left", fill="y")
     sidebar.pack_propagate(False)
 
-    # Load the sidebar logo with Pillow when available and Tk fallback otherwise.
+    # Load the transparent sidebar logo with Pillow when available and Tk fallback otherwise.
     logo_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "images", "logo1.png"))
     try:
-        from PIL import Image, ImageDraw, ImageTk
+        from PIL import Image, ImageTk
 
         logo_size = 140
         logo_source = Image.open(logo_path).convert("RGBA")
         logo_source.thumbnail((logo_size, logo_size), Image.LANCZOS)
-        rounded_logo = Image.new("RGBA", (logo_size, logo_size), (0, 0, 0, 0))
+        logo = Image.new("RGBA", (logo_size, logo_size), (0, 0, 0, 0))
         x_pos = (logo_size - logo_source.width) // 2
         y_pos = (logo_size - logo_source.height) // 2
-        rounded_logo.paste(logo_source, (x_pos, y_pos), logo_source)
-        mask = Image.new("L", (logo_size, logo_size), 0)
-        ImageDraw.Draw(mask).ellipse((0, 0, logo_size - 1, logo_size - 1), fill=255)
-        rounded_logo.putalpha(mask)
-        logo_image = ImageTk.PhotoImage(rounded_logo)
+        logo.paste(logo_source, (x_pos, y_pos), logo_source)
+        logo_image = ImageTk.PhotoImage(logo)
     except (ImportError, tk.TclError, OSError, AttributeError):
         try:
             logo_image = tk.PhotoImage(file=logo_path)

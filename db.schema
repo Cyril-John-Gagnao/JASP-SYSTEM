@@ -1,0 +1,142 @@
+-- JASP System SQLite database schema
+-- Database file used by the app: jasp system/data/jasp.db
+
+PRAGMA foreign_keys = ON;
+
+CREATE TABLE IF NOT EXISTS users (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    username TEXT UNIQUE NOT NULL,
+    password TEXT NOT NULL,
+    role TEXT NOT NULL,
+    security_question TEXT,
+    security_answer TEXT,
+    contact_number TEXT DEFAULT ''
+);
+
+CREATE TABLE IF NOT EXISTS items (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    quantity INTEGER NOT NULL,
+    price REAL NOT NULL,
+    raw_price REAL DEFAULT 0,
+    image TEXT,
+    unit TEXT DEFAULT '',
+    status TEXT DEFAULT 'Active',
+    date_added TEXT DEFAULT '',
+    fine_sand_bag_price REAL DEFAULT 0
+);
+
+CREATE TABLE IF NOT EXISTS inventory_unit_options (
+    unit TEXT PRIMARY KEY,
+    is_custom INTEGER DEFAULT 0,
+    is_deleted INTEGER DEFAULT 0,
+    ts TEXT
+);
+
+CREATE TABLE IF NOT EXISTS inventory_logs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    item_id INTEGER,
+    item_name TEXT NOT NULL,
+    qty INTEGER NOT NULL DEFAULT 0,
+    action_status TEXT NOT NULL,
+    ts TEXT NOT NULL,
+    responsible_user TEXT DEFAULT ''
+);
+
+CREATE TABLE IF NOT EXISTS restocks (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    item_name TEXT NOT NULL,
+    qty INTEGER NOT NULL,
+    price REAL NOT NULL,
+    raw_price REAL DEFAULT 0,
+    total_cost REAL NOT NULL,
+    ts TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS sales (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    item_name TEXT NOT NULL,
+    qty INTEGER NOT NULL,
+    price REAL NOT NULL,
+    raw_price REAL DEFAULT 0,
+    total REAL NOT NULL,
+    ts TEXT NOT NULL,
+    transaction_id TEXT DEFAULT '',
+    cashier TEXT DEFAULT '',
+    payment_status TEXT DEFAULT 'Paid',
+    payment_method TEXT DEFAULT 'Cash',
+    receipt_path TEXT DEFAULT '',
+    payment_received REAL DEFAULT 0,
+    change_amount REAL DEFAULT 0
+);
+
+CREATE TABLE IF NOT EXISTS chb_production (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    production_date TEXT,
+    worker_name TEXT,
+    cement_bags INTEGER,
+    fine_sand REAL,
+    total_blocks INTEGER,
+    pay REAL,
+    pay_rate REAL DEFAULT 200,
+    material_inventory_applied INTEGER DEFAULT 0,
+    responsible_user TEXT DEFAULT '',
+    ts TEXT
+);
+
+CREATE TABLE IF NOT EXISTS chb_inventory_state (
+    id INTEGER PRIMARY KEY CHECK (id = 1),
+    total_produced INTEGER NOT NULL DEFAULT 0,
+    total_sold INTEGER NOT NULL DEFAULT 0,
+    available INTEGER NOT NULL DEFAULT 0,
+    updated_ts TEXT
+);
+
+CREATE TABLE IF NOT EXISTS chb_adjustments (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    adjustment_date TEXT NOT NULL,
+    adjustment_type TEXT NOT NULL,
+    quantity INTEGER NOT NULL,
+    reason TEXT NOT NULL,
+    responsible_user TEXT DEFAULT '',
+    ts TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS chb_delivery (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    transaction_date TEXT,
+    delivery_date TEXT,
+    worker_name TEXT,
+    driver_name TEXT,
+    address TEXT,
+    delivery_address TEXT,
+    blocks_delivered INTEGER,
+    delivery_fee REAL DEFAULT 0,
+    payment_per_block REAL DEFAULT 2.0,
+    total_payment REAL,
+    responsible_user TEXT DEFAULT '',
+    ts TEXT
+);
+
+CREATE TABLE IF NOT EXISTS other_items_delivery (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    transaction_date TEXT,
+    delivery_date TEXT,
+    item_name TEXT,
+    quantity INTEGER,
+    unit_of_measurement TEXT,
+    delivery_address TEXT,
+    delivery_driver TEXT,
+    helper TEXT,
+    delivery_fee REAL DEFAULT 0,
+    delivery_datetime TEXT,
+    responsible_user TEXT DEFAULT '',
+    ts TEXT
+);
+
+CREATE TABLE IF NOT EXISTS pdf_downloads (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    module TEXT NOT NULL,
+    downloaded_at TEXT NOT NULL,
+    location TEXT NOT NULL
+);

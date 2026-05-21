@@ -16,18 +16,15 @@ def logo_path():
 def load_logo_image(size=48):
     path = logo_path()
     try:
-        from PIL import Image, ImageDraw, ImageTk
+        from PIL import Image, ImageTk
 
         logo_source = Image.open(path).convert("RGBA")
         logo_source.thumbnail((size, size), Image.LANCZOS)
-        rounded_logo = Image.new("RGBA", (size, size), (0, 0, 0, 0))
+        logo = Image.new("RGBA", (size, size), (0, 0, 0, 0))
         x_pos = (size - logo_source.width) // 2
         y_pos = (size - logo_source.height) // 2
-        rounded_logo.paste(logo_source, (x_pos, y_pos), logo_source)
-        mask = Image.new("L", (size, size), 0)
-        ImageDraw.Draw(mask).ellipse((0, 0, size - 1, size - 1), fill=255)
-        rounded_logo.putalpha(mask)
-        return ImageTk.PhotoImage(rounded_logo)
+        logo.paste(logo_source, (x_pos, y_pos), logo_source)
+        return ImageTk.PhotoImage(logo)
     except (ImportError, tk.TclError, OSError, AttributeError):
         try:
             image = tk.PhotoImage(file=path)

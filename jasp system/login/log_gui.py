@@ -734,21 +734,18 @@ def on_leave(e):
 
 
 def load_login_logo(size=82):
-    # Load and round the login logo image when available.
+    # Load the transparent login logo image when available.
     logo_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "images", "logo1.png"))
     try:
-        from PIL import Image, ImageDraw, ImageTk
+        from PIL import Image, ImageTk
 
         source = Image.open(logo_path).convert("RGBA")
         source.thumbnail((size, size), Image.LANCZOS)
-        rounded_logo = Image.new("RGBA", (size, size), (0, 0, 0, 0))
+        logo = Image.new("RGBA", (size, size), (0, 0, 0, 0))
         x_pos = (size - source.width) // 2
         y_pos = (size - source.height) // 2
-        rounded_logo.paste(source, (x_pos, y_pos), source)
-        mask = Image.new("L", (size, size), 0)
-        ImageDraw.Draw(mask).ellipse((0, 0, size - 1, size - 1), fill=255)
-        rounded_logo.putalpha(mask)
-        return ImageTk.PhotoImage(rounded_logo)
+        logo.paste(source, (x_pos, y_pos), source)
+        return ImageTk.PhotoImage(logo)
     except (ImportError, OSError, AttributeError, tk.TclError):
         # Fall back to Tk PhotoImage if Pillow is unavailable.
         try:
