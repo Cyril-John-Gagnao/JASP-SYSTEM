@@ -4,7 +4,7 @@ import sqlite3
 from datetime import datetime, timedelta
 from tkinter import filedialog
 
-from .reports_constants import NO_DATA_PERIOD_MESSAGE
+from .reports_constants import NO_DATA_PERIOD_MESSAGE, WORKER_PAYOUT_CATEGORY_NAMES
 from .reports_database import DB_NAME
 from chb_module.chb_database import FINE_SAND_BAGS_PER_CUBIC_METER
 from inventory_module.inventory_functions import is_low_stock_item
@@ -27,6 +27,170 @@ PDF_LOGO_CONTAINER_BG = "#676767"
 PDF_TABLE_HEADER_BG = "#2D2D2D"
 PDF_BORDER = "#333333"
 PDF_ROW_ALT = "#f2f2f2"
+DELIVERY_TABLES_MISSING_MESSAGE = "No delivery records are available in the current database."
+
+
+def _table_exists(cursor, table_name):
+    cursor.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name=? LIMIT 1",
+        (table_name,),
+    )
+    return cursor.fetchone() is not None
+
+
+def _table_columns(cursor, table_name):
+    if not _table_exists(cursor, table_name):
+        return set()
+    cursor.execute(f"PRAGMA table_info({_quote_identifier(table_name)})")
+    return {col[1] for col in cursor.fetchall()}
+
+
+def _quote_identifier(name):
+    return '"' + str(name).replace('"', '""') + '"'
+
+
+def _text_expr(columns, candidates, default="''"):
+    parts = [f"NULLIF({_quote_identifier(col)}, '')" for col in candidates if col in columns]
+    if not parts:
+        return default
+    return f"COALESCE({', '.join(parts)}, {default})"
+
+
+def _number_expr(columns, candidates, default="0"):
+    parts = [_quote_identifier(col) for col in candidates if col in columns]
+    if not parts:
+        return default
+    return f"COALESCE({', '.join(parts)}, {default})"
+
+
+def _date_value_expr(columns, candidates):
+    return _text_expr(columns, candidates, default="NULL")
+
+
+def _ensure_expenses_table(cursor):
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS expenses (
+            expense_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            expense_date TEXT NOT NULL,
+            category TEXT,
+            description TEXT,
+            amount REAL NOT NULL DEFAULT 0,
+            source_type TEXT,
+            source_id INTEGER,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+    cols = _table_columns(cursor, "expenses")
+    migrations = {
+        "expense_date": "ALTER TABLE expenses ADD COLUMN expense_date TEXT",
+        "category": "ALTER TABLE expenses ADD COLUMN category TEXT",
+        "description": "ALTER TABLE expenses ADD COLUMN description TEXT",
+        "amount": "ALTER TABLE expenses ADD COLUMN amount REAL NOT NULL DEFAULT 0",
+        "source_type": "ALTER TABLE expenses ADD COLUMN source_type TEXT",
+        "source_id": "ALTER TABLE expenses ADD COLUMN source_id INTEGER",
+        "created_at": "ALTER TABLE expenses ADD COLUMN created_at TEXT DEFAULT CURRENT_TIMESTAMP",
+    }
+    for col_name, migration_sql in migrations.items():
+        if col_name not in cols:
+            cursor.execute(migration_sql)
+    cursor.execute("""
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_expenses_source_unique
+        ON expenses(source_type, source_id, category)
+        WHERE source_type IS NOT NULL
+          AND source_id IS NOT NULL
+          AND category IS NOT NULL
+    """)
+
+
+def _sync_expense_row(cursor, expense_date, category, description, amount, source_type, source_id):
+    if not expense_date or source_id is None:
+        return
+    cursor.execute("""
+        SELECT rowid
+        FROM expenses
+        WHERE source_type = ?
+          AND source_id = ?
+          AND category = ?
+        LIMIT 1
+    """, (source_type, source_id, category))
+    existing = cursor.fetchone()
+    params = (
+        str(expense_date)[:10],
+        category,
+        description,
+        float(amount or 0),
+        source_type,
+        int(source_id),
+    )
+    if existing:
+        cursor.execute("""
+            UPDATE expenses
+            SET expense_date = ?,
+                category = ?,
+                description = ?,
+                amount = ?,
+                source_type = ?,
+                source_id = ?
+            WHERE rowid = ?
+        """, (*params, existing[0]))
+    else:
+        cursor.execute("""
+            INSERT INTO expenses (expense_date, category, description, amount, source_type, source_id)
+            VALUES (?, ?, ?, ?, ?, ?)
+        """, params)
+
+
+def _sync_chb_material_expenses(cursor):
+    """Mirror computed CHB material usage into expenses without duplicates."""
+    _ensure_expenses_table(cursor)
+    date_expr, date_select, date_order, chb_cols = _resolve_chb_date_fields(cursor)
+    if not date_expr:
+        return []
+
+    if "cement_bags" in chb_cols:
+        cement_col = "cement_bags"
+    elif "cement_consumed" in chb_cols:
+        cement_col = "cement_consumed"
+    else:
+        cement_col = None
+    if not cement_col:
+        return []
+
+    fine_sand_expr = "COALESCE(fine_sand, 0)" if "fine_sand" in chb_cols else "0"
+    material_cost_basis = _fetch_material_cost_basis(cursor)
+    cursor.execute(f"""
+        SELECT id,
+               {date_select},
+               COALESCE({cement_col}, 0) AS cement_bags,
+               {fine_sand_expr} AS fine_sand_bags
+        FROM chb_production
+        WHERE (COALESCE({cement_col}, 0) > 0 OR {fine_sand_expr} > 0)
+        ORDER BY {date_order} ASC, id ASC
+    """)
+    synced_records = []
+    for production_id, production_date, cement_bags, fine_sand_bags in cursor.fetchall():
+        cement_qty = _safe_float(cement_bags)
+        fine_sand_qty = _safe_float(fine_sand_bags)
+        cement_cost = cement_qty * material_cost_basis["cement_unit_cost"]
+        fine_sand_cost = fine_sand_qty * material_cost_basis["fine_sand_bag_cost"]
+        amount = cement_cost + fine_sand_cost
+        remarks = (
+            f"Cement {_format_report_quantity(cement_qty)} bag/s; "
+            f"Fine Sand {_format_report_quantity(fine_sand_qty)} bag/s"
+        )
+        if amount <= 0:
+            remarks += "; material costs not configured"
+        _sync_expense_row(
+            cursor,
+            production_date,
+            "Material Expense",
+            f"CHB Material Expense - {remarks}",
+            amount,
+            "chb_material",
+            production_id,
+        )
+        synced_records.append((production_id, production_date, cement_qty, fine_sand_qty, amount, remarks))
+    return synced_records
 
 
 def get_date_range(start_date, end_date):
@@ -282,81 +446,60 @@ def generate_financial_summary(start_date, end_date):
         """, (start_date, end_date))
         worker_payout_transactions = cursor.fetchall()
 
-    # Material expenses are computed from CHB production quantities and stored
-    # inventory material costs.
-    material_expenses = 0
-    expense_transactions = []
-    expense_summary_by_date = {}
+    # Keep computed CHB material costs in the expenses table, then aggregate
+    # expenses from that table per REQ-REP-05. Worker payout categories are
+    # excluded here so they are not double-counted with CHB production pay.
     material_cost_basis = _fetch_material_cost_basis(cursor)
-    chb_material_records = []
-    if date_expr:
-        if "cement_bags" in chb_cols:
-            cement_col = "cement_bags"
-        elif "cement_consumed" in chb_cols:
-            cement_col = "cement_consumed"
-        else:
-            cement_col = None
+    _sync_chb_material_expenses(cursor)
+    conn.commit()
 
-        fine_sand_expr = "COALESCE(fine_sand, 0)" if "fine_sand" in chb_cols else "0"
-        if cement_col:
-            cursor.execute(f"""
-                SELECT {date_select},
-                       COALESCE({cement_col}, 0) AS cement_bags,
-                       {fine_sand_expr} AS fine_sand_bags
-                FROM chb_production
-                WHERE {date_expr} BETWEEN ? AND ?
-                  AND (COALESCE({cement_col}, 0) > 0 OR {fine_sand_expr} > 0)
-                ORDER BY {date_order} ASC, id ASC
-            """, (start_date, end_date))
-            chb_material_records = cursor.fetchall()
+    worker_categories = tuple(name.lower() for name in WORKER_PAYOUT_CATEGORY_NAMES)
+    worker_source_types = ("worker_payout", "worker payouts", "chb_worker_payout", "payroll", "salary")
+    category_placeholders = ", ".join("?" for _ in worker_categories)
+    source_placeholders = ", ".join("?" for _ in worker_source_types)
+    expense_filter = f"""
+        expense_date IS NOT NULL
+        AND DATE(expense_date) BETWEEN ? AND ?
+        AND LOWER(TRIM(COALESCE(category, ''))) NOT IN ({category_placeholders})
+        AND LOWER(TRIM(COALESCE(source_type, ''))) NOT IN ({source_placeholders})
+    """
+    expense_params = [start_date, end_date, *worker_categories, *worker_source_types]
 
-    for production_date, cement_bags, fine_sand_bags in chb_material_records:
-        cement_qty = _safe_float(cement_bags)
-        fine_sand_qty = _safe_float(fine_sand_bags)
-        cement_cost = cement_qty * material_cost_basis["cement_unit_cost"]
-        fine_sand_cost = fine_sand_qty * material_cost_basis["fine_sand_bag_cost"]
-        row_total = cement_cost + fine_sand_cost
-        material_expenses += row_total
+    cursor.execute(f"""
+        SELECT COALESCE(SUM(amount), 0)
+        FROM expenses
+        WHERE {expense_filter}
+    """, expense_params)
+    material_expenses = cursor.fetchone()[0] or 0
 
-        date_key = str(production_date or "")[:10]
-        remarks = (
-            f"Cement {_format_report_quantity(cement_qty)} bag/s; "
-            f"Fine Sand {_format_report_quantity(fine_sand_qty)} bag/s"
-        )
-        if row_total <= 0:
-            remarks += "; material costs not configured"
+    cursor.execute(f"""
+        SELECT expense_date,
+               COALESCE(NULLIF(category, ''), 'Expense') AS category,
+               COALESCE(description, '') AS description,
+               COALESCE(amount, 0) AS amount
+        FROM expenses
+        WHERE {expense_filter}
+        ORDER BY DATE(expense_date) ASC, rowid ASC
+    """, expense_params)
+    expense_transactions = cursor.fetchall()
 
-        expense_transactions.append((
-            production_date,
-            "CHB Material Expense",
-            remarks,
-            row_total,
-        ))
-
-        summary = expense_summary_by_date.setdefault(date_key, {
-            "cement": 0.0,
-            "fine_sand": 0.0,
-            "amount": 0.0,
-        })
-        summary["cement"] += cement_qty
-        summary["fine_sand"] += fine_sand_qty
-        summary["amount"] += row_total
-
+    cursor.execute(f"""
+        SELECT DATE(expense_date) AS expense_day,
+               COALESCE(NULLIF(category, ''), 'Expense') AS category,
+               COALESCE(SUM(amount), 0) AS total_amount,
+               GROUP_CONCAT(NULLIF(description, ''), '; ') AS remarks
+        FROM expenses
+        WHERE {expense_filter}
+        GROUP BY DATE(expense_date), COALESCE(NULLIF(category, ''), 'Expense')
+        ORDER BY DATE(expense_date) ASC, category ASC
+    """, expense_params)
     expense_summary_rows = [
-        (
-            date_key,
-            "CHB Material Expense",
-            values["amount"],
-            (
-                f"Cement {_format_report_quantity(values['cement'])} bag/s; "
-                f"Fine Sand {_format_report_quantity(values['fine_sand'])} bag/s"
-            ),
-        )
-        for date_key, values in sorted(expense_summary_by_date.items())
+        (expense_day, category, total_amount, remarks or "-")
+        for expense_day, category, total_amount, remarks in cursor.fetchall()
     ]
 
-    # SRS formula:
-    # Revenue = Total Sales - (Material Expenses + Worker Payouts)
+    # SRS formula. The UI labels this result as Net Profit because expenses
+    # and worker payouts are already deducted from total sales.
     total_expenses = material_expenses + worker_payouts
     total_revenue = total_sales - total_expenses
 
@@ -390,7 +533,7 @@ def generate_financial_summary(start_date, end_date):
     """, (start_date, end_date))
     sales_by_product = cursor.fetchall()
 
-    has_period_data = bool(sales_transactions or chb_material_records or worker_payout_transactions)
+    has_period_data = bool(sales_transactions or expense_summary_rows or worker_payout_transactions)
 
     conn.close()
 
@@ -411,7 +554,7 @@ def generate_financial_summary(start_date, end_date):
         "expense_summary_rows": expense_summary_rows,
         "worker_payout_transactions": worker_payout_transactions,
         "material_cost_basis": material_cost_basis,
-        "material_expense_source": "Option B: CHB production usage multiplied by inventory material costs",
+        "material_expense_source": "expenses table, including synced CHB material usage",
         "has_period_data": has_period_data,
     }, None
 
@@ -561,35 +704,32 @@ def generate_inventory_status():
     cursor.execute("PRAGMA table_info(items)")
     item_cols = {col[1] for col in cursor.fetchall()}
     if "category" in item_cols:
-        category_expr = "COALESCE(NULLIF(category, ''), 'N/A')"
+        category_expr = "COALESCE(NULLIF(category, ''), 'Uncategorized')"
         category_source = "category"
-    elif "product_type" in item_cols:
-        category_expr = "COALESCE(NULLIF(product_type, ''), 'N/A')"
-        category_source = "product_type"
-    elif "classification" in item_cols:
-        category_expr = "COALESCE(NULLIF(classification, ''), 'N/A')"
-        category_source = "classification"
-    elif "unit" in item_cols:
-        category_expr = "COALESCE(NULLIF(unit, ''), 'N/A')"
-        category_source = "unit"
     else:
-        category_expr = "'N/A'"
-        category_source = "fallback"
+        cursor.execute("ALTER TABLE items ADD COLUMN category TEXT DEFAULT 'Uncategorized'")
+        cursor.execute("UPDATE items SET category='Uncategorized' WHERE category IS NULL OR TRIM(category)=''")
+        conn.commit()
+        category_expr = "COALESCE(NULLIF(category, ''), 'Uncategorized')"
+        category_source = "category"
+    unit_expr = "COALESCE(NULLIF(unit, ''), '-')" if "unit" in item_cols else "'-'"
 
     cursor.execute(f"""
         SELECT
             COALESCE(name, '') AS product_name,
             {category_expr} AS category,
+            {unit_expr} AS unit,
             COALESCE(quantity, 0) AS current_stock
         FROM items
         ORDER BY quantity ASC, LOWER(name) ASC
     """)
     all_items = []
-    for name, category, qty in cursor.fetchall():
+    for name, category, unit, qty in cursor.fetchall():
         stock_status = "Low Stock" if is_low_stock_item(name, qty) else "Normal Stock"
         all_items.append({
             "product_name": name or "N/A",
-            "category": category or "N/A",
+            "category": category or "Uncategorized",
+            "unit": unit or "-",
             "current_stock": qty or 0,
             "stock_status": stock_status,
         })
@@ -604,6 +744,153 @@ def generate_inventory_status():
         "total_items": len(all_items),
         "category_source": category_source,
         "has_inventory_data": bool(all_items),
+    }, None
+
+
+def _fetch_delivery_report_rows(cursor, table_name, delivery_type, start_date, end_date):
+    columns = _table_columns(cursor, table_name)
+    if not columns:
+        return []
+
+    date_candidates = ("delivery_date", "transaction_date", "delivery_datetime", "ts", "created_at")
+    date_value = _date_value_expr(columns, date_candidates)
+    if date_value == "NULL":
+        return []
+
+    id_expr = _quote_identifier("id") if "id" in columns else "rowid"
+    transaction_expr = _text_expr(columns, ("transaction_date", "ts", "delivery_datetime"))
+    delivery_date_expr = _text_expr(columns, ("delivery_date", "delivery_datetime", "transaction_date", "ts"))
+    customer_candidates = ("customer_name", "customer", "client_name", "buyer_name")
+    if delivery_type == "CHB":
+        customer_candidates = (*customer_candidates, "worker_name")
+    customer_expr = _text_expr(columns, customer_candidates)
+    if delivery_type == "CHB":
+        item_expr = "'CHB Blocks'"
+        amount_candidates = ("delivery_fee", "delivery_cost", "cost", "total_amount", "total", "total_payment", "amount")
+    else:
+        item_expr = _text_expr(columns, ("item_name", "product_name", "name", "description"))
+        amount_candidates = ("delivery_fee", "delivery_cost", "cost", "total_amount", "total", "amount")
+    qty_expr = _number_expr(columns, ("blocks_delivered", "quantity", "qty", "total_blocks"))
+    unit_expr = _text_expr(columns, ("unit_of_measurement", "unit", "uom"))
+    address_expr = _text_expr(columns, ("delivery_address", "address", "location"))
+    driver_expr = _text_expr(columns, ("driver_name", "delivery_driver", "driver"))
+    helper_expr = _text_expr(columns, ("helper", "helper_name", "assistant"))
+    status_expr = _text_expr(columns, ("delivery_status", "status", "payment_status"))
+    amount_expr = _number_expr(columns, amount_candidates)
+    worker_pay_expr = _number_expr(columns, ("total_payment", "worker_pay", "salary", "pay"))
+    table_sql = _quote_identifier(table_name)
+
+    cursor.execute(f"""
+        SELECT {id_expr} AS source_id,
+               {date_value} AS report_date,
+               {transaction_expr} AS transaction_date,
+               {delivery_date_expr} AS delivery_date,
+               {customer_expr} AS customer_name,
+               {item_expr} AS item_name,
+               {qty_expr} AS quantity,
+               {unit_expr} AS unit,
+               {address_expr} AS address,
+               {driver_expr} AS driver,
+               {helper_expr} AS helper,
+               {status_expr} AS status,
+               {amount_expr} AS amount,
+               {worker_pay_expr} AS worker_pay
+        FROM {table_sql}
+        WHERE DATE({date_value}) BETWEEN ? AND ?
+        ORDER BY DATE({date_value}) DESC, {id_expr} DESC
+    """, (start_date, end_date))
+
+    rows = []
+    for (
+        source_id,
+        report_date,
+        transaction_date,
+        delivery_date,
+        customer_name,
+        item_name,
+        qty,
+        unit,
+        address,
+        driver,
+        helper,
+        status,
+        amount,
+        worker_pay,
+    ) in cursor.fetchall():
+        qty_value = _safe_float(qty)
+        helper_text = str(helper or "").strip()
+        driver_text = str(driver or "").strip()
+        if helper_text and driver_text:
+            driver_display = f"{driver_text} / {helper_text}"
+        else:
+            driver_display = driver_text or helper_text or "-"
+        rows.append({
+            "source_table": table_name,
+            "source_id": source_id,
+            "report_date": str(report_date or "")[:10],
+            "transaction_date": str(transaction_date or "")[:10],
+            "delivery_date": str(delivery_date or "")[:10],
+            "delivery_type": delivery_type,
+            "customer_name": customer_name or "-",
+            "item_name": item_name or "-",
+            "quantity": qty_value,
+            "unit": unit or ("pcs" if delivery_type == "CHB" else ""),
+            "address": address or "-",
+            "driver_helper": driver_display,
+            "status": status or "-",
+            "amount": _safe_float(amount),
+            "worker_pay": _safe_float(worker_pay),
+        })
+    return rows
+
+
+def generate_delivery_report(start_date, end_date):
+    """Generate Delivery Report rows from CHB and other-item delivery tables."""
+    start_date, end_date, error = get_report_date_range("Custom", custom_start=start_date, custom_end=end_date)
+    if error:
+        return None, error
+
+    conn = sqlite3.connect(DB_NAME)
+    cursor = conn.cursor()
+    chb_available = _table_exists(cursor, "chb_delivery")
+    other_available = _table_exists(cursor, "other_items_delivery")
+
+    if not chb_available and not other_available:
+        conn.close()
+        return {
+            "start_date": start_date,
+            "end_date": end_date,
+            "tables_available": False,
+            "message": DELIVERY_TABLES_MISSING_MESSAGE,
+            "rows": [],
+            "chb_rows": [],
+            "other_rows": [],
+            "has_period_data": False,
+        }, None
+
+    chb_rows = _fetch_delivery_report_rows(cursor, "chb_delivery", "CHB", start_date, end_date) if chb_available else []
+    other_rows = _fetch_delivery_report_rows(cursor, "other_items_delivery", "Other Item", start_date, end_date) if other_available else []
+    rows = sorted(
+        [*chb_rows, *other_rows],
+        key=lambda row: (row["report_date"], str(row["source_id"])),
+        reverse=True,
+    )
+    conn.close()
+
+    return {
+        "start_date": start_date,
+        "end_date": end_date,
+        "tables_available": True,
+        "rows": rows,
+        "chb_rows": chb_rows,
+        "other_rows": other_rows,
+        "record_count": len(rows),
+        "chb_count": len(chb_rows),
+        "other_count": len(other_rows),
+        "total_quantity": sum(row["quantity"] for row in rows),
+        "total_amount": sum(row["amount"] for row in rows),
+        "total_worker_pay": sum(row["worker_pay"] for row in chb_rows),
+        "has_period_data": bool(rows),
     }, None
 
 
@@ -750,20 +1037,25 @@ def _append_no_data_message(story, styles):
     story.append(Paragraph(NO_DATA_PERIOD_MESSAGE, styles["ReportSubtitle"]))
 
 
-def export_to_pdf(report_type, report_data):
-    """REQ-REP-05: Export report to PDF."""
+def _report_has_exportable_data(report_type, report_data):
+    if not report_data:
+        return False
+    if report_type == "Inventory Status":
+        return bool(report_data.get("has_inventory_data"))
+    if report_type == "Delivery Report" and not report_data.get("tables_available", True):
+        return False
+    return bool(report_data.get("has_period_data"))
+
+
+def _build_report_pdf_file(report_type, report_data, file_path):
     if not HAS_REPORTLAB:
         return False, "ReportLab not installed. Install with: pip install reportlab"
+    if not _report_has_exportable_data(report_type, report_data):
+        if report_type == "Delivery Report" and report_data and not report_data.get("tables_available", True):
+            return False, DELIVERY_TABLES_MISSING_MESSAGE
+        return False, NO_DATA_PERIOD_MESSAGE
 
     try:
-        file_path = filedialog.asksaveasfilename(
-            defaultextension=".pdf",
-            filetypes=[("PDF files", "*.pdf"), ("All files", "*.*")],
-            initialfile=f"{report_type}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
-        )
-        if not file_path:
-            return False, "Export cancelled."
-
         pdf = SimpleDocTemplate(file_path, pagesize=letter,
                                rightMargin=0.5*inch, leftMargin=0.5*inch,
                                topMargin=0.5*inch, bottomMargin=0.5*inch)
@@ -783,6 +1075,8 @@ def export_to_pdf(report_type, report_data):
             _build_chb_production_pdf(story, report_data, styles)
         elif report_type == "Inventory Status":
             _build_inventory_pdf(story, report_data, styles)
+        elif report_type == "Delivery Report":
+            _build_delivery_pdf(story, report_data, styles)
 
         _append_signature_footer(story, styles)
 
@@ -792,6 +1086,23 @@ def export_to_pdf(report_type, report_data):
         return True, file_path
     except Exception as e:
         return False, f"PDF export failed: {str(e)}"
+
+
+def export_to_pdf(report_type, report_data):
+    """REQ-REP-07: Export report to PDF."""
+    if not _report_has_exportable_data(report_type, report_data):
+        if report_type == "Delivery Report" and report_data and not report_data.get("tables_available", True):
+            return False, DELIVERY_TABLES_MISSING_MESSAGE
+        return False, NO_DATA_PERIOD_MESSAGE
+
+    file_path = filedialog.asksaveasfilename(
+        defaultextension=".pdf",
+        filetypes=[("PDF files", "*.pdf"), ("All files", "*.*")],
+        initialfile=f"{report_type}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
+    )
+    if not file_path:
+        return False, "Export cancelled."
+    return _build_report_pdf_file(report_type, report_data, file_path)
 
 
 def _build_financial_pdf(story, data, styles):
@@ -806,12 +1117,12 @@ def _build_financial_pdf(story, data, styles):
     total_expenses = data.get('total_expenses', data.get('material_expenses', 0) + data.get('worker_payouts', 0))
     summary_data = [
         ["Metric", "Amount"],
-        ["Total Sales", php_money(data['total_sales'])],
+        ["Total Sales / Gross Revenue", php_money(data['total_sales'])],
         ["Cash on Hand (Completed Sales)", php_money(data['cash_on_hand'])],
-        ["Material Expenses", php_money(data['material_expenses'])],
+        ["Material / Operating Expenses", php_money(data['material_expenses'])],
         ["Worker Payouts (CHB)", php_money(data['worker_payouts'])],
         ["Total Expenses", php_money(total_expenses)],
-        ["Total Revenue", php_money(data['total_revenue'])],
+        ["Net Profit", php_money(data['total_revenue'])],
     ]
 
     table = Table(summary_data, colWidths=[3*inch, 2*inch])
@@ -860,7 +1171,7 @@ def _build_financial_pdf(story, data, styles):
     expense_summary_rows = data.get('expense_summary_rows', [])
     if expense_summary_rows:
         story.append(Spacer(1, 0.2*inch))
-        story.append(Paragraph("Material Expenses", styles['SectionHeading']))
+        story.append(Paragraph("Material / Operating Expenses", styles['SectionHeading']))
         story.append(Spacer(1, 0.1*inch))
 
         expense_rows = [["Date", "Expense Name", "Total", "Remarks"]]
@@ -879,6 +1190,11 @@ def _build_financial_pdf(story, data, styles):
             ('FONTSIZE', (0, 0), (-1, -1), 8),
         ]))
         story.append(expense_table)
+        story.append(Spacer(1, 0.08*inch))
+        story.append(Paragraph(
+            "CHB material expenses are based on production records in the selected period.",
+            styles['ReportSubtitle'],
+        ))
 
 
 def _build_sales_report_pdf(story, data, styles):
@@ -1005,7 +1321,7 @@ def _build_inventory_pdf(story, data, styles):
         for row in data['low_stock']:
             items_data.append([
                 row.get("product_name") or "N/A",
-                row.get("category") or "N/A",
+                row.get("category") or "Uncategorized",
                 _format_report_quantity(row.get("current_stock")),
                 row.get("stock_status") or "Low Stock",
             ])
@@ -1020,18 +1336,81 @@ def _build_inventory_pdf(story, data, styles):
     story.append(Paragraph("All Inventory Items", styles['SectionHeading']))
     story.append(Spacer(1, 0.1*inch))
 
-    all_items_data = [["Product Name", "Category", "Current Stock", "Stock Status"]]
+    all_items_data = [["Product Name", "Unit", "Current Stock", "Stock Status"]]
     for row in data['all_items']:
         all_items_data.append([
             row.get("product_name") or "N/A",
-            row.get("category") or "N/A",
+            row.get("unit") or "-",
             _format_report_quantity(row.get("current_stock")),
             row.get("stock_status") or "Normal Stock",
         ])
 
-    all_items_table = Table(all_items_data, colWidths=[2.0*inch, 1.3*inch, 1.1*inch, 1.2*inch])
+    all_items_table = Table(all_items_data, colWidths=[2.1*inch, 1.0*inch, 1.1*inch, 1.4*inch])
     all_items_table.setStyle(TableStyle(_table_style(row_backgrounds=False).getCommands() + [
         ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
         ('FONTSIZE', (0, 0), (-1, -1), 8),
     ]))
     story.append(all_items_table)
+
+
+def _build_delivery_pdf(story, data, styles):
+    """Build delivery report PDF content."""
+    story.append(Paragraph(f"Period: {data['start_date']} to {data['end_date']}", styles['Normal']))
+    story.append(Spacer(1, 0.2*inch))
+
+    if not data.get("tables_available", True):
+        story.append(Paragraph(DELIVERY_TABLES_MISSING_MESSAGE, styles["ReportSubtitle"]))
+        return
+    if not data.get("has_period_data"):
+        _append_no_data_message(story, styles)
+        return
+
+    summary_data = [
+        ["Metric", "Value"],
+        ["Total Delivery Records", f"{data.get('record_count', 0):,}"],
+        ["CHB Deliveries", f"{data.get('chb_count', 0):,}"],
+        ["Other Item Deliveries", f"{data.get('other_count', 0):,}"],
+        ["Total Quantity", _format_report_quantity(data.get("total_quantity", 0))],
+        ["Delivery Fees / Amount", php_money(data.get("total_amount", 0))],
+    ]
+    if data.get("total_worker_pay", 0):
+        summary_data.append(["CHB Worker Pay", php_money(data.get("total_worker_pay", 0))])
+
+    summary_table = Table(summary_data, colWidths=[3*inch, 2*inch])
+    summary_table.setStyle(TableStyle(_table_style().getCommands() + [
+        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+    ]))
+    story.append(summary_table)
+
+    story.append(Spacer(1, 0.2*inch))
+    story.append(Paragraph("Delivery Records", styles['SectionHeading']))
+    story.append(Spacer(1, 0.1*inch))
+
+    rows = [["Date", "Type", "Name", "Item", "Qty", "Address", "Driver/Helper", "Amount"]]
+    for row in data.get("rows", []):
+        qty_text = _format_report_quantity(row.get("quantity"))
+        unit_text = str(row.get("unit") or "").strip()
+        if unit_text:
+            qty_text = f"{qty_text} {unit_text}"
+        rows.append([
+            row.get("report_date") or "-",
+            row.get("delivery_type") or "-",
+            row.get("customer_name") or "-",
+            row.get("item_name") or "-",
+            qty_text,
+            row.get("address") or "-",
+            row.get("driver_helper") or "-",
+            php_money(row.get("amount")),
+        ])
+
+    table = Table(
+        rows,
+        colWidths=[0.7*inch, 0.7*inch, 0.85*inch, 0.9*inch, 0.6*inch, 1.35*inch, 1.05*inch, 0.85*inch],
+    )
+    table.setStyle(TableStyle(_table_style(row_backgrounds=False).getCommands() + [
+        ('ALIGN', (4, 1), (4, -1), 'RIGHT'),
+        ('ALIGN', (7, 1), (7, -1), 'RIGHT'),
+        ('ALIGN', (0, 0), (3, -1), 'LEFT'),
+        ('FONTSIZE', (0, 0), (-1, -1), 6),
+    ]))
+    story.append(table)
