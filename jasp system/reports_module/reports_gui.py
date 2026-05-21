@@ -25,6 +25,7 @@ from .reports_database import init_database
 from .reports_functions import (
     export_to_pdf,
     generate_chb_production,
+    generate_delivery_report,
     generate_financial_summary,
     generate_inventory_status,
     generate_sales_report,
@@ -53,6 +54,7 @@ REPORTS_HEADER_BG = DASHBOARD_HEADER_BG
 PESO = "\u20b1"
 SUCCESS_GREEN = "#16a34a"
 ERROR_RED = "#dc3545"
+CUSTOM_PERIOD_PROMPT = "Select a custom date range, then click Generate Report."
 
 
 def money(val):
@@ -297,16 +299,31 @@ def add_date_range_controls(bar, start_default, end_default, command, include_pe
         period_combo.grid(row=0, column=next_col + 1, sticky="w", padx=(0, 20))
         next_col += 2
 
-    tk.Label(bar, text="Start Date:", bg=BG_PAGE, fg=TEXT_PRIMARY, font=("Arial", 16, "bold")).grid(row=0, column=next_col, sticky="e", padx=(0, 10))
+    start_label = tk.Label(bar, text="Start Date:", bg=BG_PAGE, fg=TEXT_PRIMARY, font=("Arial", 16, "bold"))
+    start_label.grid(row=0, column=next_col, sticky="e", padx=(0, 10))
     start_entry, start_var = create_date_picker_entry(bar, start_default, width=13)
     start_entry.grid(row=0, column=next_col + 1, sticky="w", padx=(0, 20))
 
-    tk.Label(bar, text="End Date:", bg=BG_PAGE, fg=TEXT_PRIMARY, font=("Arial", 16, "bold")).grid(row=0, column=next_col + 2, sticky="e", padx=(0, 10))
+    end_label = tk.Label(bar, text="End Date:", bg=BG_PAGE, fg=TEXT_PRIMARY, font=("Arial", 16, "bold"))
+    end_label.grid(row=0, column=next_col + 2, sticky="e", padx=(0, 10))
     end_entry, end_var = create_date_picker_entry(bar, end_default, width=13)
     end_entry.grid(row=0, column=next_col + 3, sticky="w", padx=(0, 20))
 
-    make_button(bar, "Generate Report", command).grid(row=0, column=100, sticky="e")
+    generate_button = make_button(bar, "Generate Report", command)
+    generate_button.grid(row=0, column=100, sticky="e")
     if include_period:
+        custom_widgets = (start_label, start_entry, end_label, end_entry, generate_button)
+
+        def sync_period_widgets(*_args):
+            if period_var.get() == "Custom":
+                for widget in custom_widgets:
+                    widget.grid()
+            else:
+                for widget in custom_widgets:
+                    widget.grid_remove()
+
+        period_var.trace_add("write", sync_period_widgets)
+        sync_period_widgets()
         return start_var, end_var, period_var
     return start_var, end_var
 
@@ -453,6 +470,36 @@ def render_empty(parent, text=NO_DATA_PERIOD_MESSAGE):
     ).pack(anchor="w")
 
 
+def attach_auto_generate(root, command, *variables, period_var=None):
+    state = {"after_id": None}
+
+    def run():
+        state["after_id"] = None
+        try:
+            if root.winfo_exists():
+                if period_var is not None and period_var.get() == "Custom":
+                    command(False)
+                    return
+                command()
+        except tk.TclError:
+            pass
+
+    def schedule(*_args):
+        if state["after_id"] is not None:
+            try:
+                root.after_cancel(state["after_id"])
+            except tk.TclError:
+                pass
+        state["after_id"] = root.after(250, run)
+
+    for variable in variables:
+        if variable is not None:
+            variable.trace_add("write", schedule)
+    if period_var is not None:
+        period_var.trace_add("write", schedule)
+    return schedule
+
+
 def summary_row(parent, label, value, highlight=False):
     bg = HIGHLIGHT_BG if highlight else BG_CARD
     fg = HIGHLIGHT_FG if highlight else TEXT_PRIMARY
@@ -579,6 +626,164 @@ def fmt_short_date(ts_value):
     return text[:10]
 
 
+def _insert_financial_sales_rows(tree, sales_transactions):
+    for idx, (ts, item_name, qty, jasp_unit_price, purchased_unit_price, jasp_total) in enumerate(sales_transactions):
+        qty_val = float(qty or 0)
+        purchased_unit = float(purchased_unit_price or 0)
+        jasp_unit = float(jasp_unit_price or 0)
+        jasp_total_val = float(jasp_total or 0)
+        purchased_total = purchased_unit * qty_val
+        marked_up = jasp_total_val - purchased_total
+        insert_row(
+            tree,
+            (
+                fmt_short_date(ts),
+                str(item_name or "-"),
+                "pc",
+                money(purchased_unit),
+                money(jasp_unit),
+                f"{qty_val:,.2f}",
+                money(purchased_total),
+                money(jasp_total_val),
+                money(marked_up),
+            ),
+            idx,
+        )
+
+
+def _insert_financial_expense_rows(tree, expense_summary_rows):
+    for idx, (expense_date, expense_name, total_amount, remarks) in enumerate(expense_summary_rows):
+        insert_row(
+            tree,
+            (
+                fmt_short_date(expense_date),
+                str(expense_name or "-"),
+                money(total_amount),
+                str(remarks or ""),
+            ),
+            idx,
+        )
+
+
+def open_financial_tables_fullscreen(parent, data):
+    expanded = tk.Toplevel(parent)
+    expanded.title("Financial Summary Tables")
+    expanded.configure(bg=BG_PAGE)
+    expanded.transient(parent)
+    try:
+        expanded.state("zoomed")
+    except tk.TclError:
+        expanded.geometry("1280x720")
+
+    header = tk.Frame(expanded, bg=REPORTS_HEADER_BG, padx=14, pady=10, highlightthickness=1, highlightbackground=DASHBOARD_HEADER_BORDER)
+    header.pack(fill="x", padx=18, pady=(14, 8))
+    tk.Label(
+        header,
+        text="FINANCIAL SUMMARY TABLES",
+        bg=REPORTS_HEADER_BG,
+        fg=DASHBOARD_HEADER_FG,
+        font=("Arial", 22, "bold"),
+    ).pack(side="left", padx=(4, 16))
+    tk.Label(
+        header,
+        text=f"{data['start_date']} to {data['end_date']}",
+        bg=REPORTS_HEADER_BG,
+        fg=DASHBOARD_HEADER_SUBTLE_FG,
+        font=("Arial", 13, "bold"),
+    ).pack(side="left")
+    tk.Button(
+        header,
+        text="Close",
+        command=expanded.destroy,
+        bg=ACTION_BG,
+        fg="white",
+        activebackground=ACTION_ACTIVE,
+        activeforeground="white",
+        font=("Arial", 13, "bold"),
+        bd=2,
+        relief="solid",
+        padx=18,
+        pady=7,
+        cursor="hand2",
+    ).pack(side="right")
+
+    body = tk.Frame(expanded, bg=BG_PAGE)
+    body.pack(fill="both", expand=True, padx=18, pady=(0, 18))
+    body.grid_columnconfigure(0, weight=1)
+    body.grid_rowconfigure(0, weight=3)
+    body.grid_rowconfigure(1, weight=2)
+
+    sales_panel = panel(body, "Items Sold")
+    sales_panel.grid(row=0, column=0, sticky="nsew", pady=(0, SECTION_GAP))
+    sales_wrap = tk.Frame(sales_panel, bg=BG_CARD)
+    sales_wrap.pack(fill="both", expand=True)
+    sales_columns = ("date", "product", "unit", "purchased", "jasp", "qty", "total_purchased", "total_jasp", "markup")
+    sales_headings = [
+        ("date", "DATE", 110, "center"),
+        ("product", "PRODUCT", 260, "w"),
+        ("unit", "UNIT", 70, "center"),
+        ("purchased", "PURCHASED", 130, "e"),
+        ("jasp", "JASP", 120, "e"),
+        ("qty", "QTY", 95, "e"),
+        ("total_purchased", "TOTAL PURCHASED", 170, "e"),
+        ("total_jasp", "TOTAL JASP", 150, "e"),
+        ("markup", "MARKUP", 140, "e"),
+    ]
+    sales_tree = create_tree(
+        sales_wrap,
+        sales_columns,
+        sales_headings,
+        "FinancialDataFullscreen.Treeview",
+        height=14,
+        font=("Arial", 13),
+        heading_font=("Arial", 14, "bold"),
+        rowheight=34,
+    )
+    _insert_financial_sales_rows(sales_tree, data.get("sales_transactions", []))
+
+    expense_panel = panel(body, "Material / Operating Expenses")
+    expense_panel.grid(row=1, column=0, sticky="nsew")
+    expense_wrap = tk.Frame(expense_panel, bg=BG_CARD)
+    expense_wrap.pack(fill="both", expand=True)
+    exp_columns = ("date", "expense_name", "total_expense", "remarks")
+    exp_headings = [
+        ("date", "DATE", 130, "center"),
+        ("expense_name", "EXPENSE NAME", 300, "w"),
+        ("total_expense", "TOTAL", 160, "e"),
+        ("remarks", "REMARKS", 720, "w"),
+    ]
+    exp_tree = create_tree(
+        expense_wrap,
+        exp_columns,
+        exp_headings,
+        "FinancialExpenseFullscreen.Treeview",
+        height=9,
+        font=("Arial", 13),
+        heading_font=("Arial", 14, "bold"),
+        rowheight=34,
+    )
+    _insert_financial_expense_rows(exp_tree, data.get("expense_summary_rows", []))
+
+    footer = tk.Frame(expanded, bg=BG_PAGE)
+    footer.pack(fill="x", padx=18, pady=(0, 14))
+    tk.Label(
+        footer,
+        text="CHB material expenses are based on production records in the selected period.",
+        bg=BG_PAGE,
+        fg=TEXT_MUTED,
+        font=("Arial", 12, "italic"),
+    ).pack(side="left")
+    tk.Label(
+        footer,
+        text=f"Expense Sub-Total: {money(data['material_expenses'])}",
+        bg=SUMMARY_BG,
+        fg=TEXT_PRIMARY,
+        font=("Arial", 14, "bold"),
+        padx=12,
+        pady=6,
+    ).pack(side="right")
+
+
 def open_reports(parent=None):
     reports_window = tk.Toplevel(parent) if parent is not None else tk.Toplevel()
     reports_window.title("Reports & Analytics")
@@ -625,7 +830,7 @@ def open_reports(parent=None):
     ).pack(side="left")
     tk.Label(
         title_frame,
-        text="Financials | Sales | Production | Inventory",
+        text="Financials | Sales | Production | Inventory | Delivery",
         bg=REPORTS_HEADER_BG,
         fg=DASHBOARD_HEADER_SUBTLE_FG,
         font=("Arial", 12, "bold"),
@@ -688,6 +893,13 @@ def open_reports(parent=None):
     notebook.add(inventory_frame, text="Inventory Status")
     refresh_callbacks["Inventory Status"] = _build_inventory_status_tab(inventory_frame)
 
+    delivery_frame = tk.Frame(notebook, bg=BG_PAGE)
+    notebook.add(delivery_frame, text="Delivery Report")
+    refresh_callbacks["Delivery Report"] = _build_delivery_report_tab(delivery_frame)
+
+    notebook.bind("<<NotebookTabChanged>>", lambda _event: refresh_current_tab())
+    reports_window.after(150, refresh_current_tab)
+
 
 def _build_financial_summary_tab(parent):
     root = create_tab_root(parent)
@@ -696,7 +908,11 @@ def _build_financial_summary_tab(parent):
     def clear_report_area():
         clear_frame(report_container)
 
-    def generate_report():
+    def generate_report(force=False):
+        if period_var.get() == "Custom" and not force:
+            clear_frame(report_container)
+            render_empty(report_container, CUSTOM_PERIOD_PROMPT)
+            return
         start, end, range_error = get_report_date_range(
             period_var.get(),
             reference_date=end_var.get().strip(),
@@ -726,16 +942,22 @@ def _build_financial_summary_tab(parent):
         title_bar.grid(row=0, column=0, columnspan=2, sticky="ew", pady=(0, SECTION_GAP))
         tk.Label(title_bar, text="Financial Summary Report", bg=BG_CARD, fg=HEADER_BG, font=("Arial", 18, "bold")).pack(side="left")
         tk.Label(title_bar, text=f"{start} to {end}", bg=BG_CARD, fg=TEXT_MUTED, font=("Arial", 12, "bold")).pack(side="right")
+        make_button(
+            title_bar,
+            "Full Screen Display",
+            lambda: open_financial_tables_fullscreen(report_container.winfo_toplevel(), data),
+            secondary=True,
+        ).pack(side="right", padx=(0, 12))
 
         metrics = render_metric_strip(
             report_container,
             [
-                ("Total Sales", money(data["total_sales"])),
+                ("Total Sales / Gross Revenue", money(data["total_sales"])),
                 ("Cash On Hand", money(data["cash_on_hand"])),
-                ("Material Expenses", money(data["material_expenses"])),
+                ("Material / Operating Expenses", money(data["material_expenses"])),
                 ("Worker Payouts", money(data["worker_payouts"])),
                 ("Total Expenses", money(data["total_expenses"])),
-                ("Total Revenue", money(data["total_revenue"])),
+                ("Net Profit", money(data["total_revenue"])),
             ],
         )
         metrics.grid(row=1, column=0, sticky="ew", pady=(0, SECTION_GAP), padx=(0, SECTION_GAP))
@@ -766,30 +988,9 @@ def _build_financial_summary_tab(parent):
             heading_font=("Arial", 13, "bold"),
             rowheight=30,
         )
-        for idx, (ts, item_name, qty, jasp_unit_price, purchased_unit_price, jasp_total) in enumerate(data.get("sales_transactions", [])):
-            qty_val = float(qty or 0)
-            purchased_unit = float(purchased_unit_price or 0)
-            jasp_unit = float(jasp_unit_price or 0)
-            jasp_total_val = float(jasp_total or 0)
-            purchased_total = purchased_unit * qty_val
-            marked_up = jasp_total_val - purchased_total
-            insert_row(
-                sales_tree,
-                (
-                    fmt_short_date(ts),
-                    str(item_name or "-"),
-                    "pc",
-                    money(purchased_unit),
-                    money(jasp_unit),
-                    f"{qty_val:,.2f}",
-                    money(purchased_total),
-                    money(jasp_total_val),
-                    money(marked_up),
-                ),
-                idx,
-            )
+        _insert_financial_sales_rows(sales_tree, data.get("sales_transactions", []))
 
-        expense_panel = panel(report_container, "Material Expenses")
+        expense_panel = panel(report_container, "Material / Operating Expenses")
         expense_panel.grid(row=3, column=0, sticky="nsew", padx=(0, SECTION_GAP))
         exp_wrap = tk.Frame(expense_panel, bg=BG_CARD)
         exp_wrap.pack(fill="both", expand=True)
@@ -810,29 +1011,35 @@ def _build_financial_summary_tab(parent):
             heading_font=("Arial", 13, "bold"),
             rowheight=30,
         )
-        for idx, (expense_date, expense_name, total_amount, remarks) in enumerate(data.get("expense_summary_rows", [])):
-            insert_row(exp_tree, (fmt_short_date(expense_date), str(expense_name or "-"), money(total_amount), str(remarks or "")), idx)
+        _insert_financial_expense_rows(exp_tree, data.get("expense_summary_rows", []))
 
         subtotal = tk.Frame(expense_panel, bg=BG_CARD)
         subtotal.pack(fill="x", pady=(4, 0))
-        tk.Label(subtotal, text="Material Sub-Total", bg=BG_CARD, fg=TEXT_PRIMARY, font=("Arial", 14, "bold")).pack(side="left")
+        tk.Label(subtotal, text="Expense Sub-Total", bg=BG_CARD, fg=TEXT_PRIMARY, font=("Arial", 14, "bold")).pack(side="left")
         tk.Label(subtotal, text=money(data["material_expenses"]), bg=SUMMARY_BG, fg=TEXT_PRIMARY, font=("Arial", 14, "bold"), padx=8, pady=4).pack(side="right")
+        tk.Label(
+            expense_panel,
+            text="CHB material expenses are based on production records in the selected period.",
+            bg=BG_CARD,
+            fg=TEXT_MUTED,
+            font=("Arial", 11, "italic"),
+        ).pack(anchor="w", pady=(4, 0))
 
         sidebar = panel(report_container, "Financial Summary")
         sidebar.grid(row=1, column=1, rowspan=3, sticky="nsew")
         for label, value, highlight in [
-            ("Total Sales", money(data["total_sales"]), False),
+            ("Total Sales / Gross Revenue", money(data["total_sales"]), False),
             ("Cash On Hand", money(data["cash_on_hand"]), False),
-            ("Material Expenses", f"-{money(data['material_expenses'])}", False),
+            ("Material / Operating Expenses", f"-{money(data['material_expenses'])}", False),
             ("Worker Payouts", f"-{money(data['worker_payouts'])}", False),
             ("Total Expenses", f"-{money(data['total_expenses'])}", False),
-            ("Total Revenue", money(data["total_revenue"]), True),
+            ("Net Profit", money(data["total_revenue"]), True),
         ]:
             summary_row(sidebar, label, value, highlight)
 
         total = tk.Frame(sidebar, bg=HIGHLIGHT_BG, padx=8, pady=7)
         total.pack(fill="x", pady=(8, 6))
-        tk.Label(total, text="TOTAL REVENUE", bg=HIGHLIGHT_BG, fg=HIGHLIGHT_FG, font=("Arial", 12, "bold")).pack(anchor="w")
+        tk.Label(total, text="NET PROFIT", bg=HIGHLIGHT_BG, fg=HIGHLIGHT_FG, font=("Arial", 12, "bold")).pack(anchor="w")
         tk.Label(total, text=money(data["total_revenue"]), bg=HIGHLIGHT_BG, fg=HIGHLIGHT_FG, font=("Arial", 18, "bold")).pack(anchor="w")
         make_button(sidebar, "Export to PDF", lambda: _handle_export("Financial Summary", data, report_container.winfo_toplevel())).pack(fill="x")
 
@@ -841,10 +1048,10 @@ def _build_financial_summary_tab(parent):
         bar,
         (datetime.now() - timedelta(days=30)).strftime("%Y-%m-%d"),
         datetime.now().strftime("%Y-%m-%d"),
-        generate_report,
+        lambda: generate_report(True),
         include_period=True,
     )
-    render_empty(report_container, "No report generated.")
+    attach_auto_generate(root, generate_report, period_var=period_var)
     return generate_report
 
 
@@ -852,7 +1059,11 @@ def _build_sales_report_tab(parent):
     root = create_tab_root(parent)
     report_container = create_report_area(root)
 
-    def generate_report():
+    def generate_report(force=False):
+        if period_var.get() == "Custom" and not force:
+            clear_frame(report_container)
+            render_empty(report_container, CUSTOM_PERIOD_PROMPT)
+            return
         start, end, range_error = get_report_date_range(
             period_var.get(),
             reference_date=end_var.get().strip(),
@@ -937,10 +1148,10 @@ def _build_sales_report_tab(parent):
         bar,
         (datetime.now() - timedelta(days=30)).strftime("%Y-%m-%d"),
         datetime.now().strftime("%Y-%m-%d"),
-        generate_report,
+        lambda: generate_report(True),
         include_period=True,
     )
-    render_empty(report_container, "No report generated.")
+    attach_auto_generate(root, generate_report, period_var=period_var)
     return generate_report
 
 
@@ -1004,7 +1215,7 @@ def _build_weekly_sales_tab(parent):
     end_entry, end_var = create_date_picker_entry(bar, datetime.now().strftime("%Y-%m-%d"), width=13)
     end_entry.grid(row=0, column=2, sticky="w", padx=(0, 20))
     make_button(bar, "Generate Report", generate_report).grid(row=0, column=100, sticky="e")
-    render_empty(report_container, "No report generated.")
+    attach_auto_generate(root, generate_report, end_var)
     return generate_report
 
 
@@ -1015,7 +1226,11 @@ def _build_chb_production_tab(parent):
     def clear_report_area():
         clear_frame(report_container)
 
-    def generate_report():
+    def generate_report(force=False):
+        if period_var.get() == "Custom" and not force:
+            clear_report_area()
+            render_empty(report_container, CUSTOM_PERIOD_PROMPT)
+            return
         start, end, range_error = get_report_date_range(
             period_var.get(),
             reference_date=end_var.get().strip(),
@@ -1095,10 +1310,10 @@ def _build_chb_production_tab(parent):
         bar,
         (datetime.now() - timedelta(days=30)).strftime("%Y-%m-%d"),
         datetime.now().strftime("%Y-%m-%d"),
-        generate_report,
+        lambda: generate_report(True),
         include_period=True,
     )
-    render_empty(report_container, "No report generated.")
+    attach_auto_generate(root, generate_report, period_var=period_var)
     return generate_report
 
 
@@ -1134,12 +1349,12 @@ def _build_inventory_status_tab(parent):
         all_items_panel.grid(row=1, column=0, sticky="nsew", padx=(0, SECTION_GAP))
         wrap = tk.Frame(all_items_panel, bg=BG_CARD)
         wrap.pack(fill="both", expand=True)
-        columns = ("name", "category", "qty", "status")
+        columns = ("name", "unit", "qty", "status")
         headings = [
-            ("name", "PRODUCT NAME", 260, "w"),
-            ("category", "CATEGORY", 170, "w"),
-            ("qty", "CURRENT STOCK", 130, "e"),
-            ("status", "STOCK STATUS", 145, "center"),
+            ("name", "PRODUCT NAME", 310, "w"),
+            ("unit", "UNIT", 110, "center"),
+            ("qty", "CURRENT STOCK", 145, "e"),
+            ("status", "STOCK STATUS", 160, "center"),
         ]
         tree = create_tree(wrap, columns, headings, "InventoryReport.Treeview", height=14)
         for idx, row in enumerate(data.get("all_items", [])):
@@ -1147,7 +1362,7 @@ def _build_inventory_status_tab(parent):
                 tree,
                 (
                     str(row.get("product_name") or "N/A"),
-                    str(row.get("category") or "N/A"),
+                    str(row.get("unit") or "-"),
                     quantity(row.get("current_stock")),
                     row.get("stock_status") or "Normal Stock",
                 ),
@@ -1187,7 +1402,118 @@ def _build_inventory_status_tab(parent):
 
     bar = create_filter_bar(root, "Inventory Status")
     make_button(bar, "Generate Report", generate_report).grid(row=0, column=100, sticky="e")
-    render_empty(report_container, "No report generated.")
+    return generate_report
+
+
+def _build_delivery_report_tab(parent):
+    root = create_tab_root(parent)
+    report_container = create_report_area(root)
+
+    def clear_report_area():
+        clear_frame(report_container)
+
+    def generate_report(force=False):
+        if period_var.get() == "Custom" and not force:
+            clear_report_area()
+            render_empty(report_container, CUSTOM_PERIOD_PROMPT)
+            return
+        start, end, range_error = get_report_date_range(
+            period_var.get(),
+            reference_date=end_var.get().strip(),
+            custom_start=start_var.get().strip(),
+            custom_end=end_var.get().strip(),
+        )
+        if range_error:
+            messagebox.showerror("Error", range_error)
+            return
+
+        data, error = generate_delivery_report(start, end)
+        if error:
+            messagebox.showerror("Error", error)
+            return
+
+        clear_report_area()
+        if not data.get("tables_available", True):
+            render_empty(report_container, data.get("message", "No delivery records are available in the current database."))
+            return
+        if not data.get("has_period_data"):
+            render_empty(report_container)
+            return
+
+        report_container.grid_columnconfigure(0, weight=4)
+        report_container.grid_columnconfigure(1, weight=1, minsize=300)
+        report_container.grid_rowconfigure(1, weight=1)
+
+        title_bar = panel(report_container, pad=True)
+        title_bar.grid(row=0, column=0, columnspan=2, sticky="ew", pady=(0, SECTION_GAP))
+        tk.Label(title_bar, text="Delivery Report", bg=BG_CARD, fg=HEADER_BG, font=("Arial", 18, "bold")).pack(side="left")
+        tk.Label(title_bar, text=f"{data['start_date']} to {data['end_date']}", bg=BG_CARD, fg=TEXT_MUTED, font=("Arial", 12, "bold")).pack(side="right")
+
+        table_panel = panel(report_container, "Delivery Records")
+        table_panel.grid(row=1, column=0, sticky="nsew", padx=(0, SECTION_GAP))
+        wrap = tk.Frame(table_panel, bg=BG_CARD)
+        wrap.pack(fill="both", expand=True)
+        columns = ("date", "type", "name", "item", "qty", "address", "driver", "amount")
+        headings = [
+            ("date", "DATE", 105, "center"),
+            ("type", "TYPE", 95, "center"),
+            ("name", "CUSTOMER / WORKER", 165, "w"),
+            ("item", "ITEM", 160, "w"),
+            ("qty", "QTY", 90, "e"),
+            ("address", "ADDRESS", 265, "w"),
+            ("driver", "DRIVER / HELPER", 180, "w"),
+            ("amount", "FEE / AMOUNT", 125, "e"),
+        ]
+        tree = create_tree(
+            wrap,
+            columns,
+            headings,
+            "DeliveryReport.Treeview",
+            height=13,
+            font=("Arial", 11),
+            heading_font=("Arial", 11, "bold"),
+            rowheight=34,
+        )
+        for idx, row in enumerate(data.get("rows", [])):
+            qty_text = quantity(row.get("quantity"))
+            unit_text = str(row.get("unit") or "").strip()
+            if unit_text:
+                qty_text = f"{qty_text} {unit_text}"
+            insert_row(
+                tree,
+                (
+                    row.get("report_date") or "-",
+                    row.get("delivery_type") or "-",
+                    row.get("customer_name") or "-",
+                    row.get("item_name") or "-",
+                    qty_text,
+                    row.get("address") or "-",
+                    row.get("driver_helper") or "-",
+                    money(row.get("amount")),
+                ),
+                idx,
+            )
+
+        sidebar = panel(report_container, "Delivery Summary")
+        sidebar.grid(row=1, column=1, sticky="nsew")
+        summary_row(sidebar, "Total Records", f"{data.get('record_count', 0):,}")
+        summary_row(sidebar, "CHB Deliveries", f"{data.get('chb_count', 0):,}")
+        summary_row(sidebar, "Other Item Deliveries", f"{data.get('other_count', 0):,}")
+        summary_row(sidebar, "Total Quantity", quantity(data.get("total_quantity", 0)))
+        summary_row(sidebar, "Delivery Fees / Amount", money(data.get("total_amount", 0)), True)
+        if data.get("total_worker_pay", 0):
+            summary_row(sidebar, "CHB Worker Pay", money(data.get("total_worker_pay", 0)))
+        make_button(sidebar, "Export to PDF", lambda: _handle_export("Delivery Report", data, report_container.winfo_toplevel())).pack(fill="x", pady=(8, 0))
+
+    bar = create_filter_bar(root, "Delivery Report")
+    start_var, end_var, period_var = add_date_range_controls(
+        bar,
+        (datetime.now() - timedelta(days=30)).strftime("%Y-%m-%d"),
+        datetime.now().strftime("%Y-%m-%d"),
+        lambda: generate_report(True),
+        include_period=True,
+    )
+    attach_auto_generate(root, generate_report, period_var=period_var)
     return generate_report
 
 
