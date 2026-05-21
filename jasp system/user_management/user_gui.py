@@ -12,6 +12,7 @@ from jasp_theme import (
 )
 
 
+# Define the user-management color palette and shared button border style.
 BG = DASHBOARD_CONTENT_BG
 CARD = "#ffffff"
 PRIMARY = "#2563eb"
@@ -30,20 +31,24 @@ BUTTON_BORDER = {
     "highlightcolor": "black",
 }
 
+# Define the columns shown in the user list.
 USER_COLUMNS = ("ID", "Username", "Contact Number", "Role", "Update", "Delete")
 
 
 def open_user_management(root):
+    # Clear the current screen and prepare the user-management page.
     for widget in root.winfo_children():
         widget.destroy()
 
     root.title("User Management")
     root.configure(bg=BG)
 
+    # Block non-admin users from opening user management.
     if user_functions.current_user_role != "Admin":
         user_functions.show_user_error(root, "Error", "Access denied. Unauthorized action.")
         return
 
+    # Open the user database and initialize page state variables.
     conn, cursor = user_database.open_user_connection()
     user_database.setup_user_database(conn, cursor)
     root.option_add("*TCombobox*Listbox.font", ("Arial", 15))
@@ -54,6 +59,7 @@ def open_user_management(root):
     selected_row_id = tk.StringVar()
     table_buttons = []
 
+    # Build the page header with refresh and back actions.
     header = tk.Frame(root, bg=HEADER_BG, padx=14, pady=10, highlightthickness=1, highlightbackground=DASHBOARD_HEADER_BORDER)
     header.pack(fill="x", padx=20, pady=10)
     header.columnconfigure(0, weight=1)
@@ -98,6 +104,7 @@ def open_user_management(root):
         **BUTTON_BORDER
     ).grid(row=0, column=1)
 
+    # Build the main two-column layout.
     main = tk.Frame(root, bg=BG)
     main.pack(fill="both", expand=True, padx=20, pady=10)
     main.columnconfigure(0, weight=7)
@@ -111,6 +118,7 @@ def open_user_management(root):
 
     tk.Label(left, text="USER LIST", font=("Arial", 18, "bold"), bg=CARD, fg=PRIMARY).grid(row=0, column=0, sticky="w", padx=10, pady=(10, 8))
 
+    # Build search and role filter controls for the user list.
     search_frame = tk.Frame(left, bg=CARD)
     search_frame.grid(row=1, column=0, sticky="ew", padx=10, pady=(0, 10))
     tk.Label(search_frame, text="Search:", font=("Arial", 15, "bold"), bg=CARD, fg=TEXT).pack(side="left", padx=(0, 8))
@@ -129,11 +137,13 @@ def open_user_management(root):
     role_filter.pack(side="left", ipady=3)
     role_filter.bind("<<ComboboxSelected>>", lambda _event: refresh_display())
 
+    # Build the user table area with scrollbars.
     display_frame = tk.Frame(left, bg=CARD)
     display_frame.grid(row=2, column=0, sticky="nsew", padx=10, pady=(0, 10))
     display_frame.columnconfigure(0, weight=1)
     display_frame.rowconfigure(0, weight=1)
 
+    # Configure the Treeview style for the user list.
     style = ttk.Style()
     style.configure("UserManagement.Treeview", font=("Arial", 14), rowheight=38)
     style.configure("UserManagement.Treeview.Heading", font=("Arial", 14, "bold"))
@@ -163,15 +173,18 @@ def open_user_management(root):
     user_tree.tag_configure("evenrow", background="#e0f2fe")
 
     def clear_table_buttons():
+        # Remove overlay Update/Delete buttons before redrawing them.
         for button in table_buttons:
             if button.winfo_exists():
                 button.destroy()
         table_buttons.clear()
 
     def schedule_table_buttons():
+        # Queue table button rendering after the Treeview layout updates.
         user_tree.after_idle(render_table_buttons)
 
     def render_table_buttons():
+        # Place Update and Delete buttons over their table cells.
         clear_table_buttons()
         user_tree.update_idletasks()
         for item in user_tree.get_children():
@@ -221,6 +234,7 @@ def open_user_management(root):
                 button.place(x=x + 5, y=y + 5, width=max(width - 10, 70), height=max(height - 10, 24))
                 table_buttons.append(button)
 
+    # Build the right-side form panel for creating and editing users.
     right = tk.Frame(main, bg=FORM_BG, highlightthickness=1, highlightbackground="#d97706", padx=18, pady=16)
     right.grid(row=0, column=1, sticky="nsew", padx=(8, 10), pady=10)
 
@@ -258,6 +272,7 @@ def open_user_management(root):
     form.columnconfigure(1, weight=1)
 
     def load_user(user_id):
+        # Select a user and load the account details into the form.
         selected_row_id.set(str(user_id))
         user_functions.load_user_by_id(
             cursor,
@@ -271,6 +286,7 @@ def open_user_management(root):
         )
 
     def table_update_user(user_id):
+        # First click loads a user; second click saves changes for that user.
         if str(selected_user_id.get()) != str(user_id):
             load_user(user_id)
             return
@@ -288,6 +304,7 @@ def open_user_management(root):
         )
 
     def on_user_select(_event=None):
+        # Load the clicked table row into the form.
         selected = user_tree.selection()
         if not selected:
             return
@@ -298,6 +315,7 @@ def open_user_management(root):
     user_tree.bind("<<TreeviewSelect>>", on_user_select)
 
     def clear_user_selection():
+        # Clear the selected table row and reset the form.
         user_functions.clear_user_form(
             username_entry,
             password_entry,
@@ -311,6 +329,7 @@ def open_user_management(root):
         user_tree.focus("")
 
     def clear_on_empty_click(event):
+        # Clear selection when clicking empty space outside controls.
         widget = event.widget
         widget_class = widget.winfo_class()
         if widget is user_tree:
@@ -336,6 +355,7 @@ def open_user_management(root):
         empty_area.bind("<Button-1>", clear_on_empty_click, add="+")
 
     def refresh_display():
+        # Reload the table using the current search and role filters.
         search_text = search_var.get().strip().lower()
         selected_role = role_filter_var.get()
         users = []
@@ -349,6 +369,7 @@ def open_user_management(root):
                 continue
             users.append(user)
         selected_id = selected_row_id.get()
+        # Clear and rebuild rows while preserving the selected user when possible.
         for item in user_tree.get_children():
             user_tree.delete(item)
 
@@ -365,6 +386,7 @@ def open_user_management(root):
             user_tree.focus(selected_iid)
         schedule_table_buttons()
 
+    # Build form action buttons.
     btn = tk.Frame(right, bg=FORM_BG)
     btn.pack(pady=18, fill="x", padx=8)
     btn.bind("<Button-1>", clear_on_empty_click, add="+")
@@ -408,6 +430,7 @@ def open_user_management(root):
         **BUTTON_BORDER
     ).pack(fill="x", pady=5)
 
+    # Keep overlay buttons aligned during resizing and scrolling, then load data.
     user_tree.bind("<Configure>", lambda _event: schedule_table_buttons())
     user_tree.bind("<ButtonRelease-1>", lambda _event: schedule_table_buttons())
     user_tree.bind("<MouseWheel>", lambda _event: schedule_table_buttons())

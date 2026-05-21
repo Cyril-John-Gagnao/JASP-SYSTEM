@@ -20,15 +20,18 @@ from .main_functions import (
     open_date_calendar,
 )
 
+# Use the shared dashboard content background for summary windows.
 SUMMARY_BG = DASHBOARD_CONTENT_BG
 
 
 def open_recent_transactions_summary(parent):
+    # Open the sales transactions summary window.
     summary_win = tk.Toplevel(parent)
     summary_win.title("Recent Transactions Summary")
     summary_win.configure(bg=SUMMARY_BG)
     summary_win.transient(parent)
 
+    # Store selected filters, titles, totals, and current transaction rows.
     period_var = tk.StringVar(value="Day")
     date_var = tk.StringVar(value=datetime.now().strftime("%Y-%m-%d"))
     title_var = tk.StringVar()
@@ -36,6 +39,7 @@ def open_recent_transactions_summary(parent):
     current_rows = []
 
     def title_text():
+        # Build the summary title from the selected period and date.
         start, end = compute_summary_range(period_var.get(), date_var.get())
         if period_var.get() == "Day":
             return f"Sales Transactions - {start.strftime('%B %d, %Y')}"
@@ -44,9 +48,11 @@ def open_recent_transactions_summary(parent):
         return f"Sales Transactions - {start.strftime('%B %Y')}"
 
     def clear_tree(tree):
+        # Remove all rows from a summary Treeview.
         for item in tree.get_children():
             tree.delete(item)
 
+    # Define recent transaction summary columns and width limits.
     summary_headings = [
         ("txn", "TXN ID", 80, 120, "w"),
         ("date", "Date & Time", 170, 250, "w"),
@@ -58,6 +64,7 @@ def open_recent_transactions_summary(parent):
     ]
 
     def adjust_summary_columns(tree):
+        # Measure visible rows and resize transaction summary columns.
         tree.update_idletasks()
         body_font = tkfont.Font(family="Arial", size=12)
         heading_font = tkfont.Font(family="Arial", size=11, weight="bold")
@@ -83,12 +90,14 @@ def open_recent_transactions_summary(parent):
             tree.column(col, width=widths[col], minwidth=widths[col], anchor=anchor, stretch=True)
 
     def load_summary():
+        # Reload transaction summary rows and totals for the selected period.
         nonlocal current_rows
         start, end = compute_summary_range(period_var.get(), date_var.get())
         data = fetch_recent_transaction_summary(start, end)
         current_rows = data["transactions"]
         clear_tree(summary_tree)
         if not current_rows:
+            # Show an empty row when no transactions match the selected period.
             summary_tree.insert(
                 "",
                 "end",
@@ -96,6 +105,7 @@ def open_recent_transactions_summary(parent):
                 tags=("even",),
             )
         for index, row in enumerate(current_rows):
+            # Insert each transaction row with compacted values.
             txn_id, ts, item_summary, item_count, qty, total, cashier, status = row
             summary_tree.insert(
                 "",
@@ -120,6 +130,7 @@ def open_recent_transactions_summary(parent):
         )
 
     def build_pdf(file_path, title, rows):
+        # Build a PDF export for recent transactions.
         try:
             from reportlab.lib import colors
             from reportlab.lib.pagesizes import letter, landscape
@@ -129,6 +140,7 @@ def open_recent_transactions_summary(parent):
         except ImportError as exc:
             raise RuntimeError("ReportLab is required to export PDF. Install it with: pip install reportlab") from exc
 
+        # Build the PDF table rows and fallback empty row.
         styles = getSampleStyleSheet()
         title_style = ParagraphStyle(
             "SalesSummaryTitle",
@@ -168,6 +180,7 @@ def open_recent_transactions_summary(parent):
         doc.build(story)
 
     def open_preview():
+        # Open a preview window before exporting recent transactions to PDF.
         load_summary()
         rows = [summary_tree.item(item, "values") for item in summary_tree.get_children()]
         preview = tk.Toplevel(summary_win)
@@ -175,6 +188,7 @@ def open_recent_transactions_summary(parent):
         preview.configure(bg=SUMMARY_BG)
         preview.transient(summary_win)
 
+        # Build the preview header, totals, and table.
         tk.Label(preview, text=title_var.get(), bg=SUMMARY_BG, fg=PRIMARY,
                  font=("Arial", 18, "bold")).pack(anchor="w", padx=16, pady=(14, 4))
         tk.Label(preview, text=totals_var.get(), bg=SUMMARY_BG, fg=TEXT_PRIMARY,
@@ -191,6 +205,7 @@ def open_recent_transactions_summary(parent):
         actions.pack(fill="x", padx=16, pady=(0, 14))
 
         def save_pdf():
+            # Ask where to save the PDF and export the preview rows.
             file_path = filedialog.asksaveasfilename(
                 parent=preview,
                 defaultextension=".pdf",
@@ -217,6 +232,7 @@ def open_recent_transactions_summary(parent):
         center_window(preview, 1040, 580, summary_win)
 
     def create_summary_tree(parent_frame, style_name):
+        # Create a styled summary Treeview with scrollbars.
         columns = ("txn", "date", "items", "qty", "total", "cashier", "status")
         style = ttk.Style()
         style.configure(style_name, font=("Arial", 12), rowheight=34, background=BG_CARD, fieldbackground=BG_CARD)
@@ -237,6 +253,7 @@ def open_recent_transactions_summary(parent):
         tree.tag_configure("odd", background="#ffffff")
         return tree
 
+    # Build summary filter controls and action buttons.
     controls = tk.Frame(summary_win, bg=SUMMARY_BG)
     controls.pack(fill="x", padx=16, pady=(14, 8))
     summary_button_options = {
@@ -268,6 +285,7 @@ def open_recent_transactions_summary(parent):
     tk.Button(controls, text="Close", command=summary_win.destroy, bg="#dc2626",
               **summary_button_options).pack(side="right")
 
+    # Build title, totals, export action, and summary table.
     tk.Label(summary_win, textvariable=title_var, bg=SUMMARY_BG, fg=PRIMARY,
              font=("Arial", 18, "bold")).pack(anchor="w", padx=16)
     tk.Label(summary_win, textvariable=totals_var, bg=SUMMARY_BG, fg=TEXT_PRIMARY,
@@ -282,21 +300,25 @@ def open_recent_transactions_summary(parent):
     table_frame.pack(fill="both", expand=True, padx=16, pady=(0, 16))
     summary_tree = create_summary_tree(table_frame, "SalesSummary.Treeview")
 
+    # Load initial transaction summary data.
     load_summary()
     center_window(summary_win, 1120, 650, parent)
 
 
 def open_most_items_summary(parent):
+    # Open the most-items-sold summary window.
     summary_win = tk.Toplevel(parent)
     summary_win.title("Most Items Sold Summary")
     summary_win.configure(bg=SUMMARY_BG)
     summary_win.transient(parent)
 
+    # Store selected filters, title, and totals for the item summary.
     period_var = tk.StringVar(value="Day")
     date_var = tk.StringVar(value=datetime.now().strftime("%Y-%m-%d"))
     title_var = tk.StringVar()
     totals_var = tk.StringVar()
 
+    # Define most-items summary columns and width limits.
     headings = [
         ("item", "Item Name", 260, 520, "w"),
         ("qty", "Items Sold", 120, 170, "e"),
@@ -307,6 +329,7 @@ def open_most_items_summary(parent):
     ]
 
     def title_text():
+        # Build the most-items summary title from period and date.
         start, end = compute_summary_range(period_var.get(), date_var.get())
         if period_var.get() == "Day":
             return f"Most Items Sold - {start.strftime('%B %d, %Y')}"
@@ -315,10 +338,12 @@ def open_most_items_summary(parent):
         return f"Most Items Sold - {start.strftime('%B %Y')}"
 
     def clear_tree(tree):
+        # Remove all rows from a summary Treeview.
         for item in tree.get_children():
             tree.delete(item)
 
     def adjust_columns(tree):
+        # Measure visible rows and resize most-items summary columns.
         tree.update_idletasks()
         body_font = tkfont.Font(family="Arial", size=12)
         heading_font = tkfont.Font(family="Arial", size=11, weight="bold")
@@ -340,6 +365,7 @@ def open_most_items_summary(parent):
             tree.column(col, width=widths[col], minwidth=widths[col], anchor=anchor, stretch=True)
 
     def create_tree(parent_frame, style_name):
+        # Create a styled most-items Treeview with scrollbars.
         columns = tuple(col for col, *_rest in headings)
         style = ttk.Style()
         style.configure(style_name, font=("Arial", 12), rowheight=34, background=BG_CARD, fieldbackground=BG_CARD)
@@ -361,10 +387,12 @@ def open_most_items_summary(parent):
         return tree
 
     def load_summary():
+        # Reload most-items rows and totals for the selected period.
         start, end = compute_summary_range(period_var.get(), date_var.get())
         data = fetch_most_items_summary(start, end)
         clear_tree(summary_tree)
         if not data["items"]:
+            # Show an empty row when no items were sold in the selected period.
             summary_tree.insert(
                 "",
                 "end",
@@ -372,6 +400,7 @@ def open_most_items_summary(parent):
                 tags=("even",),
             )
         for index, row in enumerate(data["items"]):
+            # Insert each item row with formatted quantity and sales totals.
             item_name, qty, sales_count, total_sales, latest_ts, user = row
             summary_tree.insert(
                 "",
@@ -386,6 +415,7 @@ def open_most_items_summary(parent):
         )
 
     def build_pdf(file_path, title, rows):
+        # Build a PDF export for the most-items-sold summary.
         try:
             from reportlab.lib import colors
             from reportlab.lib.pagesizes import letter, landscape
@@ -395,6 +425,7 @@ def open_most_items_summary(parent):
         except ImportError as exc:
             raise RuntimeError("ReportLab is required to export PDF. Install it with: pip install reportlab") from exc
 
+        # Build the PDF table rows and fallback empty row.
         styles = getSampleStyleSheet()
         title_style = ParagraphStyle(
             "MostItemsSummaryTitle",
@@ -431,12 +462,14 @@ def open_most_items_summary(parent):
         doc.build(story)
 
     def open_preview():
+        # Open a preview window before exporting most-items data to PDF.
         load_summary()
         rows = [summary_tree.item(item, "values") for item in summary_tree.get_children()]
         preview = tk.Toplevel(summary_win)
         preview.title("Most Items Sold Preview")
         preview.configure(bg=SUMMARY_BG)
         preview.transient(summary_win)
+        # Build the preview table and totals display.
         tk.Label(preview, text=title_var.get(), bg=SUMMARY_BG, fg=PRIMARY,
                  font=("Arial", 18, "bold")).pack(anchor="w", padx=16, pady=(14, 4))
         tk.Label(preview, text=totals_var.get(), bg=SUMMARY_BG, fg=TEXT_PRIMARY,
@@ -451,6 +484,7 @@ def open_most_items_summary(parent):
         actions.pack(fill="x", padx=16, pady=(0, 14))
 
         def save_pdf():
+            # Ask where to save the PDF and export the preview rows.
             file_path = filedialog.asksaveasfilename(
                 parent=preview,
                 defaultextension=".pdf",
@@ -476,6 +510,7 @@ def open_most_items_summary(parent):
                   font=("Arial", 11, "bold"), relief="flat", padx=14, pady=8).pack(side="right", padx=5)
         center_window(preview, 980, 560, summary_win)
 
+    # Build filter controls for period and date.
     controls = tk.Frame(summary_win, bg=SUMMARY_BG)
     controls.pack(fill="x", padx=16, pady=(14, 8))
     button_options = {
@@ -505,6 +540,7 @@ def open_most_items_summary(parent):
     tk.Button(controls, text="Close", command=summary_win.destroy, bg="#dc2626",
               **button_options).pack(side="right")
 
+    # Build title, totals, export action, and summary table.
     tk.Label(summary_win, textvariable=title_var, bg=SUMMARY_BG, fg=PRIMARY,
              font=("Arial", 18, "bold")).pack(anchor="w", padx=16)
     tk.Label(summary_win, textvariable=totals_var, bg=SUMMARY_BG, fg=TEXT_PRIMARY,
@@ -516,5 +552,6 @@ def open_most_items_summary(parent):
     table_frame = tk.Frame(summary_win, bg=BG_CARD)
     table_frame.pack(fill="both", expand=True, padx=16, pady=(0, 16))
     summary_tree = create_tree(table_frame, "MostItemsSummary.Treeview")
+    # Load initial most-items summary data.
     load_summary()
     center_window(summary_win, 980, 620, parent)

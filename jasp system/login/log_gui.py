@@ -26,6 +26,7 @@ from .functions import (
 
 enable_centered_toplevels()
 
+# Define login page colors and shared UI state references.
 BG_BLUE = "#1950a3"
 LOGIN_HEADER_BG = "#072a4e"
 LOGIN_PAGE_BG = "#fff3e6"
@@ -45,6 +46,7 @@ login_btn = None
 
 
 def open_main_in_place(user_role):
+    # Route authenticated users to the correct workspace by role.
     try:
         if user_role == "Admin":
             from main_dashboard.main_gui import open_main
@@ -52,6 +54,7 @@ def open_main_in_place(user_role):
         elif user_role == "Cashier":
             open_cashier_dashboard()
         else:
+            # Reject accounts with unsupported roles.
             messagebox.showerror("Error", "Access denied. Unauthorized role.")
     except Exception as e:
         messagebox.showerror(
@@ -63,6 +66,7 @@ def open_main_in_place(user_role):
 
 
 def open_pos_for_cashier():
+    # Open the POS module for cashier-only access.
     try:
         from pos_module import open_pos
         open_pos()
@@ -71,6 +75,7 @@ def open_pos_for_cashier():
 
 
 def open_cashier_dashboard():
+    # Replace the login screen with the cashier workspace.
     root.title("JASP Cashier")
     try:
         root.state("zoomed")
@@ -78,9 +83,11 @@ def open_cashier_dashboard():
         pass
     root.configure(bg=DASHBOARD_CONTENT_BG)
 
+    # Clear the current root contents before drawing the cashier dashboard.
     for child in root.winfo_children():
         child.destroy()
 
+    # Build the cashier dashboard header.
     header = tk.Frame(
         root,
         bg=DASHBOARD_HEADER_BG,
@@ -131,6 +138,7 @@ def open_cashier_dashboard():
         pady=8
     ).pack(side="right")
 
+    # Build the central cashier POS access card.
     content = tk.Frame(root, bg=DASHBOARD_CONTENT_BG)
     content.pack(expand=True)
 
@@ -180,6 +188,7 @@ def open_cashier_dashboard():
 
 
 def show_success_popup(user_role):
+    # Show a modal login success popup before opening the workspace.
     popup = tk.Toplevel(root)
     popup.title("Login Successful")
     popup.configure(bg=CARD_BG)
@@ -216,8 +225,10 @@ def show_success_popup(user_role):
     ).pack(pady=(0, 32))
 
     def close_popup():
+        # Close the success popup.
         popup.destroy()
 
+    # Build the continue button for the success popup.
     ok_btn = tk.Button(
         content,
         text="Continue",
@@ -243,6 +254,7 @@ def show_success_popup(user_role):
 
 
 def show_error_popup(title, message):
+    # Show a modal login error popup.
     popup = tk.Toplevel(root)
     popup.title(title)
     popup.configure(bg=CARD_BG)
@@ -279,8 +291,10 @@ def show_error_popup(title, message):
     ).pack(pady=(0, 28))
 
     def close_popup():
+        # Close the error popup.
         popup.destroy()
 
+    # Build the OK button for the error popup.
     ok_btn = tk.Button(
         content,
         text="OK",
@@ -302,6 +316,7 @@ def show_error_popup(title, message):
 
 
 def confirm_exit():
+    # Ask the user to confirm exiting the login screen.
     popup = tk.Toplevel(root)
     popup.title("Confirm Exit")
     popup.configure(bg=CARD_BG)
@@ -341,8 +356,10 @@ def confirm_exit():
     button_row.pack()
 
     def close_popup():
+        # Close the exit confirmation dialog.
         popup.destroy()
 
+    # Build cancel and exit action buttons.
     tk.Button(
         button_row,
         text="Cancel",
@@ -375,23 +392,28 @@ def confirm_exit():
 
 
 def login():
+    # Read login fields and validate credentials before opening a workspace.
     username = username_entry.get().strip()
     password_input = password_entry.get()
 
     if username == "" or password_input.strip() == "":
+        # Require both username and password.
         show_error_popup("Error", "All fields are required.")
         return
 
     if not validate_common_inputs(username, password_input, error_callback=show_error_popup):
+        # Block suspicious or unsafe text input.
         return
 
     if not is_valid_username(username) or not is_valid_password(password_input):
+        # Enforce username/password format rules.
         show_error_popup("Error", "Invalid input detected.")
         return
 
     user = get_authenticated_user(username, password_input)
 
     if user:
+        # Store the authenticated session and continue to the correct workspace.
         role = user[2]
         if role not in ("Admin", "Cashier"):
             show_error_popup("Error", "Access denied. Unauthorized role.")
@@ -400,10 +422,12 @@ def login():
         show_success_popup(role)
         open_main_in_place(role)
     else:
+        # Show a generic login failure message for invalid credentials.
         show_error_popup("Error", "Invalid username or password.")
 
 
 def forgot_password():
+    # Open the password reset flow using username and registered contact number.
     reset_window = tk.Toplevel(root)
     reset_window.title("Forgot Password")
     reset_window.configure(bg=CARD_BG)
@@ -416,6 +440,7 @@ def forgot_password():
     reset_window.geometry(f"{width}x{height}+{x}+{y}")
 
     def show_reset_popup(title, message, color):
+        # Show a modal popup inside the reset password window.
         popup = tk.Toplevel(reset_window)
         popup.title(title)
         popup.configure(bg=CARD_BG)
@@ -435,8 +460,10 @@ def forgot_password():
         tk.Label(content, text=message, bg=CARD_BG, fg=TEXT_DARK, font=("Arial", 17), wraplength=400, justify="center").pack(pady=(0, 28))
 
         def close_popup():
+            # Close the reset popup.
             popup.destroy()
 
+        # Build the OK button for reset popups.
         ok_btn = tk.Button(content, text="OK", command=close_popup, bg=color, fg="white", font=("Arial", 15, "bold"), relief="flat", width=14, pady=9)
         ok_btn.pack()
         ok_btn.focus_set()
@@ -446,15 +473,19 @@ def forgot_password():
         reset_window.wait_window(popup)
 
     def show_reset_error(message):
+        # Display a reset-password error popup.
         show_reset_popup("Error", message, RED)
 
     def show_invalid_reset_input(_title="Error", message="Invalid input detected."):
+        # Adapter used by shared validation to show reset errors.
         show_reset_error(message)
 
     def show_reset_success(message):
+        # Display a reset-password success popup.
         show_reset_popup("Success", message, GREEN)
 
     def ask_reset_confirmation(message):
+        # Ask for confirmation before changing a password.
         popup = tk.Toplevel(reset_window)
         popup.title("Confirm")
         popup.configure(bg=CARD_BG)
@@ -477,12 +508,15 @@ def forgot_password():
         button_row.pack()
 
         def yes():
+            # Mark the reset confirmation as accepted.
             confirmed["value"] = True
             popup.destroy()
 
         def no():
+            # Close the reset confirmation without accepting.
             popup.destroy()
 
+        # Build yes/no buttons for reset confirmation.
         tk.Button(button_row, text="Yes", command=yes, bg=GREEN, fg="white", font=("Arial", 14, "bold"), relief="flat", width=12, pady=8).pack(side="left", padx=8)
         tk.Button(button_row, text="No", command=no, bg=RED, fg="white", font=("Arial", 14, "bold"), relief="flat", width=12, pady=8).pack(side="left", padx=8)
         popup.bind("<Return>", lambda _event: yes())
@@ -491,6 +525,7 @@ def forgot_password():
         reset_window.wait_window(popup)
         return confirmed["value"]
 
+    # Build the reset window close button and title area.
     top_bar = tk.Frame(reset_window, bg=CARD_BG)
     top_bar.pack(fill="x", padx=12, pady=(10, 0))
     tk.Button(
@@ -522,6 +557,7 @@ def forgot_password():
         font=("Arial", 14)
     ).pack(pady=(0, 22))
 
+    # Build the reset verification form fields.
     form = tk.Frame(reset_window, bg=CARD_BG)
     form.pack(fill="x", padx=64)
 
@@ -537,6 +573,7 @@ def forgot_password():
     contact_entry = tk.Entry(form, width=42, font=("Arial", 15), bd=1, relief="solid")
     contact_entry.pack(pady=(7, 14), ipady=6)
 
+    # Keep new-password fields hidden until contact details are verified.
     password_frame = tk.Frame(form, bg=CARD_BG)
     password_verified = tk.BooleanVar(value=False)
 
@@ -553,6 +590,7 @@ def forgot_password():
     show_password_var = tk.BooleanVar(value=False)
 
     def toggle_reset_password_visibility():
+        # Toggle visibility for both new password fields.
         show_char = "" if show_password_var.get() else "*"
         new_password_entry.config(show=show_char)
         confirm_password_entry.config(show=show_char)
@@ -583,24 +621,30 @@ def forgot_password():
     )
 
     def load_contact_check():
+        # Verify username and registered contact number before showing password fields.
         reset_username = reset_username_entry.get().strip()
         contact_number = contact_entry.get().strip()
 
         if reset_username == "" or contact_number == "":
+            # Require username and contact number for verification.
             show_reset_error("All fields are required.")
             return
         if not validate_common_inputs(reset_username, contact_number, error_callback=show_invalid_reset_input):
+            # Block suspicious verification input.
             return
         if not is_valid_username(reset_username) or not is_valid_contact_number(contact_number):
+            # Enforce username and contact-number formats.
             show_reset_error("Invalid input detected.")
             return
 
         saved_contact = get_contact_number(reset_username)
         if not saved_contact:
+            # Hide whether the username or contact number was wrong.
             show_reset_error("The details are incorrect.")
             return
         normalize = lambda value: value.strip().replace(" ", "").replace("-", "").replace("(", "").replace(")", "")
         if normalize(saved_contact) != normalize(contact_number):
+            # Reject reset flow when contact numbers do not match.
             show_reset_error("The details are incorrect.")
             return
 
@@ -613,16 +657,19 @@ def forgot_password():
         show_reset_success("Details verified successfully.")
 
     def reset_password():
+        # Validate and apply the new password after contact verification.
         reset_username = reset_username_entry.get().strip()
         contact_number = contact_entry.get().strip()
         new_password = new_password_entry.get()
         confirm_password = confirm_password_entry.get()
 
         if not password_verified.get():
+            # Require successful contact verification first.
             show_reset_error("Verify username and contact number first.")
             return
 
         if reset_username == "" or contact_number == "" or new_password.strip() == "" or confirm_password.strip() == "":
+            # Require all reset fields before changing the password.
             show_reset_error("All fields are required.")
             return
         if not validate_common_inputs(
@@ -632,19 +679,23 @@ def forgot_password():
             confirm_password,
             error_callback=show_invalid_reset_input,
         ):
+            # Block suspicious reset-password input.
             return
         if (
             not is_valid_username(reset_username)
             or not is_valid_contact_number(contact_number)
             or not is_valid_password(new_password)
         ):
+            # Enforce username, contact number, and password format rules.
             show_reset_error("Invalid input detected.")
             return
         if new_password != confirm_password:
+            # Require both new password entries to match.
             show_reset_error("New Password and Confirm Password must match.")
             return
 
         if not ask_reset_confirmation("Are you sure you want to reset this password?"):
+            # Stop when the user cancels the reset confirmation.
             return
 
         if not reset_user_password_with_contact(reset_username, contact_number, new_password):
@@ -654,6 +705,7 @@ def forgot_password():
         show_reset_success("Password reset successful.")
         reset_window.destroy()
 
+    # Build the verify button row.
     button_row = tk.Frame(form, bg=CARD_BG)
     button_row.pack(fill="x")
 
@@ -672,14 +724,17 @@ def forgot_password():
 
 
 def on_enter(e):
+    # Apply the login button hover color.
     e.widget["background"] = GREEN_HOVER
 
 
 def on_leave(e):
+    # Restore the login button normal color.
     e.widget["background"] = GREEN
 
 
 def load_login_logo(size=82):
+    # Load and round the login logo image when available.
     logo_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "images", "logo1.png"))
     try:
         from PIL import Image, ImageDraw, ImageTk
@@ -695,6 +750,7 @@ def load_login_logo(size=82):
         rounded_logo.putalpha(mask)
         return ImageTk.PhotoImage(rounded_logo)
     except (ImportError, OSError, AttributeError, tk.TclError):
+        # Fall back to Tk PhotoImage if Pillow is unavailable.
         try:
             image = tk.PhotoImage(file=logo_path)
             image = image.subsample(max(1, image.width() // size), max(1, image.height() // size))
@@ -704,6 +760,7 @@ def load_login_logo(size=82):
 
 
 def show_login_screen():
+    # Draw the main login screen and clear any active session.
     global main_frame, login_frame, username_entry, password_entry, login_btn
 
     session.clear_current_user()
@@ -715,9 +772,11 @@ def show_login_screen():
         pass
     root.configure(bg=LOGIN_PAGE_BG)
 
+    # Clear current root contents before drawing the login page.
     for child in root.winfo_children():
         child.destroy()
 
+    # Build the login header with logo and exit button.
     header = tk.Frame(root, bg=LOGIN_HEADER_BG, height=112, highlightthickness=1, highlightbackground="#041d36")
     header.pack(fill="x")
     header.pack_propagate(False)
@@ -754,6 +813,7 @@ def show_login_screen():
         pady=8
     ).pack(side="right", padx=24, pady=18)
 
+    # Build the centered login content area.
     main_frame = tk.Frame(root, bg=LOGIN_PAGE_BG)
     main_frame.pack(expand=True)
 
@@ -765,6 +825,7 @@ def show_login_screen():
         fg="#9a3412"
     ).pack(pady=(0, 24))
 
+    # Build the login form card.
     login_frame = tk.Frame(
         main_frame,
         bg=CARD_BG,
@@ -807,6 +868,7 @@ def show_login_screen():
     show_password_var = tk.BooleanVar(value=False)
 
     def toggle_password_visibility():
+        # Toggle password visibility on the login form.
         password_entry.config(show="" if show_password_var.get() else "*")
 
     tk.Checkbutton(
@@ -856,12 +918,14 @@ def show_login_screen():
     )
     login_btn.pack(pady=(0, 4), ipady=6)
 
+    # Wire login button hover states and Enter key submission.
     login_btn.bind("<Enter>", on_enter)
     login_btn.bind("<Leave>", on_leave)
     root.bind("<Return>", lambda _event: login())
 
 
 def run_app():
+    # Create the Tk root window and start the login application loop.
     global root
 
     root = tk.Tk()

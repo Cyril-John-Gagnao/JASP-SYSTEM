@@ -13,8 +13,10 @@ from jasp_theme import (
     add_header_logo,
 )
 
+# Keep POS popup windows centered using the shared window helper.
 enable_centered_toplevels()
 
+# Store the active POS refresh callback and shared button styling.
 pos_refresh_callback = None
 BUTTON_BORDER = {
     "bd": 2,
@@ -29,6 +31,7 @@ CART_HEADER_BG = "#bfdbfe"
 # ==================== POS WINDOW ====================
 def open_pos(parent=None):
     global pos_refresh_callback
+    # Initialize the POS database connection and shared UI context.
     conn, cursor = initialize_pos_database()
 
     ctx = {
@@ -42,6 +45,7 @@ def open_pos(parent=None):
         "cart_button_job": None,
         "button_border": BUTTON_BORDER,
     }
+    # Configure the shared Treeview style used by POS tables.
     pos_style = ttk.Style()
     pos_style.configure(
         "Pos.Treeview",
@@ -56,6 +60,7 @@ def open_pos(parent=None):
     )
 
     # ---------- GUI ----------
+    # Create the POS main window and bind it to the optional parent window.
     root = tk.Toplevel(parent) if parent is not None else tk.Toplevel()
     root.title("POS System")
     root.state("zoomed")  # Fullscreen
@@ -68,12 +73,14 @@ def open_pos(parent=None):
     ctx["root"] = root
 
     def close_pos_window():
+        # Clear the refresh hook and return focus to the parent window.
         globals().__setitem__("pos_refresh_callback", None)
         close_window_and_focus_parent(root, parent)
 
     root.protocol("WM_DELETE_WINDOW", close_pos_window)
 
     # ====== Header ======
+    # Build the POS header with title, back, and refresh controls.
     header_frame = tk.Frame(
         root,
         bg=DASHBOARD_HEADER_BG,
@@ -101,12 +108,14 @@ def open_pos(parent=None):
               command=lambda: pos_functions.load_inventory(ctx, search_entry.get()), padx=12, pady=8, **BUTTON_BORDER).pack(side=tk.RIGHT, padx=6)
 
     # ====== Main Frame ======
+    # Create the main two-panel layout for cart and inventory.
     main_frame = tk.Frame(root, bg=DASHBOARD_CONTENT_BG)
     main_frame.pack(fill="both", expand=True, padx=10, pady=5)
 
     cart_fullscreen = tk.BooleanVar(value=False)
 
     # Left Frame - Cart / POS
+    # Build the checkout cart panel on the left side.
     left_frame = tk.Frame(
         main_frame,
         bg=CART_PANEL_BG,
@@ -122,6 +131,7 @@ def open_pos(parent=None):
     sort_var = tk.StringVar(value="Name")
     ctx["sort_var"] = sort_var
 
+    # Build the cart header and fullscreen toggle.
     cart_header_frame = tk.Frame(left_frame, bg=CART_HEADER_BG, bd=1, relief="solid")
     cart_header_frame.pack(fill="x", pady=(10, 5))
     tk.Label(
@@ -151,6 +161,7 @@ def open_pos(parent=None):
     tk.Label(cart_frame, text=" You can also Double-click an item to select it.", font=("Arial", 13),
              bg=CART_PANEL_BG).pack()
     # Cart Treeview
+    # Build the cart table with scrollbars and overlay edit buttons.
     cart_table_frame = tk.Frame(left_frame, bg=CART_PANEL_BG)
     cart_table_frame.pack(fill="x", pady=(3, 4))
     cart_table_frame.configure(height=270)
@@ -203,6 +214,7 @@ def open_pos(parent=None):
         pos_functions.schedule_cart_buttons(ctx),
     ))
 
+    # Show the running total and checkout controls.
     global total_label
     total_label = tk.Label(
         left_frame,
@@ -246,6 +258,7 @@ def open_pos(parent=None):
     pay_checkout_btn.pack(side="left", fill="x", expand=True, padx=(5, 0))
 
     # Right Frame - Inventory
+    # Build the inventory search, sort, and summary controls.
     right_outer = tk.Frame(main_frame, bg=DASHBOARD_CONTENT_BG)
     right_outer.pack(side="right", fill="both", expand=True, padx=(5, 0))
 
@@ -289,6 +302,7 @@ def open_pos(parent=None):
     sort_menu.bind("<<ComboboxSelected>>", lambda e: pos_functions.load_inventory(ctx, search_entry.get()))
     pos_refresh_callback = lambda: pos_functions.load_inventory(ctx, search_entry.get())
 
+    # Build the inventory table container and fullscreen control.
     right_frame = tk.Frame(right_outer, bg="white", padx=10, pady=10)
     right_frame.pack(fill="both", expand=True)
     inventory_header = tk.Frame(right_frame, bg="#dbeafe", bd=1, relief="solid")
@@ -326,11 +340,13 @@ def open_pos(parent=None):
     ctx["inventory_column_specs"] = inventory_columns
 
     def refresh_inventory_table_layout():
+        # Resize both inventory tables and reposition their Add buttons.
         pos_functions.auto_fit_tree_columns(chb_inv_tree, inventory_columns)
         pos_functions.auto_fit_tree_columns(inv_tree, inventory_columns)
         pos_functions.schedule_inventory_buttons(ctx)
 
     def create_inventory_section(parent, title, height, include_fullscreen=False):
+        # Create one inventory section with a labeled table and optional fullscreen button.
         section = tk.Frame(parent, bg="white")
         section.pack(fill="x", pady=(0, 10))
         header = tk.Frame(section, bg="white")
@@ -394,6 +410,7 @@ def open_pos(parent=None):
         tree.bind("<Double-1>", lambda event, tree_widget=tree: pos_functions.open_add_to_cart_modal(ctx, event, tree_widget=tree_widget))
         return section, table_frame, tree
 
+    # Create separate inventory sections for CHB and other items.
     global chb_inv_tree, inv_tree
     chb_inv_section, chb_inv_table_frame, chb_inv_tree = create_inventory_section(right_frame, "CHB Items", 3)
     inv_section, inv_table_frame, inv_tree = create_inventory_section(right_frame, "Other Items", 5, include_fullscreen=True)
@@ -415,10 +432,12 @@ def open_pos(parent=None):
     ctx["inventory_no_results_label"] = inventory_no_results_label
 
     def refresh_cart_table_layout():
+        # Resize the cart table and reposition edit buttons.
         pos_functions.auto_fit_tree_columns(cart_tree, cart_column_specs)
         pos_functions.schedule_cart_buttons(ctx)
 
     def restore_cart_table_size():
+        # Return the cart table to its standard split-screen size.
         cart_table_frame.pack_configure(fill="x", expand=False, pady=(3, 4))
         cart_table_frame.configure(height=270)
         cart_table_frame.pack_propagate(False)
@@ -429,6 +448,7 @@ def open_pos(parent=None):
         cart_fullscreen.set(False)
 
     def show_cart_panel():
+        # Restore the normal cart-and-inventory split layout.
         left_frame.pack_forget()
         right_outer.pack_forget()
         restore_cart_table_size()
@@ -439,12 +459,14 @@ def open_pos(parent=None):
         root.after(50, refresh_cart_table_layout)
 
     def hide_cart_panel():
+        # Hide the cart panel so inventory can use the full window width.
         left_frame.pack_forget()
         right_outer.pack_forget()
         restore_cart_table_size()
         right_outer.pack(side="right", fill="both", expand=True, padx=0)
 
     def show_cart_only():
+        # Expand the cart panel to fullscreen mode.
         left_frame.pack_forget()
         right_outer.pack_forget()
         cart_table_frame.pack_configure(fill="both", expand=True, pady=5)
@@ -458,6 +480,7 @@ def open_pos(parent=None):
         root.after(50, refresh_cart_table_layout)
 
     def restore_other_items_section():
+        # Restore the CHB section when exiting other-items fullscreen mode.
         if not other_items_fullscreen.get():
             return
         chb_inv_section.pack_forget()
@@ -470,6 +493,7 @@ def open_pos(parent=None):
         other_items_fullscreen.set(False)
 
     def toggle_inventory_fullscreen():
+        # Toggle fullscreen mode for the full inventory area.
         if inventory_fullscreen.get():
             show_cart_panel()
             for tree_widget in (chb_inv_tree, inv_tree):
@@ -488,6 +512,7 @@ def open_pos(parent=None):
         root.after(50, refresh_inventory_table_layout)
 
     def toggle_other_items_fullscreen():
+        # Toggle fullscreen mode for only the other-items inventory table.
         if other_items_fullscreen.get():
             restore_other_items_section()
         else:
@@ -508,6 +533,7 @@ def open_pos(parent=None):
         root.after(50, refresh_inventory_table_layout)
 
     def toggle_cart_fullscreen():
+        # Toggle fullscreen mode for the checkout cart.
         if cart_fullscreen.get():
             show_cart_panel()
         else:
@@ -519,6 +545,8 @@ def open_pos(parent=None):
             restore_other_items_section()
             show_cart_only()
         root.after(50, refresh_inventory_table_layout)
+
+    # Schedule initial table fitting after Tk finishes drawing widgets.
     root.after_idle(lambda: (
         pos_functions.auto_fit_tree_columns(chb_inv_tree, inventory_columns),
         pos_functions.auto_fit_tree_columns(inv_tree, inventory_columns),
@@ -530,6 +558,7 @@ def open_pos(parent=None):
         pos_functions.schedule_inventory_buttons(ctx),
     ))
 
+    # Wire cart editing and load initial inventory data.
     cart_tree.bind("<Double-1>", lambda event: pos_functions.open_cart_item_modal(ctx, event))
 
     pos_functions.load_inventory(ctx)
@@ -537,4 +566,5 @@ def open_pos(parent=None):
 
 
 if __name__ == "__main__":
+    # Allow this module to run the POS window directly during manual testing.
     open_pos()

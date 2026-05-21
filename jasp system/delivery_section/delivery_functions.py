@@ -19,11 +19,13 @@ from inventory_module.inventory_database import (
     fetch_inventory_unit_options,
 )
 
+# Define shared popup colors for delivery actions.
 SUCCESS_GREEN = "#00c853"
 CANCEL_RED = "#dc2626"
 
 
 def get_delivery_unit_options():
+    # Load inventory unit options for other-item delivery forms.
     conn = None
     try:
         conn, cursor = open_inventory_connection()
@@ -36,6 +38,7 @@ def get_delivery_unit_options():
 
 
 def center_window(window, width=560, height=430, parent=None):
+    # Center a delivery popup over its parent window or the screen.
     window.update_idletasks()
     if parent and parent.winfo_exists():
         parent.update_idletasks()
@@ -48,6 +51,7 @@ def center_window(window, width=560, height=430, parent=None):
 
 
 def show_delivery_popup(parent, title, message, accent_color):
+    # Show a modal delivery message popup with a colored accent.
     popup = tk.Toplevel(parent)
     popup.title(title)
     popup.transient(parent)
@@ -63,8 +67,10 @@ def show_delivery_popup(parent, title, message, accent_color):
     tk.Label(content, text=message, bg="#ffffff", fg="#111827", font=("Arial", 17), wraplength=430, justify="center").pack(pady=(0, 28))
 
     def close_popup():
+        # Close the delivery popup.
         popup.destroy()
 
+    # Build the single OK action button for the popup.
     tk.Button(content, text="OK", command=close_popup, bg=accent_color, fg="white", activebackground=accent_color, font=("Arial", 15, "bold"), relief="flat", width=14, pady=9).pack()
     popup.bind("<Return>", lambda _event: close_popup())
     popup.bind("<Escape>", lambda _event: close_popup())
@@ -74,14 +80,17 @@ def show_delivery_popup(parent, title, message, accent_color):
 
 
 def show_delivery_error(parent, title, message):
+    # Display an error popup using the delivery error color.
     show_delivery_popup(parent, title, message, CANCEL_RED)
 
 
 def show_delivery_success(parent, title, message):
+    # Display a success popup using the delivery success color.
     show_delivery_popup(parent, title, message, SUCCESS_GREEN)
 
 
 def ask_delivery_confirmation(parent, title, message, confirm_text="Yes"):
+    # Show a modal confirmation dialog and return True only when confirmed.
     result = {"confirmed": False}
     popup = tk.Toplevel(parent)
     popup.title(title)
@@ -101,12 +110,15 @@ def ask_delivery_confirmation(parent, title, message, confirm_text="Yes"):
     button_row.pack()
 
     def confirm():
+        # Mark the dialog as confirmed before closing it.
         result["confirmed"] = True
         popup.destroy()
 
     def cancel():
+        # Close the dialog without confirming the action.
         popup.destroy()
 
+    # Build the cancel and confirm buttons.
     tk.Button(button_row, text="Cancel", command=cancel, bg="#64748b", fg="white", activebackground="#475569", font=("Arial", 14, "bold"), relief="flat", width=13, pady=9).pack(side="left", padx=8)
     tk.Button(button_row, text=confirm_text, command=confirm, bg="#2563eb", fg="white", activebackground="#1d4ed8", font=("Arial", 14, "bold"), relief="flat", width=13, pady=9).pack(side="left", padx=8)
     popup.bind("<Return>", lambda _event: confirm())
@@ -118,27 +130,33 @@ def ask_delivery_confirmation(parent, title, message, confirm_text="Yes"):
 
 
 def go_back(delivery_win):
+    # Close the delivery window and return focus to its parent.
     close_window_and_focus_parent(delivery_win)
 
 
 def refresh_data(load_data):
+    # Refresh the active delivery table.
     load_data()
 
 
+# Format a numeric value as Philippine peso currency text.
 def money(value):
     return f"₱{value:,.2f}"
 
 
 def parse_money(value):
+    # Convert displayed currency text back into a float.
     cleaned = "".join(ch for ch in str(value) if ch.isdigit() or ch in ".-")
     return float(cleaned or 0)
 
 
 def is_blank(value):
+    # Treat None and whitespace-only strings as empty values.
     return str(value or "").strip() == ""
 
 
 def get_tk_var_text(var):
+    # Safely read text from normal or Tcl-backed Tkinter variables.
     try:
         return str(var.get()).strip()
     except tk.TclError:
@@ -146,6 +164,7 @@ def get_tk_var_text(var):
 
 
 def parse_positive_int(value, field_name, parent):
+    # Validate that a form value is a positive integer.
     try:
         parsed = int(str(value).strip())
     except (TypeError, ValueError):
@@ -158,6 +177,7 @@ def parse_positive_int(value, field_name, parent):
 
 
 def parse_positive_number(value, field_name, parent, allow_zero=False):
+    # Validate that a form value is numeric and optionally allow zero.
     try:
         parsed = float(str(value).strip())
     except (TypeError, ValueError):
@@ -174,6 +194,7 @@ def parse_positive_number(value, field_name, parent, allow_zero=False):
 
 
 def open_date_calendar(parent, date_var, on_select=None):
+    # Open a small calendar popup for selecting a YYYY-MM-DD date.
     try:
         selected_date = datetime.strptime(date_var.get(), "%Y-%m-%d")
     except Exception:
@@ -198,12 +219,14 @@ def open_date_calendar(parent, date_var, on_select=None):
     title_var = tk.StringVar()
 
     def select_date(day):
+        # Apply the selected day and run the optional callback.
         date_var.set(f"{year_var.get():04d}-{month_var.get():02d}-{day:02d}")
         if callable(on_select):
             on_select()
         cal_win.destroy()
 
     def change_month(delta):
+        # Move the calendar view backward or forward by one month.
         month = month_var.get() + delta
         year = year_var.get()
         if month < 1:
@@ -217,6 +240,7 @@ def open_date_calendar(parent, date_var, on_select=None):
         render_calendar()
 
     def render_calendar():
+        # Redraw the calendar grid for the selected month and year.
         for child in grid_frame.winfo_children():
             child.destroy()
 
@@ -251,6 +275,7 @@ def open_date_calendar(parent, date_var, on_select=None):
 
     render_calendar()
 
+    # Position the calendar near the center of the parent window.
     cal_win.update_idletasks()
     x = parent.winfo_rootx() + (parent.winfo_width() // 2) - (cal_win.winfo_width() // 2)
     y = parent.winfo_rooty() + (parent.winfo_height() // 2) - (cal_win.winfo_height() // 2)
@@ -261,6 +286,7 @@ from .delivery_summary import open_delivery_summary
 
 
 def open_other_items_form(parent_win, conn, cursor, load_data, display_option_var, record_values=None):
+    # Open the add/edit form for non-CHB delivery records.
     is_edit_mode = bool(record_values and record_values[0])
     selected_other_id = str(record_values[0]) if is_edit_mode else ""
 
@@ -275,6 +301,7 @@ def open_other_items_form(parent_win, conn, cursor, load_data, display_option_va
     delivery_date_var = tk.StringVar(value=datetime.now().strftime("%Y-%m-%d"))
     delivery_datetime_var = delivery_date_var
 
+    # Define local button borders for the other-items form.
     button_border = {
         "bd": 2,
         "relief": "solid",
@@ -286,6 +313,7 @@ def open_other_items_form(parent_win, conn, cursor, load_data, display_option_va
     content = tk.Frame(form_win, bg="#ffffff", padx=24, pady=20)
     content.pack(fill="both", expand=True)
 
+    # Build the form title for add or edit mode.
     tk.Label(
         content,
         text="Edit Other Item Delivery" if is_edit_mode else "Other Items to Deliver",
@@ -297,11 +325,13 @@ def open_other_items_form(parent_win, conn, cursor, load_data, display_option_va
     form_bg = tk.Frame(content, bg="#fef3c7", bd=1, relief="flat")
     form_bg.pack(fill="x")
 
+    # Build the input grid for other-item delivery fields.
     form = tk.Frame(form_bg, bg="#fef3c7")
     form.pack(fill="x", padx=16, pady=12)
     form.columnconfigure(0, weight=0)
     form.columnconfigure(1, weight=1)
 
+    # Build the transaction date field with a calendar picker.
     tk.Label(
         form,
         text="Transaction Date",
@@ -332,6 +362,7 @@ def open_other_items_form(parent_win, conn, cursor, load_data, display_option_va
         **button_border
     ).pack(side="left", padx=(5, 0))
 
+    # Build the delivery date field with a calendar picker.
     tk.Label(
         form,
         text="Delivery Date",
@@ -363,6 +394,7 @@ def open_other_items_form(parent_win, conn, cursor, load_data, display_option_va
     ).pack(side="left", padx=(5, 0))
     date_frame.winfo_children()[-1].config(text="Calendar", font=("Arial", 10, "bold"), padx=6)
 
+    # Define the remaining other-item delivery input fields.
     fields = [
         ("Item Name", tk.Entry(form, width=28, font=("Arial", 13), bd=1, relief="solid", bg="white")),
         ("Quantity", tk.Entry(form, width=28, font=("Arial", 13), bd=1, relief="solid", bg="white")),
@@ -373,6 +405,7 @@ def open_other_items_form(parent_win, conn, cursor, load_data, display_option_va
         ("Delivery Fee", tk.Entry(form, width=28, font=("Arial", 13), bd=1, relief="solid", bg="white")),
     ]
 
+    # Render labels and inputs, then keep references by label name.
     entry_by_label = {}
     for row_index, (label_text, entry) in enumerate(fields, start=2):
         tk.Label(
@@ -385,10 +418,12 @@ def open_other_items_form(parent_win, conn, cursor, load_data, display_option_va
         entry.grid(row=row_index, column=1, sticky="ew", pady=6)
         entry_by_label[label_text] = entry
 
+    # Build the action button row for save, update, delete, or cancel.
     button_row = tk.Frame(content, bg="#ffffff")
     button_row.pack(fill="x", pady=(18, 0))
 
     if is_edit_mode:
+        # Fill form inputs with the selected record when editing.
         transaction_date_var.set(str(record_values[1])[:10])
         delivery_date_var.set(str(record_values[2])[:10])
         entry_by_label["Item Name"].insert(0, record_values[3])
@@ -400,6 +435,7 @@ def open_other_items_form(parent_win, conn, cursor, load_data, display_option_va
         entry_by_label["Delivery Fee"].insert(0, record_values[9])
 
     def get_other_item_form_values():
+        # Read and validate all other-item delivery form values.
         transaction_date = transaction_date_var.get().strip()
         delivery_date = delivery_date_var.get().strip()
         item_name = entry_by_label["Item Name"].get().strip()
@@ -436,6 +472,7 @@ def open_other_items_form(parent_win, conn, cursor, load_data, display_option_va
         return transaction_date, delivery_date, item_name, quantity, unit_of_measurement, delivery_address, delivery_driver, helper, delivery_fee
 
     def save_other_item_delivery():
+        # Validate and save a new non-CHB delivery record.
         form_values = get_other_item_form_values()
         if not form_values:
             return
@@ -464,6 +501,7 @@ def open_other_items_form(parent_win, conn, cursor, load_data, display_option_va
         show_delivery_success(parent_win, "Success", "Other item delivery saved successfully!")
 
     def update_other_item_delivery():
+        # Validate and update the selected non-CHB delivery record.
         form_values = get_other_item_form_values()
         if not form_values:
             return
@@ -493,6 +531,7 @@ def open_other_items_form(parent_win, conn, cursor, load_data, display_option_va
         show_delivery_success(parent_win, "Success", "Other item delivery updated successfully!")
 
     def delete_other_item_delivery():
+        # Confirm and delete the selected non-CHB delivery record.
         item_name = entry_by_label["Item Name"].get().strip() or "this item"
         if not ask_delivery_confirmation(form_win, "Confirm Delete", f"Delete delivery record for {item_name}?\n\nThis action cannot be undone.", "Delete"):
             return
@@ -503,6 +542,7 @@ def open_other_items_form(parent_win, conn, cursor, load_data, display_option_va
         form_win.destroy()
         show_delivery_success(parent_win, "Success", "Other item delivery deleted successfully!")
 
+    # Place the correct form action buttons for add or edit mode.
     tk.Button(button_row, text="Cancel", command=form_win.destroy, bg="#64748b", fg="white", font=("Arial", 12, "bold"), width=12, pady=7, cursor="hand2", **button_border).pack(side="right", padx=6)
     if is_edit_mode:
         tk.Button(button_row, text="Delete", command=delete_other_item_delivery, bg="#dc2626", fg="white", font=("Arial", 12, "bold"), width=12, pady=7, cursor="hand2", **button_border).pack(side="right", padx=6)
@@ -514,6 +554,7 @@ def open_other_items_form(parent_win, conn, cursor, load_data, display_option_va
 
 
 def auto_calc(event, blocks_entry, payment_var, result_label):
+    # Recalculate worker salary from delivered blocks and salary per block.
     try:
         blocks = int(blocks_entry.get() or 0)
         payment_per = float(payment_var.get() or 2.0)
@@ -527,6 +568,7 @@ def auto_calc(event, blocks_entry, payment_var, result_label):
 
 
 def clear_form(transaction_date_var, date_var, worker_entry, driver_entry, address_entry, blocks_entry, delivery_fee_entry, payment_var, result_label, selected_id):
+    # Reset the CHB delivery form fields and selected record.
     transaction_date_var.set(datetime.now().strftime("%Y-%m-%d"))
     date_var.set(datetime.now().strftime("%Y-%m-%d"))
     worker_entry.delete(0, tk.END)
@@ -540,6 +582,7 @@ def clear_form(transaction_date_var, date_var, worker_entry, driver_entry, addre
 
 
 def save_delivery(conn, cursor, delivery_win, transaction_date_var, worker_entry, date_var, driver_entry, address_entry, blocks_entry, delivery_fee_entry, payment_var, load_data, clear_form):
+    # Read and validate CHB delivery inputs before saving.
     transaction_date = transaction_date_var.get().strip()
     date = date_var.get().strip()
     worker = worker_entry.get().strip()
@@ -563,6 +606,7 @@ def save_delivery(conn, cursor, delivery_win, transaction_date_var, worker_entry
         show_delivery_error(delivery_win, "Error", "All fields must not be empty.")
         return
 
+    # Validate numeric CHB delivery fields.
     blocks = parse_positive_int(blocks_text, "Blocks to be delivered", delivery_win)
     if blocks is None:
         return
@@ -577,6 +621,7 @@ def save_delivery(conn, cursor, delivery_win, transaction_date_var, worker_entry
 
     total = blocks * payment_per
 
+    # Confirm and insert the new CHB delivery record.
     if not ask_delivery_confirmation(delivery_win, "Confirm Save", f"Save delivery record for {worker}?", "Save"):
         return
 
@@ -587,10 +632,12 @@ def save_delivery(conn, cursor, delivery_win, transaction_date_var, worker_entry
 
 
 def update_delivery(conn, cursor, delivery_win, selected_id, transaction_date_var, worker_entry, date_var, driver_entry, address_entry, blocks_entry, delivery_fee_entry, payment_var, load_data, clear_form):
+    # Require a selected CHB delivery row before updating.
     if not selected_id.get():
         show_delivery_error(delivery_win, "Error", "Select a record")
         return
 
+    # Read and validate edited CHB delivery inputs.
     transaction_date = transaction_date_var.get().strip()
     date = date_var.get().strip()
     worker = worker_entry.get().strip()
@@ -614,6 +661,7 @@ def update_delivery(conn, cursor, delivery_win, selected_id, transaction_date_va
         show_delivery_error(delivery_win, "Error", "All fields must not be empty.")
         return
 
+    # Validate numeric CHB delivery fields before updating.
     blocks = parse_positive_int(blocks_text, "Blocks to be delivered", delivery_win)
     if blocks is None:
         return
@@ -628,6 +676,7 @@ def update_delivery(conn, cursor, delivery_win, selected_id, transaction_date_va
 
     total = blocks * payment_per
 
+    # Confirm and update the selected CHB delivery record.
     if not ask_delivery_confirmation(delivery_win, "Confirm Update", f"Update record for {worker}?", "Update"):
         return
 
@@ -638,10 +687,12 @@ def update_delivery(conn, cursor, delivery_win, selected_id, transaction_date_va
 
 
 def delete_delivery(conn, cursor, delivery_win, selected_id, worker_entry, load_data, clear_form):
+    # Require a selected CHB delivery row before deleting.
     if not selected_id.get():
         show_delivery_error(delivery_win, "Error", "Select a record")
         return
 
+    # Confirm and delete the selected CHB delivery record.
     if not ask_delivery_confirmation(delivery_win, "Confirm Delete", f"Delete record for {worker_entry.get()}?\n\nThis action cannot be undone.", "Delete"):
         return
 
@@ -652,10 +703,12 @@ def delete_delivery(conn, cursor, delivery_win, selected_id, worker_entry, load_
 
 
 def on_tree_configure(event, tree):
+    # Allow the delivery table to finish layout updates after resizing.
     tree.update_idletasks()
 
 
 def on_select(event, tree, selected_id, transaction_date_var, date_var, worker_entry, driver_entry, address_entry, blocks_entry, delivery_fee_entry, auto_calc):
+    # Load the selected CHB delivery table row into the form.
     selected = tree.focus()
     values = tree.item(selected, "values")
 
@@ -677,7 +730,9 @@ def on_select(event, tree, selected_id, transaction_date_var, date_var, worker_e
 
 
 def load_data(event, cursor, tree, search_var, sort_var, delivery_win):
+    # Load today's CHB delivery rows into the table.
     try:
+        # Clear existing CHB delivery table rows before reloading.
         for row in tree.get_children():
             tree.delete(row)
 
@@ -686,6 +741,7 @@ def load_data(event, cursor, tree, search_var, sort_var, delivery_win):
         today = datetime.now().strftime("%Y-%m-%d")
         rows = fetch_delivery_rows(cursor, keyword, sort_option, today)
 
+        # Insert matching CHB rows or a friendly empty row.
         row_index = 0
         if not rows:
             message = "No matching records found." if keyword else "No deliveries for today"
@@ -701,7 +757,9 @@ def load_data(event, cursor, tree, search_var, sort_var, delivery_win):
 
 
 def load_other_items_data(event, cursor, tree, search_var, sort_var, delivery_win):
+    # Load today's other-item delivery rows into the table.
     try:
+        # Clear existing other-item table rows before reloading.
         for row in tree.get_children():
             tree.delete(row)
 
@@ -710,6 +768,7 @@ def load_other_items_data(event, cursor, tree, search_var, sort_var, delivery_wi
         today = datetime.now().strftime("%Y-%m-%d")
         rows = fetch_other_item_delivery_rows(cursor, keyword, sort_option, today)
 
+        # Insert matching other-item rows or a friendly empty row.
         if not rows:
             message = "No matching records found." if keyword else "No other item deliveries for today"
             tree.insert("", "end", values=("", today, today, message, "", "", "", "", "", "", ""), tags=("oddrow",))
@@ -723,5 +782,6 @@ def load_other_items_data(event, cursor, tree, search_var, sort_var, delivery_wi
 
 
 def on_closing(conn, delivery_win):
+    # Close the delivery database connection before leaving the window.
     conn.close()
     close_window_and_focus_parent(delivery_win)

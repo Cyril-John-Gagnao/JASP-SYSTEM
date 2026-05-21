@@ -22,6 +22,7 @@ from .delivery_functions import (
 
 
 def ensure_pdf_download_table(cursor):
+    # Create the table that stores exported PDF download history.
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS pdf_downloads (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -33,6 +34,7 @@ def ensure_pdf_download_table(cursor):
 
 
 def save_pdf_download(cursor, module, location):
+    # Store one exported PDF location with its download timestamp.
     ensure_pdf_download_table(cursor)
     downloaded_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     cursor.execute(
@@ -44,6 +46,7 @@ def save_pdf_download(cursor, module, location):
 
 
 def fetch_pdf_downloads(cursor, module, start_date=None, end_date=None):
+    # Load exported PDF history, optionally filtered by a date range.
     ensure_pdf_download_table(cursor)
     if start_date and end_date:
         cursor.execute(
@@ -70,6 +73,7 @@ def fetch_pdf_downloads(cursor, module, start_date=None, end_date=None):
 
 
 def open_delivery_summary(parent_win, cursor, bg_main, text_color):
+    # Open the delivery summary window.
     summary_win = tk.Toplevel(parent_win)
     summary_win.title("Delivery Summary")
     summary_win.geometry("1050x580")
@@ -80,6 +84,7 @@ def open_delivery_summary(parent_win, cursor, bg_main, text_color):
     y = (summary_win.winfo_screenheight() // 2) - (580 // 2)
     summary_win.geometry(f"1050x580+{x}+{y}")
 
+    # Store selected filters, display mode, and PDF history module key.
     period_var = tk.StringVar(value="day")
     date_sel = tk.StringVar(value=datetime.now().strftime("%Y-%m-%d"))
     summary_display_var = tk.StringVar(value="chb")
@@ -88,6 +93,7 @@ def open_delivery_summary(parent_win, cursor, bg_main, text_color):
     cursor.connection.commit()
 
     def compute_range():
+        # Convert selected day/week/month controls into start and end dates.
         p = period_var.get()
         if p == "day":
             d = datetime.strptime(date_sel.get(), "%Y-%m-%d")
@@ -116,6 +122,7 @@ def open_delivery_summary(parent_win, cursor, bg_main, text_color):
         return start, end
 
     def load_summary():
+        # Reload delivery summary rows for the selected period and display mode.
         configure_summary_tree()
         for row_id in summary_tree.get_children():
             summary_tree.delete(row_id)
@@ -124,11 +131,13 @@ def open_delivery_summary(parent_win, cursor, bg_main, text_color):
         empty_text = "No deliveries today" if period_var.get() == "day" else "No deliveries in this period"
 
         if summary_display_var.get() == "other":
+            # Load and total non-CHB item delivery rows.
             rows = fetch_other_item_delivery_summary(cursor, start, end)
             total_quantity = 0
             total_fee = 0
 
             if not rows:
+                # Show an empty row when there are no other-item deliveries.
                 summary_tree.insert(
                     "",
                     "end",
@@ -137,6 +146,7 @@ def open_delivery_summary(parent_win, cursor, bg_main, text_color):
                 )
 
             for i, row in enumerate(rows):
+                # Insert each other-item delivery row and accumulate totals.
                 transaction_date, delivery_date, item_name, quantity, unit, address, driver, helper, responsible_user, delivery_fee = row
                 total_quantity += quantity
                 total_fee += delivery_fee
@@ -150,12 +160,14 @@ def open_delivery_summary(parent_win, cursor, bg_main, text_color):
 
             totals_var.set(f"TOTAL QUANTITY: {total_quantity:,} | Delivery Fee: {money(total_fee)}")
         else:
+            # Load and total CHB block delivery rows.
             rows = fetch_delivery_summary(cursor, start, end)
             total_blocks = 0
             total_fee = 0
             total_salary = 0
 
             if not rows:
+                # Show an empty row when there are no CHB deliveries.
                 summary_tree.insert(
                     "",
                     "end",
@@ -164,6 +176,7 @@ def open_delivery_summary(parent_win, cursor, bg_main, text_color):
                 )
 
             for i, row in enumerate(rows):
+                # Insert each CHB delivery row and accumulate totals.
                 transaction_date, delivery_date, worker, driver, address, responsible_user, blocks, fee, salary = row
                 total_blocks += blocks
                 total_fee += fee
@@ -190,6 +203,7 @@ def open_delivery_summary(parent_win, cursor, bg_main, text_color):
         auto_adjust_summary_columns(summary_tree)
 
     def get_summary_title():
+        # Build the preview/PDF title from the selected period and display mode.
         start, end = compute_range()
         summary_name = "Other Items Delivery Summary" if summary_display_var.get() == "other" else "CHB Blocks Delivery Summary"
         if period_var.get() == "day":
@@ -199,12 +213,14 @@ def open_delivery_summary(parent_win, cursor, bg_main, text_color):
         return f"Monthly {summary_name} - {start.strftime('%B %Y')}"
 
     def get_summary_table_data():
+        # Convert visible summary rows into ReportLab table data and totals.
         rows = []
         for item in summary_tree.get_children():
             values = summary_tree.item(item, "values")
             rows.append(values)
 
         if summary_display_var.get() == "other":
+            # Build other-items PDF rows and calculate quantity/fee totals.
             total_quantity = 0
             total_fee = 0
             for values in rows:
@@ -216,6 +232,7 @@ def open_delivery_summary(parent_win, cursor, bg_main, text_color):
             table_data.append(["", "", "TOTAL", f"{total_quantity:,}", "", "", "", "", money(total_fee), ""])
             return table_data, rows, f"TOTAL QUANTITY: {total_quantity:,} | Delivery Fee: {money(total_fee)}", [0.65*inch, 0.65*inch, 0.7*inch, 0.5*inch, 0.7*inch, 0.85*inch, 0.7*inch, 0.55*inch, 0.6*inch, 0.6*inch]
 
+        # Build CHB delivery PDF rows and calculate blocks/fee/salary totals.
         total_blocks = 0
         total_fee = 0
         total_salary = 0
@@ -233,6 +250,7 @@ def open_delivery_summary(parent_win, cursor, bg_main, text_color):
         return table_data, rows, f"TOTAL: {total_blocks:,} blocks | Delivery Fee: {money(total_fee)} | Worker Salary: {money(total_salary)}", [0.8*inch, 0.75*inch, 0.85*inch, 0.85*inch, 1.0*inch, 0.75*inch, 0.55*inch, 0.7*inch, 0.75*inch]
 
     def save_summary_pdf(file_path, title_text, table_data, col_widths):
+        # Render the current delivery summary into a PDF file.
         pdf = SimpleDocTemplate(file_path, pagesize=letter, topMargin=0.5*inch, bottomMargin=0.5*inch)
         elements = []
 
@@ -255,6 +273,7 @@ def open_delivery_summary(parent_win, cursor, bg_main, text_color):
 
         elements.append(Paragraph(title_text, title_style))
 
+        # Build the PDF table with header, alternating rows, and total styling.
         table = Table(
             table_data,
             colWidths=col_widths
@@ -277,15 +296,18 @@ def open_delivery_summary(parent_win, cursor, bg_main, text_color):
 
         elements.append(table)
         elements.append(Spacer(1, 0.25*inch))
+        # Add the generated timestamp footer to the PDF.
         elements.append(Paragraph(f"Generated on {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}", footer_style))
         pdf.build(elements)
 
     def open_pdf_preview():
+        # Open a preview window before saving the summary as a PDF.
         try:
             load_summary()
             title_text = get_summary_title()
             table_data, rows, totals_text, pdf_col_widths = get_summary_table_data()
 
+            # Build the preview window and center it on screen.
             preview_win = tk.Toplevel(summary_win)
             preview_win.title("Delivery Summary Preview")
             preview_win.geometry("1050x580")
@@ -305,6 +327,7 @@ def open_delivery_summary(parent_win, cursor, bg_main, text_color):
                 font=("Arial", 16, "bold")
             ).pack(fill="x", padx=14, pady=(14, 8))
 
+            # Build the preview table with scrollbars.
             preview_frame = tk.Frame(preview_win, bg=bg_main)
             preview_frame.pack(fill="both", expand=True, padx=12, pady=8)
             preview_frame.columnconfigure(0, weight=1)
@@ -331,6 +354,7 @@ def open_delivery_summary(parent_win, cursor, bg_main, text_color):
             preview_tree.tag_configure("oddrow", background="#ffffff", font=("Arial", 13))
             preview_tree.tag_configure("evenrow", background="#93c5fd", font=("Arial", 13))
 
+            # Fill the preview table with the current summary rows.
             for index, row in enumerate(rows):
                 tag = "evenrow" if index % 2 == 0 else "oddrow"
                 preview_tree.insert("", "end", values=row, tags=(tag,))
@@ -348,6 +372,7 @@ def open_delivery_summary(parent_win, cursor, bg_main, text_color):
             action_frame.pack(fill="x", padx=12, pady=(0, 12))
 
             def choose_file_and_save():
+                # Ask where to save the PDF, export it, and record the download path.
                 try:
                     file_path = filedialog.asksaveasfilename(
                         parent=preview_win,
@@ -369,6 +394,7 @@ def open_delivery_summary(parent_win, cursor, bg_main, text_color):
                     show_delivery_error(preview_win, "Error", f"Failed to export PDF:\n{str(e)}")
 
             preview_button_border = {
+                # Keep preview action buttons visually consistent.
                 "bd": 2,
                 "relief": "solid",
                 "highlightthickness": 1,
@@ -381,9 +407,11 @@ def open_delivery_summary(parent_win, cursor, bg_main, text_color):
         except Exception as e:
             show_delivery_error(summary_win, "Error", f"Failed to preview summary:\n{str(e)}")
 
+    # Build the period filter controls at the top of the summary window.
     top_frame = tk.Frame(summary_win, bg=bg_main)
     top_frame.pack(fill="x", pady=12, padx=10)
 
+    # Reuse a bordered button style for summary controls.
     button_border = {
         "bd": 2,
         "relief": "solid",
@@ -393,6 +421,7 @@ def open_delivery_summary(parent_win, cursor, bg_main, text_color):
     }
 
     def set_period(period):
+        # Update the selected period and reload the summary.
         period_var.set(period)
         if period == "day":
             date_sel.set(datetime.now().strftime("%Y-%m-%d"))
@@ -404,9 +433,11 @@ def open_delivery_summary(parent_win, cursor, bg_main, text_color):
     tk.Radiobutton(top_frame, text="Month", variable=period_var, value="month", bg=bg_main, font=("Arial", 15), command=lambda: set_period("month")).pack(side="left", padx=8)
 
     def set_summary_display(display_type):
+        # Switch between CHB block and other-item delivery summaries.
         summary_display_var.set(display_type)
         load_summary()
 
+    # Build the date selector and close button row.
     date_frame = tk.Frame(top_frame, bg=bg_main)
     date_frame.pack(side="left", padx=(30, 10))
 
@@ -416,17 +447,20 @@ def open_delivery_summary(parent_win, cursor, bg_main, text_color):
     tk.Button(date_frame, text="Apply", command=load_summary, bg="#1e3a8a", fg="white", font=("Arial", 13, "bold"), width=9, padx=8, pady=6, **button_border).pack(side="left", padx=4)
     tk.Button(top_frame, text="Close", command=summary_win.destroy, bg="#dc2626", fg="white", font=("Arial", 13, "bold"), padx=18, pady=6, **button_border).pack(side="right", padx=4)
 
+    # Build the summary export and downloaded-PDF action buttons.
     action_frame = tk.Frame(summary_win, bg=bg_main)
     action_frame.pack(fill="x", padx=12, pady=(0, 6))
     tk.Button(action_frame, text="Preview / Download PDF", command=open_pdf_preview, bg="#059669", fg="white", font=("Arial", 13, "bold"), width=24, padx=12, pady=8, **button_border).pack(side="left", padx=4)
     tk.Button(action_frame, text="View Downloaded PDF", command=lambda: open_downloaded_pdf_window(), bg="#2563eb", fg="white", font=("Arial", 13, "bold"), width=22, padx=12, pady=8, **button_border).pack(side="left", padx=4)
 
+    # Build the selector for CHB blocks versus other items.
     display_frame = tk.Frame(summary_win, bg=bg_main)
     display_frame.pack(fill="x", padx=12, pady=(0, 6))
     tk.Label(display_frame, text="Display:", bg=bg_main, font=("Arial", 16, "bold"), fg=text_color).pack(side="left", padx=(4, 8))
     tk.Radiobutton(display_frame, text="CHB Blocks", variable=summary_display_var, value="chb", bg=bg_main, font=("Arial", 14, "bold"), command=lambda: set_summary_display("chb")).pack(side="left", padx=6)
     tk.Radiobutton(display_frame, text="Other Items", variable=summary_display_var, value="other", bg=bg_main, font=("Arial", 14, "bold"), command=lambda: set_summary_display("other")).pack(side="left", padx=6)
 
+    # Define summary columns for CHB block and other-item modes.
     chb_cols = ("transaction", "delivery", "worker", "driver", "address", "blocks", "fee", "salary", "user")
     other_cols = ("transaction_date", "delivery_date", "item", "quantity", "unit", "other_address", "other_driver", "helper", "other_fee", "other_user")
     chb_summary_headings = {
@@ -477,15 +511,19 @@ def open_delivery_summary(parent_win, cursor, bg_main, text_color):
     }
 
     def get_summary_columns():
+        # Return active summary columns based on selected display mode.
         return other_cols if summary_display_var.get() == "other" else chb_cols
 
     def get_summary_headings():
+        # Return active summary headings based on selected display mode.
         return other_summary_headings if summary_display_var.get() == "other" else chb_summary_headings
 
     def get_summary_widths():
+        # Return default summary widths based on selected display mode.
         return other_summary_widths if summary_display_var.get() == "other" else chb_summary_widths
 
     def configure_summary_tree():
+        # Configure the summary tree columns for the active display mode.
         selected_cols = get_summary_columns()
         headings = get_summary_headings()
         widths = get_summary_widths()
@@ -500,11 +538,13 @@ def open_delivery_summary(parent_win, cursor, bg_main, text_color):
                 stretch=False
             )
 
+    # Configure the delivery summary table style.
     style = ttk.Style()
     style.configure("DeliverySummary.Treeview", font=("Arial", 13), rowheight=38)
     style.configure("DeliverySummary.Treeview.Heading", font=("Arial", 14, "bold"), padding=(6, 8, 6, 8))
 
     def auto_adjust_summary_columns(tree_widget):
+        # Measure summary headings and rows to keep columns readable.
         tree_widget.update_idletasks()
         heading_font = tkfont.Font(font=style.lookup("DeliverySummary.Treeview.Heading", "font"))
         row_font = tkfont.Font(font=style.lookup("DeliverySummary.Treeview", "font"))
@@ -581,6 +621,7 @@ def open_delivery_summary(parent_win, cursor, bg_main, text_color):
             tree_widget.column(col, width=width, minwidth=min_widths[col], stretch=False)
 
     def open_pdf_location(path):
+        # Open a saved PDF path when it still exists on disk.
         if not path or path == "Not downloaded":
             messagebox.showinfo("PDF Location", "This summary has not been downloaded yet.", parent=summary_win)
             return
@@ -593,6 +634,7 @@ def open_delivery_summary(parent_win, cursor, bg_main, text_color):
             show_delivery_error(summary_win, "Error", f"Failed to open PDF:\n{str(e)}")
 
     def open_downloaded_pdf_window():
+        # Open a window listing previously exported delivery summary PDFs.
         pdf_win = tk.Toplevel(summary_win)
         pdf_win.title("Downloaded Delivery PDFs")
         pdf_win.geometry("980x540")
@@ -612,6 +654,7 @@ def open_delivery_summary(parent_win, cursor, bg_main, text_color):
         pdf_date_var = tk.StringVar(value=datetime.now().strftime("%Y-%m-%d"))
 
         def compute_pdf_range():
+            # Convert downloaded-PDF filters into a date range.
             try:
                 selected = datetime.strptime(pdf_date_var.get(), "%Y-%m-%d")
             except Exception:
@@ -632,6 +675,7 @@ def open_delivery_summary(parent_win, cursor, bg_main, text_color):
             return start_date, end_date
 
         def empty_pdf_message():
+            # Return a friendly message when no PDFs match the selected period.
             period = pdf_period_var.get()
             if period == "Day":
                 if pdf_date_var.get() == datetime.now().strftime("%Y-%m-%d"):
@@ -641,6 +685,7 @@ def open_delivery_summary(parent_win, cursor, bg_main, text_color):
                 return "No PDFs downloaded this week."
             return "No PDFs downloaded this month."
 
+        # Build the downloaded-PDF filter controls.
         filter_frame = tk.Frame(pdf_win, bg=bg_main)
         filter_frame.pack(fill="x", padx=14, pady=(0, 10))
         tk.Label(filter_frame, text="Period:", bg=bg_main, font=("Arial", 14, "bold")).pack(side="left", padx=(0, 8))
@@ -651,6 +696,7 @@ def open_delivery_summary(parent_win, cursor, bg_main, text_color):
         tk.Button(filter_frame, text="Calendar", command=lambda: open_date_calendar(pdf_win, pdf_date_var, load_pdf_records), bg="#2563eb", fg="white", font=("Arial", 12, "bold"), padx=8, pady=4, **button_border).pack(side="left", padx=4)
         tk.Button(filter_frame, text="Apply", command=lambda: load_pdf_records(), bg="#059669", fg="white", font=("Arial", 12, "bold"), padx=8, pady=4, **button_border).pack(side="left", padx=4)
 
+        # Build the downloaded-PDF table and scrollbar.
         pdf_frame = tk.Frame(pdf_win, bg=bg_main)
         pdf_frame.pack(fill="both", expand=True, padx=14, pady=(0, 10))
         pdf_style = ttk.Style()
@@ -668,6 +714,7 @@ def open_delivery_summary(parent_win, cursor, bg_main, text_color):
         pdf_tree.configure(yscrollcommand=pdf_scroll.set)
 
         def load_pdf_records():
+            # Reload downloaded PDF records for the selected filter range.
             for item in pdf_tree.get_children():
                 pdf_tree.delete(item)
             start_date, end_date = compute_pdf_range()
@@ -679,6 +726,7 @@ def open_delivery_summary(parent_win, cursor, bg_main, text_color):
                 pdf_tree.insert("", "end", values=("", empty_pdf_message()))
 
         def on_pdf_click(event):
+            # Open the clicked PDF location when the location column is selected.
             if pdf_tree.identify_column(event.x) != "#2":
                 return
             item_id = pdf_tree.identify_row(event.y)
@@ -692,6 +740,7 @@ def open_delivery_summary(parent_win, cursor, bg_main, text_color):
         load_pdf_records()
         tk.Button(pdf_win, text="Close", command=pdf_win.destroy, bg="#dc2626", fg="white", font=("Arial", 12, "bold"), padx=14, pady=6, **button_border).pack(anchor="e", padx=14, pady=(0, 12))
 
+    # Build the main summary table with scrollbars.
     tree_frame = tk.Frame(summary_win, bg=bg_main)
     tree_frame.pack(fill="both", expand=True, padx=12, pady=12)
     tree_frame.columnconfigure(0, weight=1)
@@ -708,9 +757,11 @@ def open_delivery_summary(parent_win, cursor, bg_main, text_color):
     summary_tree.tag_configure("oddrow", background="#ffffff", font=("Arial", 13))
     summary_tree.tag_configure("evenrow", background="#93c5fd", font=("Arial", 13))
 
+    # Show summary totals below the table.
     totals_var = tk.StringVar(value="")
     tk.Label(summary_win, textvariable=totals_var, bg=bg_main, font=("Arial", 15, "bold"), fg="#1e40af").pack(fill="x", padx=12, pady=(0, 12))
 
+    # Load the initial summary data when the window opens.
     load_summary()
 
 

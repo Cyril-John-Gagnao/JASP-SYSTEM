@@ -1,10 +1,12 @@
 from .main_functions import ACCENT, LINE, PRIMARY, TEXT_MUTED, TEXT_PRIMARY, money
 
 
+# Use dark text for chart amount labels.
 AMOUNT_TEXT = "#020617"
 
 
 def format_hour_label(hour):
+    # Convert an hour value into a compact 12-hour chart label.
     try:
         hour_num = int(str(hour)[:2])
     except (TypeError, ValueError):
@@ -15,6 +17,7 @@ def format_hour_label(hour):
 
 
 def draw_empty_chart(canvas, text="No data available"):
+    # Clear a chart canvas and show an empty-state message.
     canvas.delete("all")
     canvas.update_idletasks()
     width = max(canvas.winfo_width(), 180)
@@ -23,12 +26,15 @@ def draw_empty_chart(canvas, text="No data available"):
 
 
 def bind_chart(canvas, draw_callback):
+    # Redraw a chart whenever its canvas size changes.
     canvas.bind("<Configure>", lambda _event: draw_callback())
     draw_callback()
 
 
 def draw_revenue_by_hour(canvas, rows):
+    # Draw today's revenue-by-hour bar chart.
     def draw():
+        # Render revenue bars scaled to the highest hourly total.
         canvas.delete("all")
         if not rows:
             draw_empty_chart(canvas)
@@ -47,6 +53,7 @@ def draw_revenue_by_hour(canvas, rows):
         bar_gap = 5
         bar_w = max(10, (chart_w - (len(rows) - 1) * bar_gap) / max(len(rows), 1))
         for index, (hour, total) in enumerate(rows):
+            # Draw one revenue bar and its amount/hour labels.
             value = float(total or 0)
             x1 = left + index * (bar_w + bar_gap)
             x2 = x1 + bar_w
@@ -60,7 +67,9 @@ def draw_revenue_by_hour(canvas, rows):
 
 
 def draw_profit_breakdown(canvas, breakdown):
+    # Draw revenue, cost, and profit as a three-bar comparison.
     def draw():
+        # Render profit bars with a zero baseline for negative values.
         canvas.delete("all")
         values = [
             ("Revenue", float(breakdown.get("revenue") or 0), PRIMARY),
@@ -82,6 +91,7 @@ def draw_profit_breakdown(canvas, breakdown):
         canvas.create_line(left, baseline, left + chart_w, baseline, fill=LINE)
         bar_w = chart_w / 5
         for index, (label, value, color) in enumerate(values):
+            # Draw one breakdown bar and its label/value.
             bar_color = "#dc2626" if value < 0 else color
             x1 = left + (index * 1.65 + 0.35) * bar_w
             x2 = x1 + bar_w
@@ -101,7 +111,9 @@ def draw_profit_breakdown(canvas, breakdown):
 
 
 def draw_chb_stock(canvas, chb_state):
+    # Draw produced, sold, and available CHB stock bars.
     def draw():
+        # Render horizontal CHB stock bars scaled to total stock movement.
         canvas.delete("all")
         produced = int(chb_state.get("total_produced") or 0)
         sold = int(chb_state.get("total_sold") or 0)
@@ -118,6 +130,7 @@ def draw_chb_stock(canvas, chb_state):
         value_x = width - 8
         max_bar_w = max(70, width - 132)
         for label, value, color in labels:
+            # Draw one CHB stock progress bar and value label.
             canvas.create_text(label_x, y + 7, text=label, fill=TEXT_PRIMARY, anchor="w", font=("Arial", 9, "bold"))
             canvas.create_rectangle(bar_x, y, bar_x + max_bar_w, y + 14, fill="#e5e7eb", outline=LINE)
             fill_w = max_bar_w * (value / total)
@@ -128,7 +141,9 @@ def draw_chb_stock(canvas, chb_state):
 
 
 def draw_top_items(canvas, rows, empty_text="No items sold yet"):
+    # Draw a horizontal bar chart for top item quantities.
     def draw():
+        # Render item bars scaled to the highest quantity sold.
         canvas.delete("all")
         if not rows:
             canvas.configure(scrollregion=(0, 0, canvas.winfo_width(), canvas.winfo_height()))
@@ -146,6 +161,7 @@ def draw_top_items(canvas, rows, empty_text="No items sold yet"):
         label_w = 140
         bar_w = width - label_w - 52
         for name, qty in rows:
+            # Draw one top-item bar with item name and quantity.
             short_name = str(name)[:16]
             value = float(qty or 0)
             canvas.create_text(8, y + 8, text=short_name, fill=AMOUNT_TEXT, anchor="w", font=("Arial", 12, "bold"))

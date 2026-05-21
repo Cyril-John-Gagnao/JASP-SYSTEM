@@ -4,6 +4,7 @@ import tkinter as tk
 from . import user_database
 
 
+# Keep shared user-management state and UI colors in one place.
 current_user_role = "Admin"
 DEFAULT_SECURITY_QUESTION = "What is your username?"
 SAVE_GREEN = "#00c853"
@@ -12,6 +13,7 @@ PRIMARY_BLUE = "#2563eb"
 
 
 def center_window(window, width, height, parent=None):
+    # Center a popup over its parent window or the screen.
     window.update_idletasks()
     if parent and parent.winfo_exists():
         x = parent.winfo_rootx() + (parent.winfo_width() // 2) - (width // 2)
@@ -23,6 +25,7 @@ def center_window(window, width, height, parent=None):
 
 
 def get_popup_parent(widget):
+    # Resolve the nearest top-level window for popup ownership.
     try:
         return widget.winfo_toplevel()
     except Exception:
@@ -30,6 +33,7 @@ def get_popup_parent(widget):
 
 
 def show_user_popup(parent, title, message, accent_color, button_text="OK"):
+    # Show a reusable modal popup for user-management messages.
     popup = tk.Toplevel(parent)
     popup.title(title)
     popup.transient(parent)
@@ -44,8 +48,10 @@ def show_user_popup(parent, title, message, accent_color, button_text="OK"):
     tk.Label(content, text=message, bg="#ffffff", fg="#111827", font=("Arial", 17), wraplength=430, justify="center").pack(pady=(0, 28))
 
     def close_popup():
+        # Close the active message popup.
         popup.destroy()
 
+    # Build the popup action button and keyboard shortcuts.
     ok_btn = tk.Button(
         content,
         text=button_text,
@@ -68,14 +74,17 @@ def show_user_popup(parent, title, message, accent_color, button_text="OK"):
 
 
 def show_user_error(parent, title, message):
+    # Show a red error popup.
     show_user_popup(parent, title, message, CANCEL_RED)
 
 
 def show_user_success(parent, title, message):
+    # Show a green success popup.
     show_user_popup(parent, title, message, SAVE_GREEN)
 
 
 def ask_user_confirmation(parent, title, message):
+    # Ask the user to confirm a destructive action.
     popup = tk.Toplevel(parent)
     popup.title(title)
     popup.transient(parent)
@@ -94,12 +103,15 @@ def ask_user_confirmation(parent, title, message):
     button_frame.pack()
 
     def confirm():
+        # Mark the confirmation as accepted.
         result["confirmed"] = True
         popup.destroy()
 
     def cancel():
+        # Close the confirmation popup without accepting.
         popup.destroy()
 
+    # Build confirmation buttons and modal keyboard shortcuts.
     tk.Button(button_frame, text="Yes", command=confirm, bg=SAVE_GREEN, fg="white", font=("Arial", 14, "bold"), relief="flat", width=12, pady=8).pack(side="left", padx=8)
     tk.Button(button_frame, text="No", command=cancel, bg=CANCEL_RED, fg="white", font=("Arial", 14, "bold"), relief="flat", width=12, pady=8).pack(side="left", padx=8)
     popup.bind("<Return>", lambda _event: confirm())
@@ -111,6 +123,7 @@ def ask_user_confirmation(parent, title, message):
 
 
 def normalize_contact_number(contact_number):
+    # Normalize and validate contact numbers with optional plus prefix.
     cleaned = contact_number.strip().replace(" ", "").replace("-", "").replace("(", "").replace(")", "")
     if cleaned.startswith("+"):
         digits = cleaned[1:]
@@ -123,6 +136,7 @@ def normalize_contact_number(contact_number):
 
 
 def validate_user_form(parent, username, password, confirm_password, role, contact_number, require_password=True):
+    # Validate required fields, password rules, and contact number format.
     if not username or not password or not confirm_password or role == "Select Role" or not contact_number:
         if require_password or not username or role == "Select Role" or not contact_number:
             show_user_error(parent, "Error", "All required fields must be filled.")
@@ -148,6 +162,7 @@ def validate_user_form(parent, username, password, confirm_password, role, conta
 
 
 def get_filtered_users(cursor, role, search_text=""):
+    # Return users for one role that match the optional search text.
     search_text = search_text.strip().lower()
     users = []
     for row in user_database.get_users(cursor):
@@ -163,6 +178,7 @@ def get_filtered_users(cursor, role, search_text=""):
 
 
 def clear_user_form(username_entry, password_entry, confirm_password_entry, role_var, contact_entry, selected_user_id):
+    # Reset the user form fields and clear the selected user id.
     username_entry.delete(0, "end")
     password_entry.delete(0, "end")
     confirm_password_entry.delete(0, "end")
@@ -172,6 +188,7 @@ def clear_user_form(username_entry, password_entry, confirm_password_entry, role
 
 
 def load_user_by_id(cursor, user_id, selected_user_id, username_entry, password_entry, confirm_password_entry, role_var, contact_entry):
+    # Load the selected user's details into the form for editing.
     user = user_database.get_user_by_id(cursor, user_id)
     if not user:
         return
@@ -187,6 +204,7 @@ def load_user_by_id(cursor, user_id, selected_user_id, username_entry, password_
 
 
 def create_user(conn, cursor, username_entry, password_entry, confirm_password_entry, role_var, contact_entry, selected_user_id, refresh_callback):
+    # Validate the form and create a new user account.
     parent = get_popup_parent(username_entry)
     username = username_entry.get().strip()
     password = password_entry.get()
@@ -198,6 +216,12 @@ def create_user(conn, cursor, username_entry, password_entry, confirm_password_e
     if not normalized_contact:
         return
 
+    # Stop duplicate usernames before trying to insert the record.
+    if user_database.username_exists(cursor, username):
+        show_user_error(parent, "Error", "Username already exists. Please use a different username.")
+        return
+
+    # Save the new user and refresh the visible list.
     try:
         user_database.create_user_record(conn, cursor, username, password, role, DEFAULT_SECURITY_QUESTION, normalized_contact)
         refresh_callback()
@@ -208,6 +232,7 @@ def create_user(conn, cursor, username_entry, password_entry, confirm_password_e
 
 
 def update_user(conn, cursor, selected_user_id, username_entry, password_entry, confirm_password_entry, role_var, contact_entry, refresh_callback):
+    # Validate the form and update the currently selected user.
     parent = get_popup_parent(username_entry)
     if not selected_user_id.get():
         show_user_error(parent, "Error", "Select a user to update.")
@@ -223,9 +248,15 @@ def update_user(conn, cursor, selected_user_id, username_entry, password_entry, 
     if not normalized_contact:
         return
 
+    # Prevent updates from reusing another account's username.
+    if user_database.username_exists(cursor, username, selected_user_id.get()):
+        show_user_error(parent, "Error", "Username already exists. Please use a different username.")
+        return
+
     existing_user = user_database.get_user_by_id(cursor, selected_user_id.get())
     security_question = existing_user[4] if existing_user and existing_user[4] else DEFAULT_SECURITY_QUESTION
 
+    # Save account changes with or without replacing the password.
     try:
         if password or confirm_password:
             user_database.update_user_record(conn, cursor, selected_user_id.get(), username, password, role, security_question, normalized_contact)
@@ -239,18 +270,21 @@ def update_user(conn, cursor, selected_user_id, username_entry, password_entry, 
 
 
 def delete_user_by_id(conn, cursor, user_id, selected_user_id, username_entry, password_entry, confirm_password_entry, role_var, contact_entry, refresh_callback):
+    # Confirm and delete a user by id.
     parent = get_popup_parent(username_entry)
     if not ask_user_confirmation(parent, "Confirm Delete", "Delete this user?"):
         return
 
     user_database.delete_user_record(conn, cursor, user_id)
     refresh_callback()
+    # Clear the form when the deleted user was selected.
     if str(selected_user_id.get()) == str(user_id):
         clear_user_form(username_entry, password_entry, confirm_password_entry, role_var, contact_entry, selected_user_id)
     show_user_success(parent, "Success", "User deleted successfully!")
 
 
 def delete_selected_user(conn, cursor, selected_user_id, username_entry, password_entry, confirm_password_entry, role_var, contact_entry, refresh_callback):
+    # Delete the user currently loaded in the form.
     parent = get_popup_parent(username_entry)
     if not selected_user_id.get():
         show_user_error(parent, "Error", "Select a user to delete.")
@@ -271,6 +305,7 @@ def delete_selected_user(conn, cursor, selected_user_id, username_entry, passwor
 
 
 def open_change_password_form(conn, cursor, parent, selected_user_id):
+    # Open a modal form for changing the selected user's password.
     if not selected_user_id.get():
         show_user_error(parent, "Error", "Select a user first before changing password.")
         return
@@ -287,6 +322,7 @@ def open_change_password_form(conn, cursor, parent, selected_user_id):
     popup.configure(bg="#fef3c7")
     popup.resizable(False, False)
 
+    # Build the change-password form fields.
     content = tk.Frame(popup, bg="#fef3c7", padx=34, pady=28)
     content.pack(fill="both", expand=True)
 
@@ -304,6 +340,7 @@ def open_change_password_form(conn, cursor, parent, selected_user_id):
     show_password_var = tk.BooleanVar(value=False)
 
     def toggle_password_visibility():
+        # Toggle both password entries between hidden and visible text.
         visible = "" if show_password_var.get() else "*"
         new_password_entry.config(show=visible)
         confirm_entry.config(show=visible)
@@ -323,6 +360,7 @@ def open_change_password_form(conn, cursor, parent, selected_user_id):
     button_frame.grid(row=5, column=0, columnspan=2, pady=(14, 0))
 
     def submit():
+        # Validate and save the new password.
         new_password = new_password_entry.get()
         confirm_password = confirm_entry.get()
 
@@ -340,6 +378,7 @@ def open_change_password_form(conn, cursor, parent, selected_user_id):
         popup.destroy()
         show_user_success(parent, "Success", "Password changed successfully!")
 
+    # Build password form action buttons and keyboard shortcuts.
     tk.Button(button_frame, text="Save", command=submit, bg=SAVE_GREEN, fg="white", font=("Arial", 13, "bold"), width=12, pady=7, relief="solid", bd=2).pack(side="left", padx=8)
     tk.Button(button_frame, text="Cancel", command=popup.destroy, bg=CANCEL_RED, fg="white", font=("Arial", 13, "bold"), width=12, pady=7, relief="solid", bd=2).pack(side="left", padx=8)
 
@@ -352,6 +391,7 @@ def open_change_password_form(conn, cursor, parent, selected_user_id):
 
 
 def go_back_to_dashboard(root, conn):
+    # Close the user database connection and return to the main dashboard.
     conn.close()
     from main_dashboard.main_gui import open_main
     open_main(root)

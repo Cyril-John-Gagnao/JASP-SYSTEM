@@ -2,6 +2,7 @@ import sqlite3
 from datetime import datetime
 import os
 
+# Store the shared SQLite database path and inventory constants.
 DB_NAME = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "jasp.db")
 CHB_ITEM_NAME = "CHB Blocks"
 CHB_STATE_ID = 1
@@ -27,12 +28,14 @@ UNIT_OPTIONS = [
 
 
 def open_inventory_connection():
+    # Open a reusable database connection for inventory screens.
     conn = sqlite3.connect(DB_NAME)
     cursor = conn.cursor()
     return conn, cursor
 
 
 def setup_inventory_database(conn, cursor):
+    # Create the main inventory items table if it does not exist.
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS items (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -47,6 +50,7 @@ def setup_inventory_database(conn, cursor):
     """)
     conn.commit()
 
+    # Backfill missing inventory columns for older database files.
     cursor.execute("PRAGMA table_info(items)")
     columns = [col[1] for col in cursor.fetchall()]
     if "raw_price" not in columns:
@@ -70,8 +74,10 @@ def setup_inventory_database(conn, cursor):
         cursor.execute("ALTER TABLE items ADD COLUMN fine_sand_bag_price REAL DEFAULT 0")
         conn.commit()
 
+    # Ensure the inventory unit options table contains default units.
     ensure_inventory_unit_options(conn, cursor)
 
+    # Reconfirm the items table exists before creating related tables.
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS items (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -86,6 +92,7 @@ def setup_inventory_database(conn, cursor):
     """)
     conn.commit()
 
+    # Create the sales table used for inventory and dashboard calculations.
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS sales (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -97,6 +104,7 @@ def setup_inventory_database(conn, cursor):
         ts TEXT NOT NULL
     )
     """)
+    # Create the CHB production table used to sync CHB inventory stock.
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS chb_production (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -111,11 +119,13 @@ def setup_inventory_database(conn, cursor):
         ts TEXT
     )
     """)
+    # Backfill CHB production inventory tracking for older database files.
     cursor.execute("PRAGMA table_info(chb_production)")
     chb_columns = [col[1] for col in cursor.fetchall()]
     if "material_inventory_applied" not in chb_columns:
         cursor.execute("ALTER TABLE chb_production ADD COLUMN material_inventory_applied INTEGER DEFAULT 0")
         conn.commit()
+    # Create the single-row CHB inventory state table.
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS chb_inventory_state (
             id INTEGER PRIMARY KEY CHECK (id = 1),
@@ -125,25 +135,30 @@ def setup_inventory_database(conn, cursor):
             updated_ts TEXT
         )
     """)
+    # Create inventory logs and save all schema changes.
     create_inventory_logs_table(cursor)
     conn.commit()
 
 
 def ensure_chb_item(conn, cursor):
+    # Ensure the shared CHB Blocks inventory item exists only once.
     cursor.execute("SELECT id FROM items WHERE name=? ORDER BY id ASC", (CHB_ITEM_NAME,))
     rows = cursor.fetchall()
     if rows:
+        # Keep the oldest CHB row and force its unit to pieces.
         keeper_id = rows[0][0]
         cursor.execute(
             "UPDATE items SET unit=? WHERE id=?",
             (CHB_DEFAULT_UNIT, keeper_id)
         )
         if len(rows) > 1:
+            # Remove duplicate CHB item rows to avoid double-counting stock.
             cursor.execute(
                 "DELETE FROM items WHERE name=? AND id<>?",
                 (CHB_ITEM_NAME, keeper_id)
             )
     else:
+        # Create the CHB item from production minus sales when missing.
         cursor.execute("SELECT COALESCE(SUM(total_blocks),0) FROM chb_production")
         produced = cursor.fetchone()[0] or 0
         cursor.execute("SELECT COALESCE(SUM(qty),0) FROM sales WHERE item_name=?", (CHB_ITEM_NAME,))
@@ -154,6 +169,7 @@ def ensure_chb_item(conn, cursor):
             (CHB_ITEM_NAME, stock, 0, 0, CHB_DEFAULT_UNIT, "Active", datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
         )
 
+    # Ensure the CHB inventory state row exists for dashboard and stock sync.
     cursor.execute("SELECT id FROM chb_inventory_state WHERE id=?", (CHB_STATE_ID,))
     if not cursor.fetchone():
         cursor.execute("SELECT COALESCE(SUM(total_blocks),0) FROM chb_production")
@@ -171,10 +187,12 @@ def ensure_chb_item(conn, cursor):
 
 
 def ensure_chb_material_items(conn, cursor):
+    # Ensure Cement and Fine Sand material rows exist with expected units.
     for item_name in ("Cement", "Fine Sand"):
         cursor.execute("SELECT id FROM items WHERE LOWER(name) = LOWER(?) ORDER BY id ASC LIMIT 1", (item_name,))
         row = cursor.fetchone()
         if row:
+            # Normalize existing material rows without overwriting meaningful units.
             unit_expr = "?" if item_name == "Fine Sand" else "CASE WHEN COALESCE(unit, '') = '' THEN ? ELSE unit END"
             cursor.execute(
                 f"""
@@ -187,6 +205,7 @@ def ensure_chb_material_items(conn, cursor):
                 (item_name, PREDEFINED_ITEMS[item_name], row[0])
             )
         else:
+            # Insert missing CHB material items with zero stock.
             cursor.execute(
                 """
                 INSERT INTO items (name, quantity, price, raw_price, unit, status, date_added)
@@ -206,6 +225,7 @@ def ensure_chb_material_items(conn, cursor):
 
 
 def normalize_predefined_units(conn, cursor):
+    # Normalize units for predefined inventory items when missing or required.
     for item_name, item_unit in PREDEFINED_ITEMS.items():
         if item_name == "Fine Sand":
             cursor.execute("UPDATE items SET unit=? WHERE name=?", (item_unit, item_name))
@@ -218,6 +238,7 @@ def normalize_predefined_units(conn, cursor):
 
 
 def ensure_inventory_unit_options(conn, cursor):
+    # Create and seed the selectable inventory unit options table.
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS inventory_unit_options (
             unit TEXT PRIMARY KEY,
@@ -239,6 +260,7 @@ def ensure_inventory_unit_options(conn, cursor):
 
 
 def fetch_inventory_unit_options(conn, cursor):
+    # Return active inventory unit options for form dropdowns.
     ensure_inventory_unit_options(conn, cursor)
     cursor.execute("""
         SELECT unit
@@ -250,6 +272,7 @@ def fetch_inventory_unit_options(conn, cursor):
 
 
 def add_inventory_unit_option(conn, cursor, unit):
+    # Add or restore a custom unit of measurement.
     ensure_inventory_unit_options(conn, cursor)
     unit = unit.strip()
     if not unit:
@@ -266,6 +289,7 @@ def add_inventory_unit_option(conn, cursor, unit):
 
 
 def delete_inventory_unit_option(conn, cursor, unit):
+    # Soft-delete a unit option so existing records remain intact.
     ensure_inventory_unit_options(conn, cursor)
     cursor.execute(
         "UPDATE inventory_unit_options SET is_deleted=1 WHERE unit=?",
@@ -275,6 +299,7 @@ def delete_inventory_unit_option(conn, cursor, unit):
 
 
 def fetch_items(cursor, filter_text="", sort_by="Latest Date"):
+    # Fetch inventory rows using optional name filtering and sorting.
     order_clause = "ORDER BY datetime(COALESCE(NULLIF(date_added, ''), '1970-01-01 00:00:00')) DESC, id DESC"
     if sort_by in ("Name", "Item Name"):
         order_clause = "ORDER BY LOWER(name) ASC, id DESC"
@@ -290,6 +315,7 @@ def fetch_items(cursor, filter_text="", sort_by="Latest Date"):
 
 
 def count_items(cursor, filter_text=""):
+    # Count inventory items, optionally matching a search term.
     if filter_text:
         cursor.execute("SELECT COUNT(*) FROM items WHERE name LIKE ?", (f"%{filter_text}%",))
     else:
@@ -298,6 +324,7 @@ def count_items(cursor, filter_text=""):
 
 
 def create_restocks_table(cursor):
+    # Create the restock history table.
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS restocks (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -312,6 +339,7 @@ def create_restocks_table(cursor):
 
 
 def create_inventory_logs_table(cursor):
+    # Create the inventory action log table.
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS inventory_logs (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -326,10 +354,12 @@ def create_inventory_logs_table(cursor):
     cursor.execute("PRAGMA table_info(inventory_logs)")
     columns = [col[1] for col in cursor.fetchall()]
     if "responsible_user" not in columns:
+        # Backfill responsible user tracking for older log tables.
         cursor.execute("ALTER TABLE inventory_logs ADD COLUMN responsible_user TEXT DEFAULT ''")
 
 
 def log_inventory_action(conn, cursor, item_id, item_name, qty, action_status, ts=None):
+    # Record an inventory action such as add, remove, active, or inactive.
     create_inventory_logs_table(cursor)
     try:
         from main_dashboard import session
@@ -355,6 +385,7 @@ def log_inventory_action(conn, cursor, item_id, item_name, qty, action_status, t
 
 
 def log_restock(conn, cursor, name, qty_added, price, raw_price, item_id=None, action_status="Restock"):
+    # Store a restock entry and mirror it into inventory logs.
     ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     total_cost = raw_price * qty_added
     create_restocks_table(cursor)
@@ -367,6 +398,7 @@ def log_restock(conn, cursor, name, qty_added, price, raw_price, item_id=None, a
 
 
 def product_name_exists(cursor, name, exclude_item_id=None):
+    # Check for duplicate product names, optionally excluding the current item.
     if exclude_item_id is None:
         cursor.execute(
             "SELECT 1 FROM items WHERE LOWER(TRIM(name)) = LOWER(TRIM(?)) LIMIT 1",
@@ -387,11 +419,13 @@ def product_name_exists(cursor, name, exclude_item_id=None):
 
 
 def fetch_existing_item_for_stack(cursor, name, price_val):
+    # Find an existing item with matching name and price for stock stacking.
     cursor.execute("SELECT id, quantity FROM items WHERE name = ? AND price = ?", (name, price_val))
     return cursor.fetchone()
 
 
 def update_stacked_item(cursor, item_id, new_qty, raw_val, unit):
+    # Update an existing stacked item with a new quantity and raw price.
     cursor.execute(
         "UPDATE items SET quantity = ?, raw_price = ?, unit = ?, date_added = ? WHERE id = ?",
         (new_qty, raw_val, unit, datetime.now().strftime("%Y-%m-%d %H:%M:%S"), item_id)
@@ -399,12 +433,14 @@ def update_stacked_item(cursor, item_id, new_qty, raw_val, unit):
 
 
 def fetch_fine_sand_bag_price(cursor, item_id):
+    # Fetch the saved fine sand bag price for display and editing.
     cursor.execute("SELECT COALESCE(fine_sand_bag_price, 0) FROM items WHERE id=?", (item_id,))
     row = cursor.fetchone()
     return float(row[0] or 0) if row else 0
 
 
 def insert_item(cursor, name, quantity_val, price_val, raw_val, unit, status="Active"):
+    # Insert a new inventory item and return its generated id.
     cursor.execute(
         "INSERT INTO items (name, quantity, price, raw_price, unit, status, date_added) VALUES (?, ?, ?, ?, ?, ?, ?)",
         (name, quantity_val, price_val, raw_val, unit, status, datetime.now().strftime("%Y-%m-%d %H:%M:%S")),
@@ -413,11 +449,13 @@ def insert_item(cursor, name, quantity_val, price_val, raw_val, unit, status="Ac
 
 
 def update_item_record(cursor, item_id, name, quantity_val, price_val, raw_val, unit, status="Active"):
+    # Update a standard inventory item record.
     cursor.execute("UPDATE items SET name=?, quantity=?, price=?, raw_price=?, unit=?, status=? WHERE id=?",
                    (name, quantity_val, price_val, raw_val, unit, status, item_id))
 
 
 def update_fine_sand_item_record(cursor, item_id, name, quantity_val, cubic_price, bag_price, raw_val, unit, status="Active"):
+    # Update the fine sand record with both cubic and bag prices.
     cursor.execute(
         "UPDATE items SET name=?, quantity=?, price=?, fine_sand_bag_price=?, raw_price=?, unit=?, status=? WHERE id=?",
         (name, quantity_val, cubic_price, bag_price, raw_val, unit, status, item_id)
@@ -425,6 +463,7 @@ def update_fine_sand_item_record(cursor, item_id, name, quantity_val, cubic_pric
 
 
 def restock_item_record(conn, cursor, item_id, qty_added):
+    # Increase an active item's quantity and log the restock.
     ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     cursor.execute(
         "SELECT name, quantity, price, raw_price, COALESCE(status, 'Active') FROM items WHERE id=?",
@@ -446,6 +485,7 @@ def restock_item_record(conn, cursor, item_id, qty_added):
     )
 
     if name == CHB_ITEM_NAME:
+        # Keep CHB inventory state in sync when CHB blocks are restocked.
         cursor.execute(
             """
             UPDATE chb_inventory_state
@@ -463,6 +503,7 @@ def restock_item_record(conn, cursor, item_id, qty_added):
 
 
 def delete_item_record(conn, cursor, item_id):
+    # Log and delete an inventory item record.
     cursor.execute("SELECT name, quantity FROM items WHERE id=?", (item_id,))
     row = cursor.fetchone()
     if row:

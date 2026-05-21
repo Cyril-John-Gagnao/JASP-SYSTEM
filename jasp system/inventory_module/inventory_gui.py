@@ -17,15 +17,18 @@ inventory_window = None
 inventory_refresh_callback = None
 inventory_refresh_job = None
 
+# Keep CHB-related inventory items grouped in their own section.
 CHB_SECTION_ITEMS = ("Cement", "Fine Sand", "CHB Blocks")
 
 
 def open_inventory(parent=None):
+    # Reuse the existing inventory window if it is already open.
     global inventory_window, inventory_refresh_callback, inventory_refresh_job
     if inventory_window and inventory_window.winfo_exists():
         inventory_window.focus()
         return
 
+    # Open the inventory database connection and ensure required records exist.
     conn, cursor = open_inventory_connection()
     setup_inventory_database(conn, cursor)
     ensure_chb_item(conn, cursor)
@@ -33,6 +36,7 @@ def open_inventory(parent=None):
     normalize_predefined_units(conn, cursor)
 
     # ---------- GUI ----------
+    # Create the main inventory window.
     if parent is not None and parent.winfo_exists():
         inventory_window = tk.Toplevel(parent)
     else:
@@ -42,6 +46,7 @@ def open_inventory(parent=None):
     inventory_window.configure(bg=DASHBOARD_CONTENT_BG)
     inventory_window.option_add("*TCombobox*Listbox.font", ("Arial", 18))
 
+    # Build the header with logo, title, refresh, and back actions.
     header_frame = tk.Frame(inventory_window, bg=DASHBOARD_HEADER_BG, padx=14, pady=10, highlightthickness=1, highlightbackground=DASHBOARD_HEADER_BORDER)
     header_frame.pack(fill="x", padx=30, pady=(15, 8))
 
@@ -59,6 +64,7 @@ def open_inventory(parent=None):
         pady=4
     ).pack(side="left")
 
+    # Reuse header button styling for Back and Refresh.
     header_button_options = {
         "width": 12,
         "font": ("Arial", 13, "bold"),
@@ -88,9 +94,11 @@ def open_inventory(parent=None):
     main_frame.pack(fill="both", expand=True, padx=20, pady=10)
 
     # -------- Left Frame: Table + Search ----------
+    # Build the main left area for search, stock counts, and tables.
     left_frame = tk.Frame(main_frame, bg=DASHBOARD_CONTENT_BG, padx=10, pady=10)
     left_frame.pack(side="left", fill="both", expand=True, padx=(0, 10), pady=5)
 
+    # Build search, sort, and summary controls.
     controls_frame = tk.Frame(left_frame, bg=DASHBOARD_CONTENT_BG)
     controls_frame.pack(fill="x", pady=(0, 4), anchor="n")
 
@@ -132,6 +140,7 @@ def open_inventory(parent=None):
         command=lambda: open_inventory_summary(inventory_window, left_frame)
     ).pack(side="left")
 
+    # Show total inventory count and low-stock controls.
     stock_counts_frame = tk.Frame(left_frame, bg=DASHBOARD_CONTENT_BG)
     stock_counts_frame.pack(anchor="w", pady=(6, 8))
 
@@ -187,14 +196,17 @@ def open_inventory(parent=None):
     fullscreen_btn.pack(side="right", padx=(10, 0))
 
     # ---------- CRUD Functions ----------
+    # Track sorting and low-stock filter state for the table.
     sort_state = {"column": None, "ascending": True}
     low_stock_filter = {"active": False}
 
+    # Split the content between tables and the right action panel.
     content_frame = tk.Frame(left_frame, bg=DASHBOARD_CONTENT_BG)
     content_frame.pack(fill="both", expand=True, pady=10)
 
     table_area = tk.Frame(content_frame, bg=DASHBOARD_CONTENT_BG)
 
+    # Build the separate CHB inventory section.
     chb_section = tk.Frame(
         table_area,
         bg="white",
@@ -229,6 +241,7 @@ def open_inventory(parent=None):
     chb_tree_frame = tk.Frame(chb_section, bg="white")
     chb_tree_frame.pack(fill="x")
 
+    # Build the lower section for all other inventory items.
     lower_section = tk.Frame(
         table_area,
         bg="white",
@@ -263,6 +276,7 @@ def open_inventory(parent=None):
     other_items_fullscreen = tk.BooleanVar(value=False)
 
     def toggle_other_items_fullscreen():
+        # Toggle the Other Inventory Items section into fullscreen mode.
         clear_status_labels()
         if other_items_fullscreen.get():
             lower_section.pack_forget()
@@ -302,6 +316,7 @@ def open_inventory(parent=None):
     tree_frame.pack(fill="both", expand=True)
 
     # -------- Right Frame: Actions ----------
+    # Build the fixed action panel for add, edit, and delete.
     right_frame = tk.Frame(
         content_frame,
         bg="#dbeafe",
@@ -321,6 +336,7 @@ def open_inventory(parent=None):
     display_fullscreen = tk.BooleanVar(value=False)
 
     def restore_normal_inventory_layout():
+        # Restore the normal split layout with tables and action panel.
         clear_status_labels()
         table_area.pack_forget()
         right_frame.pack_forget()
@@ -330,6 +346,7 @@ def open_inventory(parent=None):
         inventory_window.update_idletasks()
 
     def toggle_display_fullscreen():
+        # Toggle the whole inventory table area into fullscreen mode.
         clear_status_labels()
         if display_fullscreen.get():
             restore_normal_inventory_layout()
@@ -349,6 +366,7 @@ def open_inventory(parent=None):
             display_fullscreen.set(True)
         inventory_window.after(50, lambda: (auto_adjust_columns(chb_tree), auto_adjust_columns(tree), schedule_status_labels()))
 
+    # Define inventory table columns and display headings.
     columns = ("ID", "Name", "Unit", "Quantity", "Price", "Raw Price", "Status", "Restock")
     column_headings = {
         "ID": "ID",
@@ -360,6 +378,7 @@ def open_inventory(parent=None):
         "Status": "Status",
         "Restock": "Restock",
     }
+    # Build the CHB items table with scrollbars.
     chb_tree = ttk.Treeview(chb_tree_frame, columns=columns, show="headings", selectmode="browse", height=3)
     chb_v_scroll = ttk.Scrollbar(chb_tree_frame, orient="vertical", command=chb_tree.yview)
     chb_h_scroll = ttk.Scrollbar(chb_tree_frame, orient="horizontal", command=chb_tree.xview)
@@ -371,6 +390,7 @@ def open_inventory(parent=None):
     chb_tree_frame.grid_columnconfigure(0, weight=1)
     chb_tree_frame.grid_rowconfigure(0, weight=1)
 
+    # Build the other inventory items table with scrollbars.
     tree = ttk.Treeview(tree_frame, columns=columns, show="headings", selectmode="browse")
     v_scroll = ttk.Scrollbar(tree_frame, orient="vertical", command=tree.yview)
     h_scroll = ttk.Scrollbar(tree_frame, orient="horizontal", command=tree.xview)
@@ -382,6 +402,7 @@ def open_inventory(parent=None):
     tree_frame.grid_columnconfigure(0, weight=1)
     tree_frame.grid_rowconfigure(0, weight=1)
 
+    # Prepare an overlay label for searches with no matching results.
     no_results_label = tk.Label(
         tree_frame,
         text="No matching product found.",
@@ -394,6 +415,7 @@ def open_inventory(parent=None):
         relief="solid"
     )
 
+    # Configure table style and row tags.
     style = ttk.Style()
     style.configure("Inventory.Treeview", font=("Arial", 14), rowheight=40)
     style.configure("Inventory.Treeview.Heading", font=("Arial", 15, "bold"))
@@ -407,6 +429,7 @@ def open_inventory(parent=None):
     tree.tag_configure(inventory_functions.LOW_STOCK_ROW, background="#fed7aa", foreground="#000000")
 
     def configure_columns(target_tree):
+        # Apply common headings, widths, and alignment to an inventory table.
         for column_id, heading_text in column_headings.items():
             anchor = "w" if column_id == "Name" else "e" if column_id in ("Price", "Raw Price") else "center"
             target_tree.heading(column_id, text=heading_text)
@@ -415,6 +438,7 @@ def open_inventory(parent=None):
     configure_columns(chb_tree)
     configure_columns(tree)
 
+    # Track overlay widgets and scheduled render jobs for status/restock buttons.
     overlay_widgets = {}
     status_render_job = {"id": None}
     column_adjust_job = {"id": None}
@@ -423,6 +447,7 @@ def open_inventory(parent=None):
     selection_syncing = {"active": False}
 
     def close_inventory_window():
+        # Close inventory, cancel pending jobs, close DB, and restore parent focus.
         global inventory_window, inventory_refresh_callback, inventory_refresh_job
         window = inventory_window
         parent_window = window.master if window and window.winfo_exists() else parent
@@ -464,6 +489,7 @@ def open_inventory(parent=None):
                 pass
 
     def auto_adjust_columns(target_tree):
+        # Measure headings and row values to keep inventory columns readable.
         clear_status_labels()
         target_tree.update_idletasks()
         heading_font = tkfont.Font(font=style.lookup("Inventory.Treeview.Heading", "font"))
@@ -505,6 +531,7 @@ def open_inventory(parent=None):
             measured_widths[col] = width
 
         if target_tree is tree:
+            # Spread extra width across flexible columns in the main table.
             target_tree.update_idletasks()
             total_width = sum(measured_widths.values())
             available_width = max(target_tree.winfo_width() - 24, total_width)
@@ -520,10 +547,12 @@ def open_inventory(parent=None):
             target_tree.column(col, width=measured_widths[col], minwidth=measured_widths[col], stretch=False)
 
     def schedule_column_adjust(target_tree=None):
+        # Schedule one idle column adjustment instead of recalculating repeatedly.
         if column_adjust_job["id"] is not None:
             return
 
         def run_adjust():
+            # Run the pending column adjustment for one or both tables.
             column_adjust_job["id"] = None
             if target_tree is not None:
                 auto_adjust_columns(target_tree)
@@ -536,12 +565,14 @@ def open_inventory(parent=None):
         column_adjust_job["id"] = parent_widget.after_idle(run_adjust)
 
     def clear_status_labels():
+        # Remove overlay status labels and restock buttons.
         for widget in overlay_widgets.values():
             if widget.winfo_exists():
                 widget.destroy()
         overlay_widgets.clear()
 
     def schedule_status_labels(target_tree=None):
+        # Schedule overlay rendering for status labels and restock buttons.
         if status_rendering["active"]:
             return
 
@@ -552,6 +583,7 @@ def open_inventory(parent=None):
         status_render_job["id"] = parent.after_idle(render_status_labels)
 
     def open_restock_target(row_values):
+        # Open CHB production for CHB Blocks or restock form for other items.
         if row_values and len(row_values) > 1 and str(row_values[1]).strip().lower() == "chb blocks":
             try:
                 from chb_module.gui import open_chb_dashboard
@@ -570,6 +602,7 @@ def open_inventory(parent=None):
         inventory_functions.open_restock_form(conn, cursor, inventory_window, row_values, refresh_view)
 
     def load_chb_items():
+        # Load Cement, Fine Sand, and CHB Blocks into the CHB section.
         for row in chb_tree.get_children():
             chb_tree.delete(row)
 
@@ -600,6 +633,7 @@ def open_inventory(parent=None):
         auto_adjust_columns(chb_tree)
 
     def remove_chb_items_from_main_table():
+        # Remove CHB-section items from the lower other-items table.
         chb_names = {name.lower() for name in CHB_SECTION_ITEMS}
         remaining_index = 0
         for item in list(tree.get_children()):
@@ -615,6 +649,7 @@ def open_inventory(parent=None):
         auto_adjust_columns(tree)
 
     def update_low_stock_count():
+        # Count low-stock items and update the low-stock button text.
         low_stock_count = 0
         for row in inventory_functions.fetch_items(cursor, "", "Latest Date"):
             item_name = row[1] if len(row) > 1 else ""
@@ -625,6 +660,7 @@ def open_inventory(parent=None):
         low_stock_var.set(f"{prefix}: {low_stock_count:,}")
 
     def apply_low_stock_filter():
+        # Hide non-low-stock rows when the low-stock filter is active.
         if not low_stock_filter["active"]:
             return
 
@@ -643,6 +679,7 @@ def open_inventory(parent=None):
             auto_adjust_columns(target_tree)
 
     def update_no_results_message():
+        # Show the no-results message only for empty search results.
         has_search = bool(search_entry.get().strip())
         has_other_results = bool(tree.get_children())
         if has_search and not has_other_results:
@@ -652,11 +689,13 @@ def open_inventory(parent=None):
             no_results_label.place_forget()
 
     def show_low_stock_items():
+        # Activate the low-stock-only view.
         low_stock_filter["active"] = True
         search_entry.delete(0, tk.END)
         refresh_view()
 
     def show_all_items():
+        # Clear search/filter state and show all inventory items.
         if not low_stock_filter["active"] and search_entry.get() == "":
             return
         low_stock_filter["active"] = False
@@ -664,6 +703,7 @@ def open_inventory(parent=None):
         refresh_view()
 
     def set_selected_action_tree(target_tree):
+        # Keep one active table selection for edit/delete actions.
         if selection_syncing["active"]:
             return
 
@@ -678,12 +718,14 @@ def open_inventory(parent=None):
         selection_syncing["active"] = False
 
     def render_status_labels():
+        # Render simple status and restock overlays on visible table rows.
         status_render_job["id"] = None
         status_rendering["active"] = True
         try:
             visible_keys = set()
 
             def render_tree_status_labels(target_tree):
+                # Render overlays for one inventory table.
                 target_tree.update_idletasks()
                 for item in target_tree.get_children():
                     name_bbox = target_tree.bbox(item, "Name")
@@ -703,6 +745,7 @@ def open_inventory(parent=None):
                     fg = "#15803d" if is_active else "#dc2626"
 
                     def select_row(event, row_id=item, selected_tree=target_tree):
+                        # Select the row behind an overlay widget.
                         selected_tree.selection_set(row_id)
                         selected_tree.focus(row_id)
                         set_selected_action_tree(selected_tree)
@@ -765,6 +808,7 @@ def open_inventory(parent=None):
             status_rendering["active"] = False
 
     def render_status_labels():
+        # Render reusable overlay widgets for low-stock, status, and restock cells.
         global inventory_refresh_job
         if not inventory_window or not inventory_window.winfo_exists():
             return
@@ -775,17 +819,20 @@ def open_inventory(parent=None):
             visible_keys = set()
 
             def select_row(target_tree, row_id):
+                # Select the row behind an overlay widget.
                 target_tree.selection_set(row_id)
                 target_tree.focus(row_id)
                 set_selected_action_tree(target_tree)
 
             def get_row_bg(target_tree, item):
+                # Pick overlay background color from the row tag.
                 row_tags = target_tree.item(item, "tags")
                 if row_tags and row_tags[0] == inventory_functions.LOW_STOCK_ROW:
                     return "#fed7aa"
                 return "#93c5fd" if row_tags and row_tags[0] == "blue_row" else "#ffffff"
 
             def get_overlay(target_tree, item, kind, factory):
+                # Reuse existing overlay widgets when possible.
                 key = (str(target_tree), item, kind)
                 visible_keys.add(key)
                 widget = overlay_widgets.get(key)
@@ -795,6 +842,7 @@ def open_inventory(parent=None):
                 return widget
 
             def render_tree_overlays(target_tree):
+                # Position overlay widgets over visible status/restock cells.
                 target_tree.update_idletasks()
                 for item in target_tree.get_children():
                     values = target_tree.item(item, "values")
@@ -869,6 +917,7 @@ def open_inventory(parent=None):
             status_rendering["active"] = False
 
     def refresh_view():
+        # Reload inventory tables, filters, counters, and overlays.
         inventory_functions.refresh_current_view(conn, cursor, tree, search_entry, sort_filter_var, total_items_var)
         remove_chb_items_from_main_table()
         load_chb_items()
@@ -879,10 +928,12 @@ def open_inventory(parent=None):
         schedule_status_labels()
 
     def sort_and_render(column, numeric=False):
+        # Sort the main table and refresh row overlays.
         inventory_functions.sort_tree(tree, sort_state, column, numeric=numeric)
         remove_chb_items_from_main_table()
         schedule_status_labels()
 
+    # Wire sortable headings for the main inventory table.
     tree.heading("ID", text="ID", command=lambda: sort_and_render("ID", numeric=True))
     tree.heading("Name", text="Name", command=lambda: sort_and_render("Name", numeric=False))
     tree.heading("Unit", text="Unit of Measurement", command=lambda: sort_and_render("Unit", numeric=False))
@@ -892,6 +943,7 @@ def open_inventory(parent=None):
     tree.heading("Status", text="Status", command=lambda: sort_and_render("Status", numeric=False))
     tree.heading("Restock", text="Restock")
 
+    # Keep overlays aligned while scrolling both tables.
     v_scroll.config(command=lambda *args: (tree.yview(*args), schedule_status_labels(tree)))
     h_scroll.config(command=lambda *args: (tree.xview(*args), schedule_status_labels(tree)))
     chb_v_scroll.config(command=lambda *args: (chb_tree.yview(*args), schedule_status_labels(chb_tree)))
@@ -904,6 +956,7 @@ def open_inventory(parent=None):
         yscrollcommand=lambda *args: (chb_v_scroll.set(*args), schedule_status_labels(chb_tree)),
         xscrollcommand=lambda *args: (chb_h_scroll.set(*args), schedule_status_labels(chb_tree))
     )
+    # Recalculate columns and overlays after table layout or selection changes.
     tree.bind("<Configure>", lambda event: schedule_column_adjust(tree))
     tree.bind("<MouseWheel>", lambda event: schedule_status_labels(tree))
     tree.bind("<B1-Motion>", lambda event: schedule_status_labels(tree))
@@ -917,11 +970,13 @@ def open_inventory(parent=None):
     tree.bind("<<TreeviewSelect>>", lambda event: set_selected_action_tree(tree))
     chb_tree.bind("<<TreeviewSelect>>", lambda event: set_selected_action_tree(chb_tree))
 
+    # Bind search and sort controls to refresh the inventory view.
     search_entry.bind("<KeyRelease>", lambda event: refresh_view())
     sort_filter.bind("<<ComboboxSelected>>", lambda event: refresh_view())
     inventory_refresh_callback = refresh_view
 
     # ---------- Buttons ----------
+    # Define shared action button styling.
     button_options = {
         "font": ("Arial", 13, "bold"),
         "bd": 2,
@@ -936,5 +991,6 @@ def open_inventory(parent=None):
     tk.Button(right_frame, text="Edit Item", bg="#2196f3", fg="white", command=lambda: inventory_functions.update_item(conn, cursor, inventory_window, selected_action_tree["tree"], refresh_view), **button_options).grid(row=1, column=0, sticky="ew", pady=12, padx=4)
     tk.Button(right_frame, text="Delete Item", bg="#ff1744", fg="white", command=lambda: inventory_functions.delete_item(conn, cursor, inventory_window, selected_action_tree["tree"], refresh_view), **button_options).grid(row=2, column=0, sticky="ew", pady=12, padx=4)
 
+    # Close cleanly and load the initial inventory data.
     inventory_window.protocol("WM_DELETE_WINDOW", close_inventory_window)
     refresh_view()

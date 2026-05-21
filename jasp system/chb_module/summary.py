@@ -13,6 +13,7 @@ from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, 
 
 from .chb_database import fetch_production_summary, fetch_chb_adjustment_summary, fetch_latest_production_date
 
+# Reuse a bordered button style for summary and PDF windows.
 SUMMARY_BUTTON_BORDER = {
     'bd': 2,
     'relief': 'solid',
@@ -24,11 +25,13 @@ SUCCESS_GREEN = "#16a34a"
 
 
 def parse_currency(value):
+    # Convert a displayed currency string into a numeric value for totals.
     cleaned = re.sub(r"[^0-9.\-]", "", str(value))
     return float(cleaned or 0)
 
 
 def center_popup(window, width, height, parent=None):
+    # Center a popup over its parent window or the screen.
     window.update_idletasks()
     if parent and parent.winfo_exists():
         parent.update_idletasks()
@@ -41,6 +44,7 @@ def center_popup(window, width, height, parent=None):
 
 
 def show_chb_summary_success(parent, title, message):
+    # Show a modal success popup after exporting a summary PDF.
     popup = tk.Toplevel(parent)
     popup.title(title)
     popup.transient(parent)
@@ -72,8 +76,10 @@ def show_chb_summary_success(parent, title, message):
     ).pack(pady=(0, 28))
 
     def close_popup():
+        # Close the success popup.
         popup.destroy()
 
+    # Build the confirmation button for the success popup.
     ok_btn = tk.Button(
         content,
         text="OK",
@@ -97,6 +103,7 @@ def show_chb_summary_success(parent, title, message):
 
 
 def ensure_pdf_download_table(cursor):
+    # Create the table that stores exported PDF download history.
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS pdf_downloads (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -108,6 +115,7 @@ def ensure_pdf_download_table(cursor):
 
 
 def save_pdf_download(cursor, module, location):
+    # Store one exported PDF location with its download timestamp.
     ensure_pdf_download_table(cursor)
     downloaded_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     cursor.execute(
@@ -119,6 +127,7 @@ def save_pdf_download(cursor, module, location):
 
 
 def fetch_pdf_downloads(cursor, module, start_date=None, end_date=None):
+    # Load exported PDF history, optionally filtered by a date range.
     ensure_pdf_download_table(cursor)
     if start_date and end_date:
         cursor.execute(
@@ -145,6 +154,7 @@ def fetch_pdf_downloads(cursor, module, start_date=None, end_date=None):
 
 
 def open_date_calendar(parent, date_var, on_select=None):
+    # Open a small calendar popup for selecting a YYYY-MM-DD date.
     try:
         selected_date = datetime.strptime(date_var.get(), "%Y-%m-%d")
     except Exception:
@@ -169,12 +179,14 @@ def open_date_calendar(parent, date_var, on_select=None):
     title_var = tk.StringVar()
 
     def select_date(day):
+        # Apply the chosen day to the bound date variable.
         date_var.set(f"{year_var.get():04d}-{month_var.get():02d}-{day:02d}")
         if callable(on_select):
             on_select()
         cal_win.destroy()
 
     def change_month(delta):
+        # Move the calendar view backward or forward by one month.
         month = month_var.get() + delta
         year = year_var.get()
         if month < 1:
@@ -188,6 +200,7 @@ def open_date_calendar(parent, date_var, on_select=None):
         render_calendar()
 
     def render_calendar():
+        # Redraw the calendar grid for the selected month and year.
         for child in grid_frame.winfo_children():
             child.destroy()
 
@@ -233,6 +246,7 @@ def open_date_calendar(parent, date_var, on_select=None):
 
     render_calendar()
 
+    # Position the calendar near the center of the parent window.
     cal_win.update_idletasks()
     x = parent.winfo_rootx() + (parent.winfo_width() // 2) - (cal_win.winfo_width() // 2)
     y = parent.winfo_rooty() + (parent.winfo_height() // 2) - (cal_win.winfo_height() // 2)
@@ -240,11 +254,13 @@ def open_date_calendar(parent, date_var, on_select=None):
 
 
 def open_period_summary(win, cursor, BG_MAIN, TEXT):
+    # Open the CHB production or adjustment summary window.
     default_date = datetime.now()
     ensure_pdf_download_table(cursor)
     cursor.connection.commit()
 
     def compute_range():
+        # Convert the selected day/week/month controls into start and end dates.
         p = period_var.get()
         if p == 'day':
             d = datetime.strptime(date_sel.get(), "%Y-%m-%d")
@@ -273,6 +289,7 @@ def open_period_summary(win, cursor, BG_MAIN, TEXT):
         return start, end
 
     def load_summary():
+        # Reload summary rows for the selected period and summary type.
         for r in summary_tree.get_children():
             summary_tree.delete(r)
 
@@ -285,12 +302,14 @@ def open_period_summary(win, cursor, BG_MAIN, TEXT):
         total_added = 0
         total_subtracted = 0
         if not rows:
+            # Show a period-specific empty row when there are no summary records.
             if summary_type == "adjustment":
                 empty_text = "No stock adjustments today" if period_var.get() == "day" else "No stock adjustments in this period"
             else:
                 empty_text = "No production today" if period_var.get() == "day" else "No production in this period"
             summary_tree.insert('', 'end', values=(start.strftime("%Y-%m-%d"), empty_text, "", "", ""), tags=('oddrow',))
         for i, row in enumerate(rows):
+            # Insert each production or adjustment row and accumulate totals.
             tag = 'evenrow' if i % 2 == 0 else 'oddrow'
             if summary_type == "adjustment":
                 date, adjustment_type, quantity, reason, responsible_user = row
@@ -305,11 +324,14 @@ def open_period_summary(win, cursor, BG_MAIN, TEXT):
                 total_pay += pay
                 summary_tree.insert('', 'end', values=(date, worker, f"{blocks:,}", f"{chr(8369)}{pay:,.2f}", responsible_user), tags=(tag,))
         if summary_type == "adjustment":
+            # Display adjustment totals as added, subtracted, and net movement.
             net_adjustment = total_added - total_subtracted
             totals_var.set(f"TOTAL ADDED: {total_added:,} | TOTAL SUBTRACTED: {total_subtracted:,} | NET: {net_adjustment:,}")
         else:
+            # Display production totals as total blocks and total pay.
             totals_var.set(f"TOTAL: {total_blocks:,} blocks | {chr(8369)}{total_pay:,.2f}")
     def get_summary_title():
+        # Build a PDF/window title from the selected period and summary type.
         p = period_var.get()
         start, end = compute_range()
         summary_name = "CHB Stock Adjustment Summary" if summary_type_var.get() == "adjustment" else "CHB Production Summary"
@@ -323,12 +345,14 @@ def open_period_summary(win, cursor, BG_MAIN, TEXT):
         return title_text
 
     def get_summary_table_data():
+        # Convert visible summary table rows into ReportLab table data and totals.
         tree_data = []
         for item in summary_tree.get_children():
             values = summary_tree.item(item, 'values')
             tree_data.append(values)
 
         if summary_type_var.get() == "adjustment":
+            # Build adjustment export rows and calculate add/subtract totals.
             table_data = [['Adjustment Date', 'Type', 'Quantity', 'Reason', 'User']]
             total_added = 0
             total_subtracted = 0
@@ -346,6 +370,7 @@ def open_period_summary(win, cursor, BG_MAIN, TEXT):
             table_data.append(['', 'NET', f"{net_adjustment:,}", f"Added: {total_added:,} | Subtracted: {total_subtracted:,}", ''])
             return table_data, total_added, total_subtracted, net_adjustment
 
+        # Build production export rows and calculate block/pay totals.
         table_data = [['Production Date', 'Worker Name', 'Total Blocks', 'Total Pay', 'User']]
         total_blocks = 0
         total_pay = 0
@@ -365,6 +390,7 @@ def open_period_summary(win, cursor, BG_MAIN, TEXT):
         return table_data, total_blocks, total_pay, None
 
     def save_summary_pdf(file_path, title_text, table_data):
+        # Render the current CHB summary into a PDF file.
         pdf = SimpleDocTemplate(file_path, pagesize=letter, topMargin=0.5*inch, bottomMargin=0.5*inch)
         elements = []
 
@@ -380,6 +406,7 @@ def open_period_summary(win, cursor, BG_MAIN, TEXT):
 
         elements.append(Paragraph(title_text, title_style))
 
+        # Build the PDF table with header, alternating rows, and total styling.
         table = Table(table_data, colWidths=[1.35*inch, 1.35*inch, 1.25*inch, 2.2*inch, 1.25*inch])
         table.setStyle(TableStyle([
             ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#2563eb')),
@@ -401,6 +428,7 @@ def open_period_summary(win, cursor, BG_MAIN, TEXT):
         elements.append(table)
         elements.append(Spacer(1, 0.3*inch))
 
+        # Add the generated timestamp footer to the PDF.
         footer_style = ParagraphStyle(
             'Footer',
             parent=styles['Normal'],
@@ -413,11 +441,13 @@ def open_period_summary(win, cursor, BG_MAIN, TEXT):
         pdf.build(elements)
 
     def open_pdf_preview():
+        # Open a preview window before saving the summary as a PDF.
         try:
             load_summary()
             title_text = get_summary_title()
             table_data, first_total, second_total, net_total = get_summary_table_data()
 
+            # Build the preview window header and summary table.
             preview_win = tk.Toplevel(summary_win)
             preview_win.title('Summary Preview')
             preview_win.geometry('980x620')
@@ -452,13 +482,16 @@ def open_period_summary(win, cursor, BG_MAIN, TEXT):
             preview_tree.tag_configure('oddrow', background='#ffffff', font=('Arial', 15))
             preview_tree.tag_configure('evenrow', background='#93c5fd', font=('Arial', 15))
 
+            # Fill the preview table with export rows excluding the final total row.
             for index, row in enumerate(table_data[1:-1]):
                 tag = 'evenrow' if index % 2 == 0 else 'oddrow'
                 preview_tree.insert('', 'end', values=row, tags=(tag,))
 
             if summary_type_var.get() == "adjustment":
+                # Display adjustment totals below the preview table.
                 total_text = f"TOTAL ADDED: {first_total:,} | TOTAL SUBTRACTED: {second_total:,} | NET: {net_total:,}"
             else:
+                # Display production totals below the preview table.
                 total_text = f"TOTAL: {first_total:,} blocks | {chr(8369)}{second_total:,.2f}"
             tk.Label(
                 preview_win,
@@ -472,6 +505,7 @@ def open_period_summary(win, cursor, BG_MAIN, TEXT):
             action_frame.pack(fill='x', padx=16, pady=(0, 14))
 
             def choose_file_and_save():
+                # Ask where to save the PDF, export it, and record the download path.
                 try:
                     file_path = filedialog.asksaveasfilename(
                         parent=preview_win,
@@ -523,6 +557,8 @@ def open_period_summary(win, cursor, BG_MAIN, TEXT):
 
         except Exception as e:
             messagebox.showerror('Error', f"Failed to preview summary:\n{str(e)}", parent=summary_win)
+
+    # Create the main summary window and center it on screen.
     summary_win = tk.Toplevel(win)
     summary_win.title('Production Summary')
     summary_win.geometry('1100x650')
@@ -533,13 +569,16 @@ def open_period_summary(win, cursor, BG_MAIN, TEXT):
     y = (summary_win.winfo_screenheight() // 2) - (650 // 2)
     summary_win.geometry(f'1100x650+{x}+{y}')
 
+    # Build the period filter controls at the top of the summary window.
     top_frame = tk.Frame(summary_win, bg=BG_MAIN)
     top_frame.pack(fill='x', pady=12, padx=10)
 
+    # Store selected period, summary type, and PDF history module key.
     period_var = tk.StringVar(value='day')
     summary_type_var = tk.StringVar(value='production')
     pdf_download_module = 'chb_summary'
 
+    # Build the date selector and close button row.
     tk.Label(top_frame, text='Period:', bg=BG_MAIN, font=('Arial', 15, 'bold'), fg=TEXT).pack(side='left', padx=6)
     tk.Radiobutton(top_frame, text='Day', variable=period_var, value='day', bg=BG_MAIN, font=('Arial', 13), command=load_summary).pack(side='left', padx=8)
     tk.Radiobutton(top_frame, text='Week', variable=period_var, value='week', bg=BG_MAIN, font=('Arial', 13), command=load_summary).pack(side='left', padx=8)
@@ -556,12 +595,14 @@ def open_period_summary(win, cursor, BG_MAIN, TEXT):
     tk.Button(date_frame, text='Apply', command=load_summary, bg='#2563eb', fg='white', font=('Arial', 13, 'bold'), padx=12, pady=5, **SUMMARY_BUTTON_BORDER).pack(side='left', padx=4)
     tk.Button(top_frame, text='Close', command=summary_win.destroy, bg='#dc2626', fg='white', font=('Arial', 13, 'bold'), padx=18, pady=5, **SUMMARY_BUTTON_BORDER).pack(side='right', padx=4)
 
+    # Build the summary export and downloaded-PDF action buttons.
     btn_frame = tk.Frame(summary_win, bg=BG_MAIN)
     btn_frame.pack(fill='x', padx=12, pady=(0, 6))
 
     tk.Button(btn_frame, text='Preview / Convert PDF', command=open_pdf_preview, bg='#059669', fg='white', font=('Arial', 13, 'bold'), width=22, padx=14, pady=8, **SUMMARY_BUTTON_BORDER).pack(side='left', padx=4)
     tk.Button(btn_frame, text='View Downloaded PDF', command=lambda: open_downloaded_pdf_window(), bg='#2563eb', fg='white', font=('Arial', 13, 'bold'), width=22, padx=14, pady=8, **SUMMARY_BUTTON_BORDER).pack(side='left', padx=4)
 
+    # Build the selector for production summary versus stock adjustment summary.
     summary_option_frame = tk.Frame(summary_win, bg=BG_MAIN)
     summary_option_frame.pack(fill='x', padx=12, pady=(0, 8))
 
@@ -572,16 +613,19 @@ def open_period_summary(win, cursor, BG_MAIN, TEXT):
 
     cols = ('date', 'second', 'third', 'fourth', 'user')
 
+    # Configure the summary table style.
     style = ttk.Style()
     style.configure('Summary.Treeview', font=('Arial', 15), rowheight=40)
     style.configure('Summary.Treeview.Heading', font=('Arial', 16, 'bold'))
 
+    # Create the main summary table.
     summary_tree = ttk.Treeview(summary_win, columns=cols, show='headings', style='Summary.Treeview')
     summary_tree.pack(fill='both', expand=True, padx=12, pady=12)
     summary_tree.tag_configure('oddrow', background='#ffffff', font=('Arial', 15))
     summary_tree.tag_configure('evenrow', background='#93c5fd', font=('Arial', 15))
 
     def configure_summary_columns():
+        # Change table headings based on the selected summary type.
         if summary_type_var.get() == "adjustment":
             headings = {
                 'date': ('Adjustment Date', 150, 'center'),
@@ -603,6 +647,7 @@ def open_period_summary(win, cursor, BG_MAIN, TEXT):
             summary_tree.column(col, width=width, anchor=anchor)
 
     def open_pdf_location(path):
+        # Open a saved PDF path when it still exists on disk.
         if not path or path == "Not downloaded":
             messagebox.showinfo("PDF Location", "This summary has not been downloaded yet.", parent=summary_win)
             return
@@ -615,6 +660,7 @@ def open_period_summary(win, cursor, BG_MAIN, TEXT):
             messagebox.showerror("Open Failed", f"Unable to open PDF:\n{exc}", parent=summary_win)
 
     def open_downloaded_pdf_window():
+        # Open a window listing previously exported CHB summary PDFs.
         pdf_win = tk.Toplevel(summary_win)
         pdf_win.title('Downloaded CHB PDFs')
         pdf_win.geometry('980x540')
@@ -634,6 +680,7 @@ def open_period_summary(win, cursor, BG_MAIN, TEXT):
         pdf_date_var = tk.StringVar(value=datetime.now().strftime('%Y-%m-%d'))
 
         def compute_pdf_range():
+            # Convert downloaded-PDF filters into a date range.
             try:
                 selected = datetime.strptime(pdf_date_var.get(), '%Y-%m-%d')
             except Exception:
@@ -654,6 +701,7 @@ def open_period_summary(win, cursor, BG_MAIN, TEXT):
             return start_date, end_date
 
         def empty_pdf_message():
+            # Return a friendly message when no PDFs match the selected period.
             period = pdf_period_var.get()
             if period == 'Day':
                 if pdf_date_var.get() == datetime.now().strftime('%Y-%m-%d'):
@@ -663,6 +711,7 @@ def open_period_summary(win, cursor, BG_MAIN, TEXT):
                 return 'No PDFs downloaded this week.'
             return 'No PDFs downloaded this month.'
 
+        # Build the downloaded-PDF filter controls.
         filter_frame = tk.Frame(pdf_win, bg=BG_MAIN)
         filter_frame.pack(fill='x', padx=14, pady=(0, 10))
         tk.Label(filter_frame, text='Period:', bg=BG_MAIN, font=('Arial', 14, 'bold')).pack(side='left', padx=(0, 8))
@@ -673,6 +722,7 @@ def open_period_summary(win, cursor, BG_MAIN, TEXT):
         tk.Button(filter_frame, text='Calendar', command=lambda: open_date_calendar(pdf_win, pdf_date_var, load_pdf_records), bg='#2563eb', fg='white', font=('Arial', 12, 'bold'), padx=8, pady=4, **SUMMARY_BUTTON_BORDER).pack(side='left', padx=4)
         tk.Button(filter_frame, text='Apply', command=lambda: load_pdf_records(), bg='#059669', fg='white', font=('Arial', 12, 'bold'), padx=8, pady=4, **SUMMARY_BUTTON_BORDER).pack(side='left', padx=4)
 
+        # Build the downloaded-PDF table and scrollbar.
         pdf_frame = tk.Frame(pdf_win, bg=BG_MAIN)
         pdf_frame.pack(fill='both', expand=True, padx=14, pady=(0, 10))
         pdf_style = ttk.Style()
@@ -690,6 +740,7 @@ def open_period_summary(win, cursor, BG_MAIN, TEXT):
         pdf_tree.configure(yscrollcommand=pdf_scroll.set)
 
         def load_pdf_records():
+            # Reload downloaded PDF records for the selected filter range.
             for item in pdf_tree.get_children():
                 pdf_tree.delete(item)
             start_date, end_date = compute_pdf_range()
@@ -701,6 +752,7 @@ def open_period_summary(win, cursor, BG_MAIN, TEXT):
                 pdf_tree.insert('', 'end', values=('', empty_pdf_message()))
 
         def on_pdf_click(event):
+            # Open the clicked PDF location when the location column is selected.
             if pdf_tree.identify_column(event.x) != '#2':
                 return
             item_id = pdf_tree.identify_row(event.y)
@@ -714,8 +766,10 @@ def open_period_summary(win, cursor, BG_MAIN, TEXT):
         load_pdf_records()
         tk.Button(pdf_win, text='Close', command=pdf_win.destroy, bg='#dc2626', fg='white', font=('Arial', 12, 'bold'), padx=14, pady=6, **SUMMARY_BUTTON_BORDER).pack(anchor='e', padx=14, pady=(0, 12))
 
+    # Show summary totals below the table.
     totals_var = tk.StringVar(value='')
     totals_lbl = tk.Label(summary_win, textvariable=totals_var, bg=BG_MAIN, font=('Arial', 17, 'bold'), fg='#1e40af')
     totals_lbl.pack(fill='x', padx=12, pady=(0, 12))
 
+    # Load the initial summary data when the window opens.
     load_summary()

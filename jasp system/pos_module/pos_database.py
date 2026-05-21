@@ -3,6 +3,7 @@ import sqlite3
 from datetime import datetime
 
 
+# Store the shared SQLite database path and POS inventory constants.
 DB_NAME = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "jasp.db")
 CHB_ITEM_NAME = "CHB Blocks"
 CHB_STATE_ID = 1
@@ -11,12 +12,15 @@ FINE_SAND_UNIT = "cubic meters"
 
 
 def open_pos_connection():
+    # Open a SQLite connection for the POS module.
     return sqlite3.connect(DB_NAME)
 
 
 def initialize_pos_database():
+    # Initialize all tables and columns needed by POS operations.
     conn = open_pos_connection()
     cursor = conn.cursor()
+    # Create the inventory items table when missing.
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS items (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -28,6 +32,7 @@ def initialize_pos_database():
         status TEXT DEFAULT 'Active'
     )
     """)
+    # Create the sales table used by POS checkout records.
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS sales (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -39,6 +44,7 @@ def initialize_pos_database():
         ts TEXT NOT NULL
     )
     """)
+    # Backfill newer sales columns for older database files.
     cursor.execute("PRAGMA table_info(sales)")
     sales_cols = [col[1] for col in cursor.fetchall()]
     if "transaction_id" not in sales_cols:
@@ -55,6 +61,7 @@ def initialize_pos_database():
         cursor.execute("ALTER TABLE sales ADD COLUMN payment_received REAL DEFAULT 0")
     if "change_amount" not in sales_cols:
         cursor.execute("ALTER TABLE sales ADD COLUMN change_amount REAL DEFAULT 0")
+    # Create CHB production and stock state tables used for CHB sales syncing.
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS chb_production (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -77,6 +84,7 @@ def initialize_pos_database():
             updated_ts TEXT
         )
     """)
+    # Backfill item unit, status, and fine sand pricing columns.
     cursor.execute("PRAGMA table_info(items)")
     item_cols = [col[1] for col in cursor.fetchall()]
     if "unit" not in item_cols:
@@ -87,8 +95,10 @@ def initialize_pos_database():
     if "fine_sand_bag_price" not in item_cols:
         cursor.execute("ALTER TABLE items ADD COLUMN fine_sand_bag_price REAL DEFAULT 0")
 
+    # Force Fine Sand to use cubic meters as its base stock unit.
     cursor.execute("UPDATE items SET unit=? WHERE LOWER(name)=LOWER(?)", (FINE_SAND_UNIT, FINE_SAND_ITEM_NAME))
 
+    # Seed the CHB inventory state row when it is missing.
     cursor.execute("SELECT id FROM chb_inventory_state WHERE id=?", (CHB_STATE_ID,))
     if not cursor.fetchone():
         cursor.execute("SELECT COALESCE(SUM(total_blocks),0) FROM chb_production")
@@ -102,6 +112,7 @@ def initialize_pos_database():
             "INSERT INTO chb_inventory_state (id, total_produced, total_sold, available, updated_ts) VALUES (?, ?, ?, ?, ?)",
             (CHB_STATE_ID, produced, sold, available, datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
         )
+    # Save setup changes and return the open POS connection and cursor.
     conn.commit()
     return conn, cursor
 

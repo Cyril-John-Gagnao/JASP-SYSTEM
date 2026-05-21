@@ -3,10 +3,12 @@ import sqlite3
 from datetime import datetime
 
 
+# Store the shared SQLite database path used by dashboard queries.
 DB_NAME = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "jasp.db")
 
 
 def ensure_sales_metadata(cursor):
+    # Backfill optional sales metadata columns used by dashboard summaries.
     cursor.execute("PRAGMA table_info(sales)")
     sales_cols = [col[1] for col in cursor.fetchall()]
     if "transaction_id" not in sales_cols:
@@ -18,6 +20,7 @@ def ensure_sales_metadata(cursor):
 
 
 def ensure_sales_table(cursor):
+    # Create the sales table if no POS data table exists yet.
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS sales (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -29,14 +32,17 @@ def ensure_sales_table(cursor):
             ts TEXT NOT NULL
         )
     """)
+    # Ensure newer sales metadata columns exist on older databases.
     ensure_sales_metadata(cursor)
 
 
 def fetch_recent_transaction_summary(start, end):
+    # Fetch grouped transaction rows and top items for a selected date range.
     conn = sqlite3.connect(DB_NAME)
     cursor = conn.cursor()
     ensure_sales_table(cursor)
 
+    # Group sales into transaction-level rows while excluding voided sales.
     cursor.execute("""
         SELECT
             CASE
@@ -61,6 +67,7 @@ def fetch_recent_transaction_summary(start, end):
     """, (start.strftime("%Y-%m-%d"), end.strftime("%Y-%m-%d")))
     transactions = cursor.fetchall()
 
+    # Fetch the top five items sold in the same summary period.
     cursor.execute("""
         SELECT item_name, COALESCE(SUM(qty), 0), COALESCE(SUM(total), 0)
         FROM sales
@@ -75,6 +82,7 @@ def fetch_recent_transaction_summary(start, end):
     conn.close()
 
     return {
+        # Return transaction rows and summary totals for the UI/PDF.
         "transactions": transactions,
         "top_items": top_items,
         "total_sales": sum(row[5] for row in transactions),
@@ -84,10 +92,12 @@ def fetch_recent_transaction_summary(start, end):
 
 
 def fetch_most_items_summary(start, end):
+    # Fetch item-level sales totals for a selected date range.
     conn = sqlite3.connect(DB_NAME)
     cursor = conn.cursor()
     ensure_sales_table(cursor)
 
+    # Group non-void sales by item and sort by quantity sold.
     cursor.execute("""
         SELECT
             item_name,
@@ -106,6 +116,7 @@ def fetch_most_items_summary(start, end):
     conn.close()
 
     return {
+        # Return item rows and aggregate totals for the summary UI.
         "items": items,
         "item_count": len(items),
         "total_qty": sum(row[1] for row in items),
@@ -114,9 +125,11 @@ def fetch_most_items_summary(start, end):
 
 
 def fetch_dashboard_data():
+    # Fetch all data needed to render the main dashboard.
     conn = sqlite3.connect(DB_NAME)
     cursor = conn.cursor()
 
+    # Ensure inventory, sales, restock, and CHB state tables exist before reading.
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS items (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -150,16 +163,20 @@ def fetch_dashboard_data():
 
     today = datetime.now().strftime("%Y-%m-%d")
 
+    # Calculate today's revenue from non-void sales.
     cursor.execute("SELECT COALESCE(SUM(total),0) FROM sales WHERE DATE(ts)=? AND COALESCE(payment_status, 'Paid') <> 'Void'", (today,))
     revenue = cursor.fetchone()[0] or 0
 
+    # Calculate today's estimated profit from sale price minus raw cost.
     cursor.execute("SELECT COALESCE(SUM((price - raw_price) * qty),0) FROM sales WHERE DATE(ts)=? AND COALESCE(payment_status, 'Paid') <> 'Void'", (today,))
     profit = cursor.fetchone()[0] or 0
 
+    # Read current CHB stock from the inventory items table.
     cursor.execute("SELECT COALESCE(quantity,0) FROM items WHERE name=? ORDER BY id ASC LIMIT 1", ("CHB Blocks",))
     chb_stock = cursor.fetchone()
     chb_stock = chb_stock[0] if chb_stock else 0
 
+    # Fetch today's recent transaction rows for the dashboard preview.
     cursor.execute("""
         SELECT
             CASE
@@ -186,6 +203,7 @@ def fetch_dashboard_data():
     recent_day_count = len(recent)
     recent_day_label = datetime.strptime(today, "%Y-%m-%d").strftime("%B %d, %Y")
 
+    # Fetch inventory items below the default low-stock threshold.
     cursor.execute("""
         SELECT name, quantity
         FROM items
@@ -194,6 +212,7 @@ def fetch_dashboard_data():
     """)
     low_stock = cursor.fetchall()
 
+    # Fetch top selling items for the compact dashboard list.
     cursor.execute("""
         SELECT item_name, SUM(qty) as total_qty
         FROM sales
@@ -205,6 +224,7 @@ def fetch_dashboard_data():
     """, (today,))
     top_selling = cursor.fetchall()
 
+    # Fetch hourly revenue totals for the revenue chart.
     cursor.execute("""
         SELECT STRFTIME('%H', ts) AS sale_hour, COALESCE(SUM(total), 0)
         FROM sales
@@ -215,6 +235,7 @@ def fetch_dashboard_data():
     """, (today,))
     revenue_by_hour = [(f"{int(hour):02d}:00", total or 0) for hour, total in cursor.fetchall() if hour is not None]
 
+    # Fetch revenue and raw cost totals for the profit breakdown chart.
     cursor.execute("""
         SELECT
             COALESCE(SUM(total), 0),
@@ -228,6 +249,7 @@ def fetch_dashboard_data():
     cost_total = cost_total or 0
     estimated_profit = revenue_total - cost_total
 
+    # Fetch CHB produced, sold, and available totals for the CHB chart.
     cursor.execute("""
         SELECT
             COALESCE(total_produced, 0),
@@ -239,6 +261,7 @@ def fetch_dashboard_data():
     chb_state_row = cursor.fetchone()
     chb_state = chb_state_row if chb_state_row else (0, 0, chb_stock or 0)
 
+    # Fetch top item quantities for the bottom dashboard chart.
     cursor.execute("""
         SELECT item_name, COALESCE(SUM(qty), 0)
         FROM sales
@@ -254,6 +277,7 @@ def fetch_dashboard_data():
     conn.close()
 
     return {
+        # Return dashboard cards, tables, and analytics chart data.
         "revenue": revenue,
         "profit": profit,
         "chb_stock": chb_stock,

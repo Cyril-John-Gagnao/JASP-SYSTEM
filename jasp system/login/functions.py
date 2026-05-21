@@ -5,14 +5,17 @@ from tkinter import messagebox
 
 
 def contains_malicious_input(value):
+    # Detect encoded or plain script-like content in user input.
     if value is None:
         return False
 
+    # Decode common HTML and URL encodings more than once before scanning.
     decoded_value = str(value)
     for _ in range(2):
         decoded_value = html.unescape(unquote_plus(decoded_value))
 
     value_lower = decoded_value.lower()
+    # Match common XSS/event-handler/script injection patterns.
     harmful_patterns = [
         r"<\s*/?\s*script\b",
         r"<\s*/?\s*marquee\b",
@@ -36,14 +39,17 @@ def contains_malicious_input(value):
 
 
 def has_control_characters(value):
+    # Reject hidden control characters from text inputs.
     return any(ord(char) < 32 for char in value)
 
 
 def is_valid_username(username):
+    # Allow safe username characters and enforce a reasonable length.
     return bool(re.fullmatch(r"[A-Za-z0-9_.@-]{3,50}", username))
 
 
 def is_valid_password(password):
+    # Validate password length and reject control characters.
     if len(password) < 4 or len(password) > 128:
         return False
     if has_control_characters(password):
@@ -52,6 +58,7 @@ def is_valid_password(password):
 
 
 def is_valid_security_answer(answer):
+    # Validate security answer length, characters, and control characters.
     if len(answer) < 1 or len(answer) > 100:
         return False
     if has_control_characters(answer):
@@ -60,6 +67,7 @@ def is_valid_security_answer(answer):
 
 
 def is_valid_contact_number(contact_number):
+    # Validate contact numbers with optional country-code plus sign.
     cleaned = contact_number.strip().replace(" ", "").replace("-", "").replace("(", "").replace(")", "")
     if cleaned.startswith("+"):
         return cleaned[1:].isdigit() and 10 <= len(cleaned[1:]) <= 15
@@ -67,6 +75,7 @@ def is_valid_contact_number(contact_number):
 
 
 def validate_common_inputs(*values, error_callback=None):
+    # Run shared malicious-input validation and show an error when invalid.
     for value in values:
         if contains_malicious_input(value) or has_control_characters(value):
             if error_callback:

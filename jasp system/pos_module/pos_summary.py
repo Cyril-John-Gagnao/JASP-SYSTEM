@@ -23,10 +23,12 @@ from main_dashboard.main_functions import (
 from pos_module.pos_database import DB_NAME
 
 
+# Reuse the dashboard background color for the receipt summary window.
 SUMMARY_BG = DASHBOARD_CONTENT_BG
 
 
 def ensure_receipt_columns(cursor):
+    # Create the sales table and add receipt-related columns when missing.
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS sales (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -53,6 +55,7 @@ def ensure_receipt_columns(cursor):
 
 
 def fetch_receipt_rows(cursor, start, end):
+    # Fetch grouped POS receipt rows for the selected date range.
     ensure_receipt_columns(cursor)
     cursor.execute("""
         SELECT
@@ -80,6 +83,7 @@ def fetch_receipt_rows(cursor, start, end):
 
 
 def open_pos_summary(parent):
+    # Open the POS receipt summary window and prepare its database connection.
     conn = sqlite3.connect(DB_NAME)
     cursor = conn.cursor()
     ensure_receipt_columns(cursor)
@@ -91,11 +95,13 @@ def open_pos_summary(parent):
     summary_win.transient(parent)
     summary_win._large_calendar = True
 
+    # Track the selected period, date, title, and totals shown on screen.
     period_var = tk.StringVar(value="Day")
     date_var = tk.StringVar(value=datetime.now().strftime("%Y-%m-%d"))
     title_var = tk.StringVar()
     totals_var = tk.StringVar()
 
+    # Define the receipt summary table columns.
     headings = [
         ("txn", "Receipt ID", 95, 150, "w"),
         ("date", "Date & Time", 170, 240, "w"),
@@ -108,6 +114,7 @@ def open_pos_summary(parent):
     ]
 
     def title_text():
+        # Build the heading text for the selected day, week, or month.
         start, end = compute_summary_range(period_var.get(), date_var.get())
         if period_var.get() == "Day":
             return f"POS Receipts - {start.strftime('%B %d, %Y')}"
@@ -116,10 +123,12 @@ def open_pos_summary(parent):
         return f"POS Receipts - {start.strftime('%B %Y')}"
 
     def clear_tree():
+        # Remove all existing rows before reloading the summary table.
         for item in summary_tree.get_children():
             summary_tree.delete(item)
 
     def auto_adjust_columns():
+        # Resize columns based on heading and visible row text.
         body_font = tkfont.Font(font=("Arial", 15))
         heading_font = tkfont.Font(font=("Arial", 14, "bold"))
         tree_columns = list(summary_tree["columns"])
@@ -134,6 +143,7 @@ def open_pos_summary(parent):
             summary_tree.column(col, width=width, minwidth=min_width, anchor=anchor, stretch=False)
 
     def open_receipt_location(path):
+        # Open the downloaded receipt PDF when the file path is available.
         if not path or path == "Not downloaded":
             messagebox.showinfo("Receipt Location", "This receipt has not been downloaded yet.", parent=summary_win)
             return
@@ -146,6 +156,7 @@ def open_pos_summary(parent):
             messagebox.showerror("Open Failed", f"Unable to open receipt:\n{exc}", parent=summary_win)
 
     def on_tree_click(event):
+        # Handle clicks on the receipt location column.
         columns = list(summary_tree["columns"])
         location_index = columns.index("location")
         if summary_tree.identify_column(event.x) != f"#{location_index + 1}":
@@ -158,6 +169,7 @@ def open_pos_summary(parent):
             open_receipt_location(values[location_index])
 
     def load_summary():
+        # Reload receipt rows and recompute paid, void, and sales totals.
         start, end = compute_summary_range(period_var.get(), date_var.get())
         rows = fetch_receipt_rows(cursor, start, end)
         clear_tree()
@@ -202,6 +214,7 @@ def open_pos_summary(parent):
         )
         auto_adjust_columns()
 
+    # Build the filter controls for period and date selection.
     controls = tk.Frame(summary_win, bg=SUMMARY_BG)
     controls.pack(fill="x", padx=16, pady=(14, 8))
     button_options = {
@@ -233,6 +246,7 @@ def open_pos_summary(parent):
     tk.Button(controls, text="Apply", command=load_summary, bg=PRIMARY, **button_options).pack(side="left", padx=4)
     tk.Button(controls, text="Close", command=summary_win.destroy, bg="#dc2626", **button_options).pack(side="right")
 
+    # Show the active summary title, totals, and receipt hint.
     tk.Label(summary_win, textvariable=title_var, bg=SUMMARY_BG, fg=PRIMARY, font=("Arial", 22, "bold")).pack(anchor="w", padx=16)
     tk.Label(summary_win, textvariable=totals_var, bg=SUMMARY_BG, fg=TEXT_PRIMARY, font=("Arial", 16, "bold")).pack(anchor="w", padx=16, pady=(2, 8))
     hint_label = tk.Label(
@@ -248,6 +262,7 @@ def open_pos_summary(parent):
     )
     hint_label.pack(anchor="w", padx=16, pady=(0, 8))
 
+    # Build the receipt summary table with scrollbars.
     table_frame = tk.Frame(summary_win, bg=BG_CARD)
     table_frame.pack(fill="both", expand=True, padx=16, pady=(0, 16))
     columns = tuple(col for col, _heading, _width, _max_width, _anchor in headings)
@@ -271,9 +286,11 @@ def open_pos_summary(parent):
     summary_tree.bind("<ButtonRelease-1>", on_tree_click)
 
     def on_close():
+        # Close the database connection when the summary window closes.
         conn.close()
         summary_win.destroy()
 
+    # Load the initial data and center the summary window.
     summary_win.protocol("WM_DELETE_WINDOW", on_close)
     load_summary()
     center_window(summary_win, 1180, 640, parent)

@@ -26,6 +26,7 @@ from .inventory_database import (
 )
 
 
+# Define inventory UI constants, low-stock limits, and fine sand units.
 FORM_BG = "#fef3c7"
 SAVE_GREEN = "#00c853"
 CANCEL_RED = "#dc2626"
@@ -42,20 +43,24 @@ FINE_SAND_TRANSACTION_UNITS = (FINE_SAND_BASE_UNIT, "bag")
 
 
 def is_fine_sand(item_name):
+    # Check whether an item name refers to Fine Sand.
     return str(item_name or "").strip().lower() == "fine sand"
 
 
 def parse_inventory_quantity(quantity, item_name):
+    # Parse quantities as float for fine sand and integer for other items.
     quantity_text = str(quantity).strip().split(" ", 1)[0].replace(",", "")
     return float(quantity_text) if is_fine_sand(item_name) else int(quantity_text)
 
 
 def fine_sand_to_cubic_meters(quantity, unit):
+    # Convert fine sand bag quantities into cubic meters for storage.
     quantity = float(quantity or 0)
     return quantity / FINE_SAND_BAGS_PER_CUBIC_METER if str(unit or "").strip().lower() == "bag" else quantity
 
 
 def format_inventory_quantity(quantity):
+    # Format quantities without unnecessary trailing decimal zeros.
     try:
         value = float(quantity or 0)
     except (TypeError, ValueError):
@@ -64,29 +69,35 @@ def format_inventory_quantity(quantity):
 
 
 def format_fine_sand_display(quantity):
+    # Display fine sand stock in cubic meters and equivalent bags.
     cubic_stock = float(quantity or 0)
     equivalent_bags = cubic_stock * FINE_SAND_BAGS_PER_CUBIC_METER
     return f"{format_inventory_quantity(cubic_stock)} cubic meters ({format_inventory_quantity(equivalent_bags)} bags)"
 
 
 def format_money_value(value):
+    # Format a numeric value as a plain two-decimal money input value.
     return f"{float(value or 0):.2f}"
 
 
 def format_peso_value(value):
+    # Format a numeric value as Philippine peso display text.
     return f"{chr(8369)}{float(value or 0):,.2f}"
 
 
 def parse_money_text(value):
+    # Strip currency symbols and separators from displayed money text.
     cleaned = "".join(ch for ch in str(value) if ch.isdigit() or ch in ".-")
     return cleaned or "0"
 
 
 def format_fine_sand_prices(cubic_price, bag_price):
+    # Display fine sand prices for both cubic meter and bag units.
     return f"Cubic: {format_peso_value(cubic_price)} | Bag: {format_peso_value(bag_price)}"
 
 
 def display_inventory_row(row):
+    # Convert raw database rows into table-ready display values.
     values = list(row)
     if len(values) > 3 and is_fine_sand(values[1]):
         values[2] = FINE_SAND_BASE_UNIT
@@ -101,12 +112,14 @@ def display_inventory_row(row):
 
 
 def fetch_item_quantity(cursor, item_id):
+    # Fetch the current stored quantity for one inventory item.
     cursor.execute("SELECT COALESCE(quantity, 0) FROM items WHERE id=?", (item_id,))
     row = cursor.fetchone()
     return float(row[0] or 0) if row else 0
 
 
 def show_inventory_error(parent, title, message):
+    # Show a modal inventory error popup.
     popup = tk.Toplevel(parent)
     popup.title(title)
     popup.transient(parent)
@@ -138,8 +151,10 @@ def show_inventory_error(parent, title, message):
     ).pack(pady=(0, 28))
 
     def close_popup():
+        # Close the error popup.
         popup.destroy()
 
+    # Build the OK button for the error popup.
     ok_btn = tk.Button(
         content,
         text="OK",
@@ -163,6 +178,7 @@ def show_inventory_error(parent, title, message):
 
 
 def show_inventory_success(parent, title, message):
+    # Show a modal inventory success popup.
     popup = tk.Toplevel(parent)
     popup.title(title)
     popup.transient(parent)
@@ -194,8 +210,10 @@ def show_inventory_success(parent, title, message):
     ).pack(pady=(0, 28))
 
     def close_popup():
+        # Close the success popup.
         popup.destroy()
 
+    # Build the OK button for the success popup.
     ok_btn = tk.Button(
         content,
         text="OK",
@@ -219,10 +237,12 @@ def show_inventory_success(parent, title, message):
 
 
 def low_stock_limit(item_name):
+    # Return the low-stock threshold for a named item.
     return LOW_STOCK_LIMITS.get(str(item_name).strip().lower(), DEFAULT_LOW_STOCK_LIMIT)
 
 
 def is_low_stock_item(item_name, quantity):
+    # Check whether an item quantity is at or below its low-stock limit.
     try:
         quantity_value = int(float(quantity))
     except (TypeError, ValueError):
@@ -231,6 +251,7 @@ def is_low_stock_item(item_name, quantity):
 
 
 def inventory_row_tag(index, values):
+    # Choose a table row tag based on low stock or alternating row color.
     item_name = values[1] if len(values) > 1 else ""
     quantity = values[3] if len(values) > 3 else 0
     if is_fine_sand(item_name):
@@ -241,12 +262,14 @@ def inventory_row_tag(index, values):
 
 
 def status_row_tag(index, status, item_name="", quantity=None):
+    # Choose a row tag for status-sensitive inventory rows.
     if item_name and quantity is not None and is_low_stock_item(item_name, quantity):
         return LOW_STOCK_ROW
     return "blue_row" if index % 2 == 0 else "white_row"
 
 
 def view_items(conn, cursor, tree, filter_text="", sort_by="Latest Date", total_var=None):
+    # Load inventory items into a table with optional search and sort.
     ensure_chb_item(conn, cursor)
     for row in tree.get_children():
         tree.delete(row)
@@ -260,14 +283,17 @@ def view_items(conn, cursor, tree, filter_text="", sort_by="Latest Date", total_
 
 
 def refresh_current_view(conn, cursor, tree, search_entry, sort_var=None, total_var=None):
+    # Refresh the inventory table using the current search and sort controls.
     sort_by = sort_var.get() if sort_var is not None else "Latest Date"
     view_items(conn, cursor, tree, search_entry.get(), sort_by, total_var)
 
 
 def sort_tree(tree, sort_state, column, numeric=False):
+    # Sort a Treeview column and reapply inventory row colors.
     data = [(tree.set(k, column), k) for k in tree.get_children("")]
     if numeric:
         def to_num(val):
+            # Convert displayed numeric/currency text into sortable numbers.
             try:
                 return float(parse_money_text(val))
             except ValueError:
@@ -284,6 +310,7 @@ def sort_tree(tree, sort_state, column, numeric=False):
 
 
 def center_window(window, width=560, height=430, parent=None):
+    # Center a popup over its parent window or the screen.
     window.update_idletasks()
     if parent and parent.winfo_exists():
         parent.update_idletasks()
@@ -296,6 +323,7 @@ def center_window(window, width=560, height=430, parent=None):
 
 
 def open_item_form(conn, cursor, inventory_window, tree, mode, item_values=None, refresh_view=None):
+    # Open the add/edit inventory item form.
     form = tk.Toplevel(inventory_window)
     form.title("Add Item" if mode == "add" else "Edit Item")
     form.transient(inventory_window)
@@ -307,11 +335,13 @@ def open_item_form(conn, cursor, inventory_window, tree, mode, item_values=None,
     form_card = tk.Frame(form, bg=FORM_BG)
     form_card.pack(expand=True)
 
+    # Build the item name input.
     tk.Label(form_card, text="Item Name", font=("Arial", 16, "bold"), bg=FORM_BG).grid(row=0, column=0, padx=18, pady=10, sticky="w")
     name_var = tk.StringVar()
     name_entry = tk.Entry(form_card, textvariable=name_var, width=28, font=("Arial", 16))
     name_entry.grid(row=0, column=1, pady=10)
 
+    # Build the unit selector and unit manager button.
     unit_label = tk.Label(form_card, text="Measurement Unit", font=("Arial", 16, "bold"), bg=FORM_BG)
     unit_label.grid(row=1, column=0, padx=18, pady=10, sticky="w")
     unit_var = tk.StringVar()
@@ -321,9 +351,11 @@ def open_item_form(conn, cursor, inventory_window, tree, mode, item_values=None,
     unit_entry.grid(row=0, column=0, sticky="w")
 
     def refresh_unit_dropdown():
+        # Reload unit options after adding or deleting a unit.
         unit_entry.config(values=fetch_inventory_unit_options(conn, cursor))
 
     def open_unit_manager():
+        # Open a small manager for custom units of measurement.
         manager = tk.Toplevel(form)
         manager.title("Unit of Measurement")
         manager.transient(form)
@@ -346,6 +378,7 @@ def open_item_form(conn, cursor, inventory_window, tree, mode, item_values=None,
         list_frame.pack(fill="both", expand=True)
 
         def render_units():
+            # Rebuild the unit list with delete buttons.
             for child in list_frame.winfo_children():
                 child.destroy()
 
@@ -355,6 +388,7 @@ def open_item_form(conn, cursor, inventory_window, tree, mode, item_values=None,
                 tk.Label(row, text=unit, bg="#f8fafc", fg="#1e293b", font=("Arial", 12, "bold"), anchor="w").pack(side="left", fill="x", expand=True, padx=10, pady=6)
 
                 def remove_unit(unit_to_remove=unit):
+                    # Soft-delete a unit and refresh all unit displays.
                     if unit_var.get() == unit_to_remove:
                         unit_var.set("")
                     delete_inventory_unit_option(conn, cursor, unit_to_remove)
@@ -364,6 +398,7 @@ def open_item_form(conn, cursor, inventory_window, tree, mode, item_values=None,
                 tk.Button(row, text="X", command=remove_unit, bg="#dc2626", fg="white", font=("Arial", 10, "bold"), width=3, bd=1, relief="solid").pack(side="right", padx=6, pady=4)
 
         def add_unit():
+            # Add a custom unit and select it in the form.
             new_unit = new_unit_var.get().strip()
             if not new_unit:
                 show_inventory_error(manager, "Error", "Enter a unit of measurement.")
@@ -383,6 +418,7 @@ def open_item_form(conn, cursor, inventory_window, tree, mode, item_values=None,
     unit_manager_button = tk.Button(unit_frame, text="+ Unit", command=open_unit_manager, bg="#2563eb", fg="white", font=("Arial", 11, "bold"), bd=1, relief="solid", padx=8, pady=4)
     unit_manager_button.grid(row=0, column=1, padx=(8, 0), sticky="w")
 
+    # Build quantity, price, raw price, and status inputs.
     tk.Label(form_card, text="Quantity", font=("Arial", 16, "bold"), bg=FORM_BG).grid(row=2, column=0, padx=18, pady=10, sticky="w")
     quantity_entry = tk.Entry(form_card, width=28, font=("Arial", 16))
     quantity_entry.grid(row=2, column=1, pady=10)
@@ -407,6 +443,7 @@ def open_item_form(conn, cursor, inventory_window, tree, mode, item_values=None,
     status_entry.grid(row=5, column=1, pady=10)
 
     def sync_fine_sand_transaction_unit(*_args):
+        # Switch form labels/fields when the item is Fine Sand.
         if is_fine_sand(name_var.get().strip()):
             unit_label.config(text="Quantity Unit")
             price_label.config(text="Cubic Meter Price")
@@ -433,6 +470,7 @@ def open_item_form(conn, cursor, inventory_window, tree, mode, item_values=None,
             status_entry.grid(row=5, column=1, pady=10)
 
     def sync_unit_from_name(event=None):
+        # Auto-select units for predefined item names.
         selected_item = name_var.get().strip()
         if selected_item in PREDEFINED_ITEMS:
             unit_var.set(PREDEFINED_ITEMS[selected_item])
@@ -442,6 +480,7 @@ def open_item_form(conn, cursor, inventory_window, tree, mode, item_values=None,
     name_entry.bind("<FocusOut>", sync_unit_from_name)
 
     if mode == "edit" and item_values:
+        # Populate form fields from the selected item when editing.
         name_var.set(item_values[1])
         unit_var.set(item_values[2] if len(item_values) > 2 else "")
         quantity_entry.insert(0, format_inventory_quantity(fetch_item_quantity(cursor, item_values[0])) if is_fine_sand(item_values[1]) else item_values[3])
@@ -460,6 +499,7 @@ def open_item_form(conn, cursor, inventory_window, tree, mode, item_values=None,
         sync_fine_sand_transaction_unit()
 
         if item_values[1] == CHB_ITEM_NAME:
+            # Prevent manual CHB quantity edits because CHB stock comes from production.
             quantity_entry.config(state="disabled")
             raw_price_entry.config(state="disabled")
             unit_entry.config(state="disabled")
@@ -467,6 +507,7 @@ def open_item_form(conn, cursor, inventory_window, tree, mode, item_values=None,
             tk.Label(form_card, text="Quantity is auto from CHB production. Name, price, and status can be updated.", fg="#dc2626", bg=FORM_BG, font=("Arial", 12, "italic")).grid(row=8, column=0, columnspan=2, pady=(4, 0))
 
     def submit():
+        # Validate and save the add/edit inventory form.
         name = name_var.get().strip()
         unit = unit_var.get().strip()
         quantity = quantity_entry.get().strip()
@@ -487,6 +528,7 @@ def open_item_form(conn, cursor, inventory_window, tree, mode, item_values=None,
             return
 
         try:
+            # Parse quantity and price fields before saving.
             quantity_val = parse_inventory_quantity(quantity, name)
             price = price or "0"
             bag_price = bag_price or "0"
@@ -502,6 +544,7 @@ def open_item_form(conn, cursor, inventory_window, tree, mode, item_values=None,
             return
 
         if mode == "edit" and item_values and item_values[1] == CHB_ITEM_NAME:
+            # Preserve CHB-managed quantity and raw price during CHB item edits.
             quantity_val = int(item_values[3])
             raw_val = float(parse_money_text(item_values[5]))
             unit = CHB_DEFAULT_UNIT
@@ -510,6 +553,7 @@ def open_item_form(conn, cursor, inventory_window, tree, mode, item_values=None,
             unit = PREDEFINED_ITEMS[name]
 
         if is_fine_sand(name):
+            # Store fine sand quantity in cubic meters regardless of transaction unit.
             transaction_unit = unit
             unit = FINE_SAND_BASE_UNIT
             quantity_val = fine_sand_to_cubic_meters(quantity_val, transaction_unit)
@@ -517,6 +561,7 @@ def open_item_form(conn, cursor, inventory_window, tree, mode, item_values=None,
             bag_price_val = 0
 
         if mode == "add":
+            # Insert a new item after checking for duplicate names.
             if product_name_exists(cursor, name):
                 show_inventory_error(form, "Error", "Product or product name already exists.")
                 return
@@ -527,6 +572,7 @@ def open_item_form(conn, cursor, inventory_window, tree, mode, item_values=None,
             success_msg = "Item added successfully!"
             log_inventory_action(conn, cursor, item_id, name, quantity_val, status)
         else:
+            # Update the selected item and log status or quantity changes.
             item_id = item_values[0]
             if product_name_exists(cursor, name, item_id):
                 show_inventory_error(form, "Error", "Product or product name already exists.")
@@ -556,16 +602,19 @@ def open_item_form(conn, cursor, inventory_window, tree, mode, item_values=None,
         else:
             view_items(conn, cursor, tree)
 
+    # Place the form action buttons.
     tk.Button(form_card, text="Save", width=18, bg=SAVE_GREEN, fg="white", font=("Arial", 16, "bold"), bd=2, relief="solid", highlightbackground="black", highlightcolor="black", highlightthickness=1, padx=8, pady=8, command=submit).grid(row=7, column=0, padx=10, pady=26)
     tk.Button(form_card, text="Cancel", width=18, bg=CANCEL_RED, fg="white", font=("Arial", 16, "bold"), bd=2, relief="solid", highlightbackground="black", highlightcolor="black", highlightthickness=1, padx=8, pady=8, command=form.destroy).grid(row=7, column=1, padx=10, pady=26)
     center_window(form, 720, 680, inventory_window)
 
 
 def add_item(conn, cursor, inventory_window, tree, refresh_view=None):
+    # Open the item form in add mode.
     open_item_form(conn, cursor, inventory_window, tree, "add", refresh_view=refresh_view)
 
 
 def update_item(conn, cursor, inventory_window, tree, refresh_view=None):
+    # Open the item form in edit mode for the selected row.
     selected = tree.focus()
     if not selected:
         show_inventory_error(inventory_window, "Error", "Select an item to update.")
@@ -575,6 +624,7 @@ def update_item(conn, cursor, inventory_window, tree, refresh_view=None):
 
 
 def open_restock_form(conn, cursor, inventory_window, item_values, refresh_view=None):
+    # Open the restock form for the selected inventory item.
     if not item_values:
         show_inventory_error(inventory_window, "Error", "Select an item to restock.")
         return
@@ -584,6 +634,7 @@ def open_restock_form(conn, cursor, inventory_window, item_values, refresh_view=
     current_qty = fetch_item_quantity(cursor, item_id) if is_fine_sand(item_name) else int(item_values[3] or 0)
     status = item_values[6] if len(item_values) > 6 and item_values[6] else "Active"
     if status != "Active":
+        # Block restocking for inactive items.
         show_inventory_error(inventory_window, "Inactive Item", "Inactive items cannot be restocked.")
         return
 
@@ -597,6 +648,7 @@ def open_restock_form(conn, cursor, inventory_window, item_values, refresh_view=
     form_card = tk.Frame(form, bg=FORM_BG, padx=34, pady=30)
     form_card.pack(fill="both", expand=True)
 
+    # Show selected item information and current quantity.
     tk.Label(
         form_card,
         text="Restock Item",
@@ -624,6 +676,7 @@ def open_restock_form(conn, cursor, inventory_window, item_values, refresh_view=
 
     transaction_unit_var = tk.StringVar(value=FINE_SAND_BASE_UNIT)
     if is_fine_sand(item_name):
+        # Let users restock fine sand using cubic meters or bags.
         tk.Label(input_frame, text="Quantity Unit", font=("Arial", 14, "bold"), bg=FORM_BG, fg="#374151").pack(anchor="w", pady=(16, 0))
         ttk.Combobox(
             input_frame,
@@ -638,6 +691,7 @@ def open_restock_form(conn, cursor, inventory_window, item_values, refresh_view=
     button_frame.grid(row=2, column=0, columnspan=3, pady=(32, 0))
 
     def confirm_restock():
+        # Validate the restock quantity and apply the stock increase.
         quantity_text = qty_entry.get().strip()
         try:
             qty_added = parse_inventory_quantity(quantity_text, item_name)
@@ -666,6 +720,7 @@ def open_restock_form(conn, cursor, inventory_window, item_values, refresh_view=
         if callable(refresh_view):
             refresh_view()
 
+    # Place restock form action buttons.
     tk.Button(button_frame, text="Confirm", width=14, bg=SAVE_GREEN, fg="white", font=("Arial", 15, "bold"), bd=2, relief="solid", highlightbackground="black", highlightcolor="black", highlightthickness=1, padx=8, pady=8, command=confirm_restock).grid(row=0, column=0, padx=10)
     tk.Button(button_frame, text="Cancel", width=14, bg=CANCEL_RED, fg="white", font=("Arial", 15, "bold"), bd=2, relief="solid", highlightbackground="black", highlightcolor="black", highlightthickness=1, padx=8, pady=8, command=form.destroy).grid(row=0, column=1, padx=10)
 
@@ -675,12 +730,14 @@ def open_restock_form(conn, cursor, inventory_window, item_values, refresh_view=
 
 
 def delete_item(conn, cursor, inventory_window, tree, refresh_view=None):
+    # Confirm and delete the selected inventory item.
     selected = tree.focus()
     if not selected:
         show_inventory_error(inventory_window, "Error", "Select an item to delete.")
         return
     values = tree.item(selected, "values")
     if values[1] == CHB_ITEM_NAME:
+        # Prevent deleting CHB Blocks because CHB stock is managed separately.
         show_inventory_error(inventory_window, "Error", "CHB item cannot be deleted. Its stock is managed separately.")
         return
 
@@ -701,6 +758,7 @@ def delete_item(conn, cursor, inventory_window, tree, refresh_view=None):
     button_frame.pack(pady=22)
 
     def confirm_delete():
+        # Delete the item and refresh the inventory table.
         item_id = values[0]
         delete_item_record(conn, cursor, item_id)
         confirm.destroy()
@@ -718,11 +776,13 @@ def delete_item(conn, cursor, inventory_window, tree, refresh_view=None):
 
 
 def search_items(event, conn, cursor, tree, search_entry, sort_var=None, total_var=None):
+    # Search inventory items using the current search field text.
     sort_by = sort_var.get() if sort_var is not None else "Latest Date"
     view_items(conn, cursor, tree, search_entry.get(), sort_by, total_var)
 
 
 def _close_inventory_window(inventory_gui_module, window=None):
+    # Close inventory safely and cancel any pending refresh job.
     window = window or inventory_gui_module.inventory_window
     parent = window.master if window and window.winfo_exists() else None
 
@@ -749,12 +809,15 @@ def _close_inventory_window(inventory_gui_module, window=None):
 
 
 def back_to_main(inventory_gui_module, window=None):
+    # Close inventory and return to the main dashboard.
     _close_inventory_window(inventory_gui_module, window)
 
 
 def direct_back_to_dashboard(inventory_gui_module, window=None):
+    # Close inventory directly back to the dashboard.
     _close_inventory_window(inventory_gui_module, window)
 
 
 def on_close(inventory_gui_module, window=None):
+    # Handle inventory window close events.
     _close_inventory_window(inventory_gui_module, window)

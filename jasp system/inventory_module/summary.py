@@ -15,10 +15,12 @@ from .inventory_database import DB_NAME
 from .inventory_functions import show_inventory_error, show_inventory_success
 from jasp_theme import DASHBOARD_CONTENT_BG
 
+# Text shown when no inventory records exist for the selected period.
 NO_INVENTORY_ACTIVITY_TEXT = "No inventory activity for this period"
 
 
 def center_window(window, width=None, height=None, parent=None):
+    # Center a popup over its parent window or the screen.
     window.update_idletasks()
     width = width or window.winfo_width()
     height = height or window.winfo_height()
@@ -32,6 +34,7 @@ def center_window(window, width=None, height=None, parent=None):
 
 
 def ensure_summary_tables(cursor):
+    # Create summary-related tables and backfill columns used by reports.
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS restocks (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -57,13 +60,16 @@ def ensure_summary_tables(cursor):
     cursor.execute("PRAGMA table_info(inventory_logs)")
     log_columns = [col[1] for col in cursor.fetchall()]
     if "responsible_user" not in log_columns:
+        # Backfill responsible user tracking for older inventory log tables.
         cursor.execute("ALTER TABLE inventory_logs ADD COLUMN responsible_user TEXT DEFAULT ''")
     cursor.execute("PRAGMA table_info(items)")
     item_columns = [col[1] for col in cursor.fetchall()]
     if "status" not in item_columns:
+        # Backfill status values for older item tables.
         cursor.execute("ALTER TABLE items ADD COLUMN status TEXT DEFAULT 'Active'")
         cursor.execute("UPDATE items SET status='Active' WHERE status IS NULL OR status=''")
     if "date_added" not in item_columns:
+        # Backfill date_added for older item tables.
         cursor.execute("ALTER TABLE items ADD COLUMN date_added TEXT DEFAULT ''")
         cursor.execute(
             "UPDATE items SET date_added=? WHERE date_added IS NULL OR date_added=''",
@@ -80,6 +86,7 @@ def ensure_summary_tables(cursor):
 
 
 def save_pdf_download(cursor, module, location):
+    # Store one exported PDF location with its download timestamp.
     downloaded_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     cursor.execute(
         "INSERT INTO pdf_downloads (module, downloaded_at, location) VALUES (?, ?, ?)",
@@ -89,6 +96,7 @@ def save_pdf_download(cursor, module, location):
 
 
 def fetch_pdf_downloads(cursor, module, start_date=None, end_date=None):
+    # Load exported PDF history, optionally filtered by a date range.
     if start_date and end_date:
         cursor.execute(
             """
@@ -114,6 +122,7 @@ def fetch_pdf_downloads(cursor, module, start_date=None, end_date=None):
 
 
 def fetch_summary_rows(cursor, start_date, end_date):
+    # Fetch inventory activity rows for logs, restocks, and inactive item records.
     ensure_summary_tables(cursor)
     cursor.execute(
         """
@@ -187,6 +196,7 @@ def fetch_summary_rows(cursor, start_date, end_date):
 
 
 def open_date_calendar(parent, date_var, on_select=None):
+    # Open a small calendar popup for selecting a YYYY-MM-DD date.
     try:
         selected_date = datetime.strptime(date_var.get(), "%Y-%m-%d")
     except Exception:
@@ -210,12 +220,14 @@ def open_date_calendar(parent, date_var, on_select=None):
     grid_frame.pack(padx=10, pady=(0, 10))
 
     def select_date(day):
+        # Apply the selected day and run the optional callback.
         date_var.set(f"{year_var.get():04d}-{month_var.get():02d}-{day:02d}")
         if callable(on_select):
             on_select()
         cal_win.destroy()
 
     def change_month(delta):
+        # Move the calendar view backward or forward by one month.
         month = month_var.get() + delta
         year = year_var.get()
         if month < 1:
@@ -229,6 +241,7 @@ def open_date_calendar(parent, date_var, on_select=None):
         render_calendar()
 
     def render_calendar():
+        # Redraw the calendar grid for the selected month and year.
         for child in grid_frame.winfo_children():
             child.destroy()
 
@@ -265,6 +278,7 @@ def open_date_calendar(parent, date_var, on_select=None):
 
 
 def open_inventory_summary(parent, anchor_parent=None):
+    # Open the inventory activity summary window.
     conn = sqlite3.connect(DB_NAME)
     cursor = conn.cursor()
     ensure_summary_tables(cursor)
@@ -275,11 +289,13 @@ def open_inventory_summary(parent, anchor_parent=None):
     summary_win.configure(bg=DASHBOARD_CONTENT_BG)
     summary_win.transient(parent)
 
+    # Store selected period, date, and PDF history module key.
     period_var = tk.StringVar(value="Day")
     date_var = tk.StringVar(value=datetime.now().strftime("%Y-%m-%d"))
     pdf_download_module = "inventory_summary"
 
     def compute_range():
+        # Convert selected day/week/month controls into start and end dates.
         try:
             selected = datetime.strptime(date_var.get(), "%Y-%m-%d")
         except Exception:
@@ -302,6 +318,7 @@ def open_inventory_summary(parent, anchor_parent=None):
         return start, end
 
     def title_text():
+        # Build the summary title from the selected period.
         start, end = compute_range()
         if period_var.get() == "Day":
             return f"Inventory Summary - {start.strftime('%B %d, %Y')}"
@@ -310,18 +327,21 @@ def open_inventory_summary(parent, anchor_parent=None):
         return f"Inventory Summary - {start.strftime('%B %Y')}"
 
     def get_tree_rows():
+        # Return the currently visible summary table rows.
         rows = []
         for item in summary_tree.get_children():
             rows.append(summary_tree.item(item, "values"))
         return rows
 
     def load_summary():
+        # Reload summary rows for the selected date range.
         for row in summary_tree.get_children():
             summary_tree.delete(row)
 
         start, end = compute_range()
         rows = fetch_summary_rows(cursor, start, end)
         if not rows:
+            # Show a friendly empty row when there is no inventory activity.
             summary_tree.insert("", "end", values=(NO_INVENTORY_ACTIVITY_TEXT, "", "", "", "", ""), tags=("blue_row",))
             return
 
@@ -330,6 +350,7 @@ def open_inventory_summary(parent, anchor_parent=None):
             summary_tree.insert("", "end", values=(item_name, unit, qty, ts, status, responsible_user), tags=(tag,))
 
     def export_pdf(file_path, rows, title):
+        # Render the current inventory summary into a PDF file.
         doc = SimpleDocTemplate(file_path, pagesize=letter, topMargin=0.5*inch, bottomMargin=0.5*inch)
         styles = getSampleStyleSheet()
         title_style = ParagraphStyle(
@@ -341,6 +362,7 @@ def open_inventory_summary(parent, anchor_parent=None):
             spaceAfter=12,
         )
 
+        # Build the PDF table with header and alternating row colors.
         table_data = [["Item Name", "Unit", "Quantity Added", "Date Added", "Status", "User"]]
         table_data.extend(rows if rows else [[NO_INVENTORY_ACTIVITY_TEXT, "", "", "", "", ""]])
 
@@ -356,6 +378,7 @@ def open_inventory_summary(parent, anchor_parent=None):
             ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.HexColor("#dbeafe"), colors.white]),
         ]))
 
+        # Build the PDF story with title, table, and generated timestamp.
         story = [
             Paragraph(title, title_style),
             Spacer(1, 0.18*inch),
@@ -366,10 +389,12 @@ def open_inventory_summary(parent, anchor_parent=None):
         doc.build(story)
 
     def open_preview():
+        # Open a preview window before exporting the summary PDF.
         load_summary()
         rows = get_tree_rows()
         title = title_text()
 
+        # Build the preview header and table frame.
         preview = tk.Toplevel(summary_win)
         preview.title("Summary Preview")
         preview.configure(bg=DASHBOARD_CONTENT_BG)
@@ -380,6 +405,7 @@ def open_inventory_summary(parent, anchor_parent=None):
         preview_frame = tk.Frame(preview, bg="#ffffff")
         preview_frame.pack(fill="both", expand=True, padx=16, pady=8)
 
+        # Build the preview table and scrollbar.
         cols = ("Item Name", "Unit", "Quantity Added", "Date Added", "Status", "User")
         preview_tree = ttk.Treeview(preview_frame, columns=cols, show="headings")
         preview_style = ttk.Style()
@@ -396,6 +422,7 @@ def open_inventory_summary(parent, anchor_parent=None):
         preview_tree.tag_configure("blue_row", background="#dbeafe", foreground="#000000")
         preview_tree.tag_configure("white_row", background="#ffffff", foreground="#000000")
 
+        # Fill the preview table with current summary rows.
         for index, row in enumerate(rows):
             tag = "blue_row" if index % 2 == 0 else "white_row"
             preview_tree.insert("", "end", values=row, tags=(tag,))
@@ -404,6 +431,7 @@ def open_inventory_summary(parent, anchor_parent=None):
         button_frame.pack(fill="x", padx=16, pady=(4, 14))
 
         def choose_file_and_export():
+            # Ask where to save the PDF, export it, and record the download path.
             file_path = filedialog.asksaveasfilename(
                 parent=preview,
                 defaultextension=".pdf",
@@ -430,6 +458,7 @@ def open_inventory_summary(parent, anchor_parent=None):
 
         center_window(preview, 760, 520, summary_win)
 
+    # Build the summary filter controls.
     top_frame = tk.Frame(summary_win, bg=DASHBOARD_CONTENT_BG)
     top_frame.pack(fill="x", padx=16, pady=(14, 4))
 
@@ -440,6 +469,7 @@ def open_inventory_summary(parent, anchor_parent=None):
     tk.Label(top_frame, text="Date:", bg=DASHBOARD_CONTENT_BG, font=("Arial", 16, "bold")).pack(side="left", padx=(28, 10))
     date_entry = tk.Entry(top_frame, textvariable=date_var, width=14, font=("Arial", 15), relief="solid", bd=1)
     date_entry.pack(side="left", padx=5)
+    # Reuse button styling for filter actions.
     filter_button_options = {
         "width": 8,
         "font": ("Arial", 12, "bold"),
@@ -456,14 +486,17 @@ def open_inventory_summary(parent, anchor_parent=None):
     tk.Button(top_frame, text="Apply", bg="#1e3a8a", command=load_summary, **filter_button_options).pack(side="left", padx=4)
     tk.Button(top_frame, text="Close", bg="#dc2626", command=lambda: on_close(), **filter_button_options).pack(side="right", padx=4)
 
+    # Build PDF action buttons.
     pdf_button_frame = tk.Frame(summary_win, bg=DASHBOARD_CONTENT_BG)
     pdf_button_frame.pack(fill="x", padx=16, pady=(0, 8))
     tk.Button(pdf_button_frame, text="Convert to PDF", bg="#00c853", fg="white", font=("Arial", 13, "bold"), bd=2, relief="solid", command=open_preview, padx=14, pady=7).pack(side="left")
     tk.Button(pdf_button_frame, text="View Downloaded PDF", bg="#2563eb", fg="white", font=("Arial", 13, "bold"), bd=2, relief="solid", command=lambda: open_downloaded_pdf_window(), padx=14, pady=7).pack(side="left", padx=8)
 
+    # Build the main summary table area.
     table_frame = tk.Frame(summary_win, bg=DASHBOARD_CONTENT_BG)
     table_frame.pack(fill="both", expand=True, padx=16, pady=(0, 14))
 
+    # Configure the inventory summary table columns and style.
     columns = ("Item Name", "Unit", "Quantity Added", "Date Added", "Status", "User")
     summary_tree = ttk.Treeview(table_frame, columns=columns, show="headings")
     style = ttk.Style()
@@ -482,6 +515,7 @@ def open_inventory_summary(parent, anchor_parent=None):
     summary_tree.tag_configure("white_row", background="#ffffff", foreground="#000000")
 
     def open_pdf_location(path):
+        # Open a saved PDF path when it still exists on disk.
         if not path or path == "Not downloaded":
             messagebox.showinfo("PDF Location", "This summary has not been downloaded yet.", parent=summary_win)
             return
@@ -494,6 +528,7 @@ def open_inventory_summary(parent, anchor_parent=None):
             messagebox.showerror("Open Failed", f"Unable to open PDF:\n{exc}", parent=summary_win)
 
     def open_downloaded_pdf_window():
+        # Open a window listing previously exported inventory summary PDFs.
         pdf_win = tk.Toplevel(summary_win)
         pdf_win.title("Downloaded Inventory PDFs")
         pdf_win.configure(bg=DASHBOARD_CONTENT_BG)
@@ -512,6 +547,7 @@ def open_inventory_summary(parent, anchor_parent=None):
         pdf_date_var = tk.StringVar(value=datetime.now().strftime("%Y-%m-%d"))
 
         def compute_pdf_range():
+            # Convert downloaded-PDF filters into a date range.
             try:
                 selected = datetime.strptime(pdf_date_var.get(), "%Y-%m-%d")
             except Exception:
@@ -532,6 +568,7 @@ def open_inventory_summary(parent, anchor_parent=None):
             return start_date, end_date
 
         def empty_pdf_message():
+            # Return a friendly message when no PDFs match the selected period.
             period = pdf_period_var.get()
             if period == "Day":
                 if pdf_date_var.get() == datetime.now().strftime("%Y-%m-%d"):
@@ -541,6 +578,7 @@ def open_inventory_summary(parent, anchor_parent=None):
                 return "No PDFs downloaded this week."
             return "No PDFs downloaded this month."
 
+        # Build the downloaded-PDF filter controls.
         filter_frame = tk.Frame(pdf_win, bg=DASHBOARD_CONTENT_BG)
         filter_frame.pack(fill="x", padx=14, pady=(0, 10))
         tk.Label(filter_frame, text="Period:", bg=DASHBOARD_CONTENT_BG, font=("Arial", 14, "bold")).pack(side="left", padx=(0, 8))
@@ -551,6 +589,7 @@ def open_inventory_summary(parent, anchor_parent=None):
         tk.Button(filter_frame, text="Calendar", bg="#2563eb", fg="white", font=("Arial", 12, "bold"), bd=2, relief="solid", command=lambda: open_date_calendar(pdf_win, pdf_date_var, load_pdf_records), padx=8, pady=4).pack(side="left", padx=4)
         tk.Button(filter_frame, text="Apply", bg="#059669", fg="white", font=("Arial", 12, "bold"), bd=2, relief="solid", command=lambda: load_pdf_records(), padx=8, pady=4).pack(side="left", padx=4)
 
+        # Build the downloaded-PDF table and scrollbar.
         pdf_frame = tk.Frame(pdf_win, bg=DASHBOARD_CONTENT_BG)
         pdf_frame.pack(fill="both", expand=True, padx=14, pady=(0, 10))
         pdf_style = ttk.Style()
@@ -568,6 +607,7 @@ def open_inventory_summary(parent, anchor_parent=None):
         pdf_tree.configure(yscrollcommand=pdf_scroll.set)
 
         def load_pdf_records():
+            # Reload downloaded PDF records for the selected filter range.
             for item in pdf_tree.get_children():
                 pdf_tree.delete(item)
             start_date, end_date = compute_pdf_range()
@@ -579,6 +619,7 @@ def open_inventory_summary(parent, anchor_parent=None):
                 pdf_tree.insert("", "end", values=("", empty_pdf_message()))
 
         def on_pdf_click(event):
+            # Open the clicked PDF location when the location column is selected.
             if pdf_tree.identify_column(event.x) != "#2":
                 return
             item_id = pdf_tree.identify_row(event.y)
@@ -593,10 +634,12 @@ def open_inventory_summary(parent, anchor_parent=None):
         tk.Button(pdf_win, text="Close", bg="#dc2626", fg="white", font=("Arial", 12, "bold"), bd=2, relief="solid", command=pdf_win.destroy, padx=14, pady=6).pack(anchor="e", padx=14, pady=(0, 12))
         center_window(pdf_win, 980, 540, summary_win)
 
+    # Load initial data and center the summary window.
     load_summary()
     center_window(summary_win, 900, 560, anchor_parent or parent)
 
     def on_close():
+        # Close the summary database connection before destroying the window.
         conn.close()
         summary_win.destroy()
 

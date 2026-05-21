@@ -16,6 +16,7 @@ from jasp_theme import (
 from main_dashboard import session
 from pos_module.pos_database import CHB_ITEM_NAME, CHB_STATE_ID
 
+# Define POS colors, stock constants, and formatting helpers.
 SUCCESS_GREEN = "#00c853"
 CANCEL_RED = "#dc2626"
 PRIMARY_BLUE = "#2563eb"
@@ -31,20 +32,24 @@ PESO_SIGN = chr(8369)
 
 
 def is_fine_sand(item_name):
+    # Check whether an item name refers to Fine Sand.
     return str(item_name or "").strip().lower() == FINE_SAND_ITEM_NAME.lower()
 
 
 def is_bag_unit(unit):
+    # Treat common bag/sack labels as fine sand bag units.
     unit_text = str(unit or "").strip().lower()
     return unit_text in {"bag", "bags", "bag/sack", "sack", "sacks"}
 
 
 def fine_sand_cubic_deduction(qty, unit):
+    # Convert fine sand sales into cubic meters for stock deduction.
     qty = float(qty or 0)
     return qty / FINE_SAND_BAGS_PER_CUBIC_METER if is_bag_unit(unit) else qty
 
 
 def parse_sale_quantity(qty_text, item_name, unit):
+    # Parse sale quantities as float only for fine sand cubic-meter sales.
     qty_text = str(qty_text or "").strip()
     if is_fine_sand(item_name) and not is_bag_unit(unit):
         return float(qty_text)
@@ -52,6 +57,7 @@ def parse_sale_quantity(qty_text, item_name, unit):
 
 
 def format_pos_quantity(quantity):
+    # Format POS quantities without unnecessary trailing decimal zeros.
     try:
         value = float(quantity or 0)
     except (TypeError, ValueError):
@@ -60,16 +66,19 @@ def format_pos_quantity(quantity):
 
 
 def format_fine_sand_stock(quantity):
+    # Display fine sand stock in cubic meters and equivalent bags.
     cubic_stock = float(quantity or 0)
     equivalent_bags = cubic_stock * FINE_SAND_BAGS_PER_CUBIC_METER
     return f"{format_pos_quantity(cubic_stock)} cubic meters ({format_pos_quantity(equivalent_bags)} bags)"
 
 
 def format_money_value(value):
+    # Format a numeric value as Philippine peso display text.
     return f"{PESO_SIGN}{float(value or 0):,.2f}"
 
 
 def parse_money_value(value):
+    # Convert displayed peso text into a float value.
     cleaned = (
         str(value or "0")
         .replace(PESO_SIGN, "")
@@ -81,25 +90,30 @@ def parse_money_value(value):
 
 
 def format_fine_sand_prices(cubic_price, bag_price):
+    # Display fine sand prices for cubic meter and bag units.
     return f"Cubic: {format_money_value(cubic_price)} | Bag: {format_money_value(bag_price)}"
 
 
 def fetch_fine_sand_prices(cursor, item_id):
+    # Fetch fine sand cubic and bag prices for one inventory item.
     cursor.execute("SELECT COALESCE(price, 0), COALESCE(fine_sand_bag_price, 0) FROM items WHERE id=?", (item_id,))
     row = cursor.fetchone() or (0, 0)
     return float(row[0] or 0), float(row[1] or 0)
 
 
 def fine_sand_price_for_unit(cursor, item_id, unit):
+    # Choose the correct fine sand selling price for the selected unit.
     cubic_price, bag_price = fetch_fine_sand_prices(cursor, item_id)
     return bag_price if is_bag_unit(unit) else cubic_price
 
 
 def parse_stock_quantity(quantity):
+    # Parse a displayed stock quantity back into a number.
     return float(str(quantity).split(" ", 1)[0].replace(",", ""))
 
 
 def display_inventory_row(row):
+    # Convert inventory database rows into POS table display values.
     values = list(row)
     if len(values) > 3 and is_fine_sand(values[1]):
         values[2] = FINE_SAND_BASE_UNIT
@@ -114,6 +128,7 @@ def display_inventory_row(row):
 
 def center_window(window, width=None, height=None, parent=None):
     """Center a window on the screen."""
+    # Center a popup over its parent window or the screen.
     window.update_idletasks()
     width = width or window.winfo_width()
     height = height or window.winfo_height()
@@ -128,6 +143,7 @@ def center_window(window, width=None, height=None, parent=None):
 
 
 def show_pos_popup(parent, title, message, accent_color):
+    # Show a modal POS popup with a colored accent bar.
     popup = tk.Toplevel(parent)
     popup.title(title)
     if parent is not None:
@@ -144,8 +160,10 @@ def show_pos_popup(parent, title, message, accent_color):
     tk.Label(content, text=message, bg="#ffffff", fg="#111827", font=("Arial", 17), wraplength=430, justify="center").pack(pady=(0, 28))
 
     def close_popup():
+        # Close the POS popup.
         popup.destroy()
 
+    # Build the OK button for the POS popup.
     tk.Button(content, text="OK", command=close_popup, bg=accent_color, fg="white", activebackground=accent_color, font=("Arial", 15, "bold"), relief="solid", bd=2, highlightthickness=1, highlightbackground="black", highlightcolor="black", width=14, pady=9).pack()
     popup.bind("<Return>", lambda _event: close_popup())
     popup.bind("<Escape>", lambda _event: close_popup())
@@ -155,18 +173,22 @@ def show_pos_popup(parent, title, message, accent_color):
 
 
 def show_pos_error(parent, title, message):
+    # Display an error popup using the POS error color.
     show_pos_popup(parent, title, message, CANCEL_RED)
 
 
 def show_pos_success(parent, title, message):
+    # Display a success popup using the POS success color.
     show_pos_popup(parent, title, message, SUCCESS_GREEN)
 
 
 def show_pos_warning(parent, title, message):
+    # Display a warning popup using the POS warning color.
     show_pos_popup(parent, title, message, WARNING_ORANGE)
 
 
 def ask_pos_confirmation(parent, title, message, confirm_text="Yes", accent_color=PRIMARY_BLUE):
+    # Show a modal confirmation dialog and return True only when confirmed.
     result = {"confirmed": False}
     popup = tk.Toplevel(parent)
     popup.title(title)
@@ -186,12 +208,15 @@ def ask_pos_confirmation(parent, title, message, confirm_text="Yes", accent_colo
     button_row.pack()
 
     def confirm():
+        # Mark the dialog as confirmed before closing it.
         result["confirmed"] = True
         popup.destroy()
 
     def cancel():
+        # Close the dialog without confirming the action.
         popup.destroy()
 
+    # Build the cancel and confirm buttons.
     border = {"relief": "solid", "bd": 2, "highlightthickness": 1, "highlightbackground": "black", "highlightcolor": "black"}
     tk.Button(button_row, text="Cancel", command=cancel, bg="#64748b", fg="white", activebackground="#475569", font=("Arial", 14, "bold"), width=13, pady=9, **border).pack(side="left", padx=8)
     tk.Button(button_row, text=confirm_text, command=confirm, bg=accent_color, fg="white", activebackground=accent_color, font=("Arial", 14, "bold"), width=13, pady=9, **border).pack(side="left", padx=8)
@@ -205,6 +230,7 @@ def ask_pos_confirmation(parent, title, message, confirm_text="Yes", accent_colo
 
 def notify_inventory_views():
     """Refresh open inventory windows when stock changes."""
+    # Call the inventory refresh callback after POS changes stock.
     module = sys.modules.get("inventory_module") or sys.modules.get("inventory")
     callback = getattr(module, "inventory_refresh_callback", None) if module else None
     if callable(callback):
@@ -216,6 +242,7 @@ def notify_inventory_views():
 
 def notify_dashboard_views():
     """Refresh the main dashboard after a completed POS sale."""
+    # Call registered dashboard refresh callbacks after checkout.
     for module_name in ("main_dashboard.main_gui", "Main_dashboard.main_gui"):
         module = sys.modules.get(module_name)
         callback = getattr(module, "dashboard_refresh_callback", None) if module else None
@@ -227,11 +254,13 @@ def notify_dashboard_views():
 
 
 def compact_receipt_txn_id(txn_id):
+    # Show a compact receipt id by keeping only trailing digits.
     digits = "".join(ch for ch in str(txn_id or "") if ch.isdigit())
     return digits[-5:] if digits else str(txn_id or "")[-5:]
 
 
 def center_receipt_window(window, parent):
+    # Center the receipt window over the POS parent.
     if not window.winfo_exists():
         return
     width = 760
@@ -248,6 +277,7 @@ def center_receipt_window(window, parent):
 
 
 def fit_tree_columns_to_width(tree, column_weights, padding=26):
+    # Resize Treeview columns proportionally to available width.
     tree.update_idletasks()
     available_width = max(tree.winfo_width() - padding, 1)
     total_weight = sum(weight for _width, _minwidth, weight in column_weights.values()) or 1
@@ -257,6 +287,7 @@ def fit_tree_columns_to_width(tree, column_weights, padding=26):
 
 
 def auto_fit_tree_columns(tree, column_specs, padding=26, sample_limit=80):
+    # Measure headings and row values to auto-fit Treeview columns.
     tree.update_idletasks()
     body_font = tkfont.Font(font=("Arial", 15))
     heading_font = tkfont.Font(font=("Arial", 15, "bold"))
@@ -276,6 +307,7 @@ def auto_fit_tree_columns(tree, column_specs, padding=26, sample_limit=80):
 
     measured_widths = {}
     for column, (base_width, min_width, _weight) in column_specs.items():
+        # Measure one column using heading text and visible row samples.
         heading_text = tree.heading(column, "text") or column
         measured = max(min_width, heading_font.measure(str(heading_text)) + 30)
         for row_id in tree.get_children()[:sample_limit]:
@@ -289,6 +321,7 @@ def auto_fit_tree_columns(tree, column_specs, padding=26, sample_limit=80):
         measured_widths[column] = width
 
     if getattr(tree, "_fill_available_width", False):
+        # Spread extra width across flexible columns when full-width mode is active.
         total_width = sum(measured_widths.values())
         available_width = max(tree.winfo_width() - padding, total_width)
         if available_width > total_width:
@@ -304,18 +337,21 @@ def auto_fit_tree_columns(tree, column_specs, padding=26, sample_limit=80):
 
 
 def refresh_inventory_names(ctx):
+    # Refresh active inventory names for search suggestions.
     cursor = ctx["cursor"]
     cursor.execute("SELECT name FROM items WHERE COALESCE(status, 'Active') = 'Active'")
     ctx["inventory_names"][:] = [row[0] for row in cursor.fetchall()]
 
 
 def update_search_suggestions(ctx):
+    # Update the search dropdown suggestions based on typed text.
     search_entry = ctx["search_entry"]
     text = search_entry.get()
     search_entry["values"] = [name for name in ctx["inventory_names"] if text.lower() in name.lower()]
 
 
 def load_inventory(ctx, search_query=""):
+    # Load active inventory items into CHB and other-items POS tables.
     inv_tree = ctx["inv_tree"]
     chb_inv_tree = ctx.get("chb_inv_tree")
     inventory_trees = [tree for tree in (chb_inv_tree, inv_tree) if tree and tree.winfo_exists()]
@@ -324,6 +360,7 @@ def load_inventory(ctx, search_query=""):
     no_results_label = ctx.get("inventory_no_results_label")
     if no_results_label and no_results_label.winfo_exists():
         no_results_label.place_forget()
+    # Clear old inventory rows and add buttons before reloading.
     clear_inventory_buttons(ctx)
     for tree in inventory_trees:
         for row in tree.get_children():
@@ -345,6 +382,7 @@ def load_inventory(ctx, search_query=""):
     cursor.execute(chb_query)
     chb_rows = cursor.fetchall()
 
+    # Build the query for non-CHB active inventory items.
     query = """
         SELECT id, name, unit, quantity, price, COALESCE(fine_sand_bag_price, 0)
         FROM items
@@ -378,6 +416,7 @@ def load_inventory(ctx, search_query=""):
     other_rows = cursor.fetchall()
     show_no_matching_product = bool(search_query.strip()) and not other_rows
     if not chb_rows and not other_rows:
+        # Show empty-state rows when no active inventory matches.
         empty_message = "No items found"
         if search_query:
             cursor.execute(
@@ -408,6 +447,7 @@ def load_inventory(ctx, search_query=""):
         return
 
     if chb_inv_tree and chb_inv_tree.winfo_exists():
+        # Fill the CHB inventory section.
         if chb_rows:
             for index, row in enumerate(chb_rows):
                 tag = "evenrow" if index % 2 else "oddrow"
@@ -417,6 +457,7 @@ def load_inventory(ctx, search_query=""):
             chb_inv_tree.insert("", tk.END, values=("", "No CHB items found", "", "", "", ""), tags=("emptyrow",))
 
     if other_rows:
+        # Fill the other-items inventory section.
         for index, row in enumerate(other_rows):
             tag = "evenrow" if index % 2 else "oddrow"
             display_row = display_inventory_row(row)
@@ -429,6 +470,7 @@ def load_inventory(ctx, search_query=""):
             inv_tree.insert("", tk.END, values=("", "No other items found", "", "", "", ""), tags=("emptyrow",))
 
     refresh_inventory_names(ctx)
+    # Refit inventory columns and schedule Add buttons after loading rows.
     if ctx.get("inventory_column_specs"):
         for tree in inventory_trees:
             auto_fit_tree_columns(tree, ctx["inventory_column_specs"])
@@ -436,6 +478,7 @@ def load_inventory(ctx, search_query=""):
 
 
 def clear_inventory_buttons(ctx):
+    # Remove all overlay Add buttons from inventory tables.
     buttons = ctx.get("inventory_buttons", {})
     if isinstance(buttons, list):
         iterable = buttons
@@ -448,6 +491,7 @@ def clear_inventory_buttons(ctx):
 
 
 def schedule_inventory_buttons(ctx):
+    # Schedule inventory Add button rendering after table layout settles.
     root = ctx.get("root")
     if not root or not root.winfo_exists():
         return
@@ -457,6 +501,7 @@ def schedule_inventory_buttons(ctx):
 
 
 def render_inventory_buttons(ctx):
+    # Render overlay Add buttons inside inventory table rows.
     ctx["inventory_button_job"] = None
     buttons = ctx.setdefault("inventory_buttons", {})
     if isinstance(buttons, list):
@@ -465,6 +510,7 @@ def render_inventory_buttons(ctx):
     visible_items = set()
 
     for inv_tree in [tree for tree in (ctx.get("chb_inv_tree"), ctx.get("inv_tree")) if tree and tree.winfo_exists()]:
+        # Place Add buttons only on visible item rows.
         inv_tree.update_idletasks()
         for item_id in inv_tree.get_children():
             button_key = (str(inv_tree), item_id)
@@ -507,6 +553,7 @@ def render_inventory_buttons(ctx):
 
 
 def add_item_to_cart(ctx, product_id, name, unit, quantity, price, qty):
+    # Validate stock and add or merge an item into the cart.
     cursor = ctx["cursor"]
     cart = ctx["cart"]
     root = ctx["root"]
@@ -533,6 +580,7 @@ def add_item_to_cart(ctx, product_id, name, unit, quantity, price, qty):
         return False
 
     if existing_item:
+        # Merge quantities when the same product is already in the cart.
         existing_item["qty"] += qty
         existing_item["total"] = existing_item["qty"] * existing_item["price"]
     else:
@@ -551,12 +599,14 @@ def add_item_to_cart(ctx, product_id, name, unit, quantity, price, qty):
 
 
 def update_cart(ctx):
+    # Redraw the cart table and update the amount due.
     cart_tree = ctx["cart_tree"]
     total_label = ctx["total_label"]
     clear_cart_buttons(ctx)
     cart_tree.delete(*cart_tree.get_children())
     total = 0
     for index, item in enumerate(ctx["cart"]):
+        # Insert each cart item with alternating row colors.
         tag = "evenrow" if index % 2 else "oddrow"
         cart_tree.insert(
             "",
@@ -580,6 +630,7 @@ def update_cart(ctx):
 
 
 def clear_cart_buttons(ctx):
+    # Remove all overlay Edit buttons from the cart table.
     for button in ctx.get("cart_buttons", {}).values():
         if button.winfo_exists():
             button.destroy()
@@ -587,6 +638,7 @@ def clear_cart_buttons(ctx):
 
 
 def schedule_cart_buttons(ctx):
+    # Schedule cart Edit button rendering after table layout settles.
     cart_tree = ctx.get("cart_tree")
     if not cart_tree or not cart_tree.winfo_exists():
         return
@@ -596,6 +648,7 @@ def schedule_cart_buttons(ctx):
 
 
 def render_cart_buttons(ctx):
+    # Render overlay Edit buttons inside cart table rows.
     ctx["cart_button_job"] = None
     cart_tree = ctx["cart_tree"]
     cart_tree.update_idletasks()
@@ -603,6 +656,7 @@ def render_cart_buttons(ctx):
     visible_items = set()
 
     for row_id in cart_tree.get_children():
+        # Place one Edit button on each visible cart row.
         bbox = cart_tree.bbox(row_id, "Edit")
         values = cart_tree.item(row_id, "values")
         if not values:
@@ -641,6 +695,7 @@ def render_cart_buttons(ctx):
 
 
 def clear_cart(ctx):
+    # Confirm and remove all items from the cart.
     cart = ctx["cart"]
     root = ctx["root"]
     if not cart:
@@ -653,6 +708,7 @@ def clear_cart(ctx):
 
 
 def nudge_quantity(qty_entry, delta, default_value=1, minimum=1):
+    # Increment or decrement a quantity entry by a fixed delta.
     current_text = qty_entry.get().strip()
     try:
         current_value = int(current_text) if current_text else default_value
@@ -666,6 +722,7 @@ def nudge_quantity(qty_entry, delta, default_value=1, minimum=1):
 
 
 def nudge_add_quantity(parent, qty_entry, delta):
+    # Adjust add-to-cart quantity while preventing a blank negative nudge.
     current_text = qty_entry.get().strip()
     if not current_text and delta < 0:
         show_pos_error(parent, "Invalid Quantity", "Enter a quantity before subtracting.")
@@ -675,6 +732,7 @@ def nudge_add_quantity(parent, qty_entry, delta):
 
 
 def open_add_to_cart_modal(ctx, _event=None, tree_widget=None):
+    # Open a modal for selecting quantity and unit before adding to cart.
     inv_tree = tree_widget or (getattr(_event, "widget", None) if _event is not None else None) or ctx["inv_tree"]
     selected = inv_tree.focus()
     if not selected:
@@ -683,6 +741,7 @@ def open_add_to_cart_modal(ctx, _event=None, tree_widget=None):
     values = inv_tree.item(selected, "values")
     if not values or not values[0]:
         return
+    # Read the selected inventory row and prepare modal defaults.
     product_id = int(values[0])
     name = values[1]
     unit = values[2] or "pcs"
@@ -698,6 +757,7 @@ def open_add_to_cart_modal(ctx, _event=None, tree_widget=None):
     modal.transient(root)
     modal.grab_set()
 
+    # Build the add-to-cart modal header and product summary.
     header = tk.Frame(modal, bg=DASHBOARD_HEADER_BG, highlightthickness=1, highlightbackground=DASHBOARD_HEADER_BORDER)
     header.pack(fill="x")
     title_frame = tk.Frame(header, bg=DASHBOARD_HEADER_BG)
@@ -711,6 +771,7 @@ def open_add_to_cart_modal(ctx, _event=None, tree_widget=None):
     available_text = format_fine_sand_stock(quantity) if is_fine_sand(name) else f"{format_pos_quantity(quantity)} {unit}"
     tk.Label(body, text=f"Available stock: {available_text}", font=("Arial", 16, "bold"), bg=PANEL_BG, fg="#1e40af").pack(pady=(0, 18))
 
+    # Build quantity input and plus/minus controls.
     form = tk.Frame(body, bg=PANEL_BG)
     form.pack(pady=8, fill="x")
     tk.Label(form, text="Quantity", bg=PANEL_BG, font=("Arial", 17, "bold")).grid(row=0, column=0, padx=(0, 12), pady=8)
@@ -749,10 +810,12 @@ def open_add_to_cart_modal(ctx, _event=None, tree_widget=None):
     sale_unit_var = tk.StringVar(value=FINE_SAND_BASE_UNIT if is_fine_sand(name) else unit)
     price_var = tk.StringVar(value=f"Price: {format_money_value(price)}")
     if is_fine_sand(name):
+        # Show unit selector and dynamic price label for fine sand.
         price_label = tk.Label(form, textvariable=price_var, bg=PANEL_BG, font=("Arial", 14, "bold"), fg="#991b1b")
         price_label.grid(row=2, column=1, columnspan=3, sticky="w", pady=(2, 0))
 
         def update_price_for_unit(*_args):
+            # Refresh fine sand price when switching unit.
             current_price = fine_sand_price_for_unit(ctx["cursor"], product_id, sale_unit_var.get())
             price_var.set(f"Price: {format_money_value(current_price)}")
 
@@ -767,6 +830,7 @@ def open_add_to_cart_modal(ctx, _event=None, tree_widget=None):
             font=("Arial", 16),
         ).grid(row=1, column=1, columnspan=3, sticky="ew", pady=8)
 
+    # Add quick quantity adjustment buttons.
     quick_row = tk.Frame(body, bg=PANEL_BG)
     quick_row.pack(pady=(8, 10), fill="x")
     for idx, step in enumerate((-20, -10, -5, 5, 10, 20)):
@@ -787,6 +851,7 @@ def open_add_to_cart_modal(ctx, _event=None, tree_widget=None):
         quick_row.grid_columnconfigure(idx, weight=1)
 
     def submit():
+        # Validate quantity and add the selected item to the cart.
         qty_text = qty_entry.get().strip()
         try:
             sale_unit = sale_unit_var.get()
@@ -798,6 +863,7 @@ def open_add_to_cart_modal(ctx, _event=None, tree_widget=None):
         if add_item_to_cart(ctx, product_id, name, sale_unit, quantity, sale_price, qty):
             modal.destroy()
 
+    # Build modal action buttons.
     btns = tk.Frame(body, bg=PANEL_BG)
     btns.pack(pady=(14, 24))
     tk.Button(btns, text="Add to Cart", bg="#16a34a", fg="white", font=("Arial", 16, "bold"),
@@ -810,6 +876,7 @@ def open_add_to_cart_modal(ctx, _event=None, tree_widget=None):
 
 
 def open_cart_item_modal(ctx, _event=None):
+    # Open a modal for editing or removing an existing cart item.
     cart_tree = ctx["cart_tree"]
     cursor = ctx["cursor"]
     cart = ctx["cart"]
@@ -823,6 +890,7 @@ def open_cart_item_modal(ctx, _event=None):
     if not cart_item:
         return
 
+    # Load current stock and unit details for the cart item.
     cursor.execute("SELECT quantity FROM items WHERE id=?", (item_id,))
     row = cursor.fetchone()
     available_stock = float(row[0]) if row else 0
@@ -832,6 +900,7 @@ def open_cart_item_modal(ctx, _event=None):
     button_border = ctx["button_border"]
     root = ctx["root"]
 
+    # Build the edit-cart modal header and item summary.
     modal = tk.Toplevel(root)
     modal.title("Edit Cart Item")
     modal.configure(bg=DASHBOARD_CONTENT_BG)
@@ -852,6 +921,7 @@ def open_cart_item_modal(ctx, _event=None):
     available_text = format_fine_sand_stock(available_stock) if is_fine_sand(cart_item["name"]) else f"{format_pos_quantity(available_stock)} {unit}"
     tk.Label(body, text=f"Available stock: {available_text}", font=("Arial", 16, "bold"), bg=PANEL_BG, fg="#1e40af").pack(pady=(0, 18))
 
+    # Build quantity input and plus/minus controls.
     form = tk.Frame(body, bg=PANEL_BG)
     form.pack(pady=8, fill="x")
     tk.Label(form, text="Quantity", bg=PANEL_BG, font=("Arial", 17, "bold")).grid(row=0, column=0, padx=(0, 12), pady=8)
@@ -892,9 +962,11 @@ def open_cart_item_modal(ctx, _event=None):
     sale_unit_var = tk.StringVar(value=unit if is_fine_sand(cart_item["name"]) else unit)
     price_var = tk.StringVar(value=f"Price: {format_money_value(cart_item['price'])}")
     if is_fine_sand(cart_item["name"]):
+        # Show unit selector and dynamic price label for fine sand cart items.
         tk.Label(form, textvariable=price_var, bg=PANEL_BG, font=("Arial", 14, "bold"), fg="#991b1b").grid(row=2, column=1, columnspan=3, sticky="w", pady=(2, 0))
 
         def update_price_for_unit(*_args):
+            # Refresh fine sand price when switching unit.
             current_price = fine_sand_price_for_unit(cursor, item_id, sale_unit_var.get())
             price_var.set(f"Price: {format_money_value(current_price)}")
 
@@ -909,6 +981,7 @@ def open_cart_item_modal(ctx, _event=None):
             font=("Arial", 16),
         ).grid(row=1, column=1, columnspan=3, sticky="ew", pady=8)
 
+    # Add quick quantity adjustment buttons.
     quick_row = tk.Frame(body, bg=PANEL_BG)
     quick_row.pack(pady=(8, 10), fill="x")
     for idx, step in enumerate((-20, -10, -5, 5, 10, 20)):
@@ -929,6 +1002,7 @@ def open_cart_item_modal(ctx, _event=None):
         quick_row.grid_columnconfigure(idx, weight=1)
 
     def save_changes():
+        # Validate and save cart quantity/unit changes.
         qty_text = qty_entry.get().strip()
         try:
             sale_unit = sale_unit_var.get()
@@ -952,12 +1026,14 @@ def open_cart_item_modal(ctx, _event=None):
         modal.destroy()
 
     def remove_item():
+        # Confirm and remove the selected cart item.
         if not ask_pos_confirmation(modal, "Remove Item", f"Remove {cart_item['name']} from the cart?", confirm_text="Remove", accent_color=CANCEL_RED):
             return
         cart.remove(cart_item)
         update_cart(ctx)
         modal.destroy()
 
+    # Build modal action buttons.
     btns = tk.Frame(body, bg=PANEL_BG)
     btns.pack(pady=(14, 24))
     tk.Button(btns, text="Save", bg="#16a34a", fg="white", font=("Arial", 16, "bold"),
@@ -972,6 +1048,7 @@ def open_cart_item_modal(ctx, _event=None):
 
 
 def generate_invoice_pdf(cart_items, total_amount, money_received, change, mode, platform, txn_id):
+    # Generate a PDF receipt file for the completed transaction.
     try:
         from fpdf import FPDF
     except ImportError:
@@ -985,6 +1062,7 @@ def generate_invoice_pdf(cart_items, total_amount, money_received, change, mode,
     documents_path = os.path.expanduser("~/Documents")
     display_txn_id = compact_receipt_txn_id(txn_id)
     pdf_path = os.path.join(documents_path, f"receipt_{display_txn_id}.pdf")
+    # Build the receipt PDF content.
     pdf = FPDF()
     pdf.add_page()
     pdf.set_font("Arial", "B", 14)
@@ -1019,12 +1097,14 @@ def generate_invoice_pdf(cart_items, total_amount, money_received, change, mode,
 
 
 def open_invoice_window(ctx, cart_items, total_amount, money_received, change, mode, platform, txn_id):
+    # Open the receipt window after a completed checkout.
     pos_root = ctx["root"]
     if pos_root.winfo_exists():
         pos_root.deiconify()
         pos_root.lift()
         pos_root.focus_force()
 
+    # Build the receipt window shell.
     inv_window = tk.Toplevel(ctx["root"])
     inv_window.title("Receipt")
     inv_window.configure(bg=DASHBOARD_CONTENT_BG)
@@ -1037,6 +1117,7 @@ def open_invoice_window(ctx, cart_items, total_amount, money_received, change, m
     receipt_style.configure("Receipt.Treeview", font=("Arial", 14), rowheight=34)
     receipt_style.configure("Receipt.Treeview.Heading", font=("Arial", 13, "bold"))
 
+    # Build the receipt header.
     header_frame = tk.Frame(inv_window, bg=DASHBOARD_HEADER_BG, highlightthickness=1, highlightbackground=DASHBOARD_HEADER_BORDER)
     header_frame.pack(fill="x")
     header_inner = tk.Frame(header_frame, bg=DASHBOARD_HEADER_BG)
@@ -1047,6 +1128,7 @@ def open_invoice_window(ctx, cart_items, total_amount, money_received, change, m
     tk.Label(title_block, text="JASP Hardware", font=("Arial", 22, "bold"), bg=DASHBOARD_HEADER_BG, fg=DASHBOARD_HEADER_FG).pack(anchor="w")
     tk.Label(title_block, text="Official POS Receipt", font=("Arial", 13, "bold"), bg=DASHBOARD_HEADER_BG, fg=DASHBOARD_HEADER_SUBTLE_FG).pack(anchor="w")
 
+    # Build the receipt body with transaction metadata and item table.
     content_frame = tk.Frame(inv_window, bg=PANEL_BG, padx=22, pady=18, highlightthickness=1, highlightbackground="black")
     content_frame.pack(fill="both", expand=True, padx=28, pady=(22, 12))
 
@@ -1090,6 +1172,7 @@ def open_invoice_window(ctx, cart_items, total_amount, money_received, change, m
         )
     auto_fit_tree_columns(receipt_tree, receipt_column_specs, padding=34)
 
+    # Show payment totals, method, status, and change.
     total_panel = tk.Frame(content_frame, bg=DASHBOARD_CONTENT_BG, padx=16, pady=12, highlightthickness=1, highlightbackground="black")
     total_panel.pack(fill="x")
     tk.Label(total_panel, text=f"Total Amount: {format_money_value(total_amount)}", font=("Arial", 18, "bold"), bg=DASHBOARD_CONTENT_BG, fg="#991b1b").pack(anchor="w", pady=2)
@@ -1103,6 +1186,7 @@ def open_invoice_window(ctx, cart_items, total_amount, money_received, change, m
         tk.Label(total_panel, text=f"Change: {format_money_value(change)}", font=("Arial", 14, "bold"), bg=DASHBOARD_CONTENT_BG, fg="#15803d").pack(anchor="w", pady=2)
 
     def print_receipt():
+        # Generate the receipt PDF and save its path to the sales records.
         pdf_path = generate_invoice_pdf(cart_items, total_amount, money_received, change, mode, platform, txn_id)
         if pdf_path:
             ctx["cursor"].execute(
@@ -1117,6 +1201,7 @@ def open_invoice_window(ctx, cart_items, total_amount, money_received, change, m
             )
 
     def void_transaction():
+        # Void a transaction and return sold stock to inventory.
         if not ask_pos_confirmation(
             inv_window,
             "Void Transaction",
@@ -1147,6 +1232,7 @@ def open_invoice_window(ctx, cart_items, total_amount, money_received, change, m
 
         now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         for item in cart_items:
+            # Return each sold item quantity back into inventory.
             stock_qty = fine_sand_cubic_deduction(item["qty"], item.get("unit", "")) if is_fine_sand(item["name"]) else item["qty"]
             cursor.execute(
                 "UPDATE items SET quantity = quantity + ? WHERE id = ?",
@@ -1185,6 +1271,7 @@ def open_invoice_window(ctx, cart_items, total_amount, money_received, change, m
         void_button.config(state="disabled", bg="#9ca3af", cursor="arrow")
         show_pos_success(inv_window, "Transaction Voided", "Items were returned to inventory and the sale was marked as void.")
 
+    # Build receipt action buttons for print/download, void, and close.
     btn_frame = tk.Frame(inv_window, bg=DASHBOARD_CONTENT_BG)
     btn_frame.pack(pady=(0, 8))
     for col_index in range(3):
@@ -1237,11 +1324,13 @@ def open_invoice_window(ctx, cart_items, total_amount, money_received, change, m
 
 
 def finalize_transaction(ctx, mode, money_received, platform):
+    # Complete the sale by validating stock, saving rows, and refreshing the POS state.
     cart = ctx["cart"]
     if not cart:
         show_pos_error(ctx["root"], "Error", "Cart is empty.")
         return False
 
+    # Prepare transaction metadata and payment totals.
     cursor = ctx["cursor"]
     conn = ctx["conn"]
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -1250,6 +1339,7 @@ def finalize_transaction(ctx, mode, money_received, platform):
     total_amount = sum(item["total"] for item in cart)
     change = money_received - total_amount if mode == "Cash" else 0
 
+    # Confirm every cart item still has enough stock before modifying the database.
     for item in cart:
         stock_qty = fine_sand_cubic_deduction(item["qty"], item.get("unit", "")) if is_fine_sand(item["name"]) else item["qty"]
         cursor.execute("SELECT COALESCE(quantity, 0) FROM items WHERE id=?", (item["id"],))
@@ -1259,6 +1349,7 @@ def finalize_transaction(ctx, mode, money_received, platform):
             show_pos_error(ctx["root"], "Error", "Not enough fine sand stock available." if is_fine_sand(item["name"]) else "Stocks aren't enough.")
             return False
 
+    # Deduct sold stock and create paid sales records.
     for item in cart:
         stock_qty = fine_sand_cubic_deduction(item["qty"], item.get("unit", "")) if is_fine_sand(item["name"]) else item["qty"]
         cursor.execute("UPDATE items SET quantity = quantity - ? WHERE id=?", (stock_qty, item["id"]))
@@ -1300,6 +1391,7 @@ def finalize_transaction(ctx, mode, money_received, platform):
     conn.commit()
     notify_inventory_views()
 
+    # Clear the checkout cart and keep a receipt snapshot for the invoice window.
     cart_items_copy = [item.copy() for item in cart]
     cart.clear()
     update_cart(ctx)
@@ -1309,6 +1401,7 @@ def finalize_transaction(ctx, mode, money_received, platform):
 
 
 def open_payment_modal(ctx):
+    # Open the checkout modal where the cashier selects payment and confirms the sale.
     cart = ctx["cart"]
     root = ctx["root"]
     if not cart:
@@ -1317,6 +1410,7 @@ def open_payment_modal(ctx):
     total_amount = sum(item["total"] for item in cart)
     button_border = ctx["button_border"]
 
+    # Build the payment modal shell.
     pay_modal = tk.Toplevel(root)
     pay_modal.title("Complete Payment")
     pay_modal.grab_set()
@@ -1331,6 +1425,7 @@ def open_payment_modal(ctx):
     tk.Label(pay_modal, text=f"Amount Due: {format_money_value(total_amount)}", font=("Arial", 22, "bold"), bg="white", fg="#991b1b").pack(pady=(0, 10))
 
     payment_method = tk.StringVar(value="Cash")
+    # Build the payment method selector.
     method_frame = tk.Frame(pay_modal, bg="white")
     method_frame.pack(fill="x", padx=24, pady=(0, 10))
     tk.Label(method_frame, text="Payment Method:", bg="white", font=("Arial", 17, "bold")).pack(side="left", padx=(0, 14))
@@ -1339,6 +1434,7 @@ def open_payment_modal(ctx):
     tk.Radiobutton(method_frame, text="GCash", variable=payment_method, value="GCash", bg="white", font=("Arial", 16, "bold"),
                    selectcolor="white", activebackground="white").pack(side="left")
 
+    # Show the cart items being paid for.
     summary_frame = tk.Frame(pay_modal, bg="white")
     summary_frame.pack(fill="x", padx=22, pady=(0, 10))
     columns = ("Item", "Unit", "Qty", "Selling Price", "Total")
@@ -1364,6 +1460,7 @@ def open_payment_modal(ctx):
             tags=(tag,),
         )
 
+    # Build the amount received input and computed change label.
     money_frame = tk.Frame(pay_modal, bg="white")
     money_frame.pack(fill="x", padx=24, pady=(4, 8))
     money_label = tk.Label(money_frame, text="Money Received:", bg="white", font=("Arial", 17, "bold"))
@@ -1377,6 +1474,7 @@ def open_payment_modal(ctx):
     change_label.pack(anchor="w", padx=24, pady=(0, 8))
 
     def update_change(*_):
+        # Recalculate change whenever the cashier edits the amount received.
         value = money_entry.get().strip()
         if not value:
             change_var.set(f"Change: {format_money_value(0)}")
@@ -1389,6 +1487,7 @@ def open_payment_modal(ctx):
         change_var.set(f"Change: {format_money_value(received - total_amount)}")
 
     def update_payment_method(*_):
+        # Reset the amount field when switching between cash and GCash.
         if payment_method.get() == "GCash":
             money_label.config(text="Amount Paid:")
             money_entry.config(state="normal")
@@ -1403,6 +1502,7 @@ def open_payment_modal(ctx):
             money_entry.focus_set()
 
     def on_pay():
+        # Validate the payment and finish the transaction.
         method = payment_method.get()
         if method == "GCash":
             try:
@@ -1436,10 +1536,12 @@ def open_payment_modal(ctx):
                 root.update_idletasks()
                 open_invoice_window(ctx, *receipt_data)
 
+    # Wire keyboard shortcuts and payment method updates.
     money_entry.bind("<KeyRelease>", update_change)
     money_entry.bind("<Return>", lambda _event: on_pay())
     payment_method.trace_add("write", update_payment_method)
 
+    # Build checkout and cancel action buttons.
     btns = tk.Frame(pay_modal, bg="white")
     btns.pack(pady=(6, 20))
     tk.Button(btns, text="Checkout", bg="#16a34a", fg="white", font=("Arial", 15, "bold"),

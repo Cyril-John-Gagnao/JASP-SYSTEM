@@ -5,6 +5,7 @@ from tkinter import font as tkfont
 from tkinter import ttk
 
 
+# Define shared colors for dashboard pages, cards, and charts.
 BG_PAGE = "#edeff3"
 BG_SIDEBAR = "#273142"
 BG_CARD = "#ffffff"
@@ -16,10 +17,12 @@ LINE = "#e5e7eb"
 
 
 def spacer(parent, h=12):
+    # Insert vertical spacing that matches the parent background.
     tk.Frame(parent, height=h, bg=parent["bg"]).pack(fill="x")
 
 
 def stat_card(parent, title, value, subtitle="", bg=BG_CARD, header_bg=None):
+    # Build a dashboard stat card with a colored header and large value.
     header_bg = header_bg or bg
     card = tk.Frame(parent, bg=bg, bd=0, relief="flat",
                     highlightthickness=1, highlightbackground="black")
@@ -38,6 +41,7 @@ def stat_card(parent, title, value, subtitle="", bg=BG_CARD, header_bg=None):
 
 
 def build_table(parent, columns, rows):
+    # Build a styled dashboard Treeview table with a vertical scrollbar.
     style = ttk.Style()
     style.configure("Dash.Treeview", font=("Arial", 12), rowheight=32,
                     background=BG_CARD, fieldbackground=BG_CARD)
@@ -62,6 +66,7 @@ def build_table(parent, columns, rows):
 
 
 def render_table_or_empty(container, columns, rows, empty_text):
+    # Render a table when rows exist or an empty-state label otherwise.
     if rows:
         build_table(container, columns, rows)
     else:
@@ -70,10 +75,12 @@ def render_table_or_empty(container, columns, rows, empty_text):
 
 
 def money(val):
+    # Format a numeric value as Philippine peso currency.
     return f"\u20b1{val:,.2f}"
 
 
 def format_dashboard_datetime(ts):
+    # Format stored sale timestamps for dashboard display.
     for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%dT%H:%M:%S"):
         try:
             return datetime.strptime(ts, fmt).strftime("%b %d, %Y | %I:%M %p").replace(" 0", " ")
@@ -83,6 +90,7 @@ def format_dashboard_datetime(ts):
 
 
 def compact_items(item_summary, item_count):
+    # Shorten grouped item text for compact transaction tables.
     if not item_summary:
         return ""
     first_item = item_summary.split(", ")[0]
@@ -92,16 +100,19 @@ def compact_items(item_summary, item_count):
 
 
 def compact_txn_id(txn_id):
+    # Show only the trailing part of long transaction ids.
     text = str(txn_id or "")
     return text[-5:] if len(text) > 5 else text
 
 
 def render_recent_transactions(container, rows, empty_text):
+    # Render the dashboard recent transactions preview table.
     if not rows:
         tk.Label(container, text=empty_text, bg=BG_CARD, fg=TEXT_MUTED,
                  font=("Arial", 13, "italic")).pack(expand=True, fill="both", pady=12)
         return
 
+    # Configure the recent transactions table style and scrollbars.
     style = ttk.Style()
     style.configure(
         "RecentDash.Treeview",
@@ -139,6 +150,7 @@ def render_recent_transactions(container, rows, empty_text):
     ]
     display_rows = []
     for row in rows:
+        # Convert raw transaction rows into display-ready values.
         txn_id, ts, item_summary, item_count, qty, total, cashier, status = row
         display_rows.append((
             compact_txn_id(txn_id),
@@ -154,6 +166,7 @@ def render_recent_transactions(container, rows, empty_text):
     heading_font = tkfont.Font(family="Arial", size=12, weight="bold")
     column_widths = {}
     for index, (col, heading, min_width, max_width, _anchor) in enumerate(headings):
+        # Measure heading and row text to choose readable column widths.
         widest = heading_font.measure(heading)
         for values in display_rows:
             widest = max(widest, body_font.measure(str(values[index])))
@@ -176,6 +189,7 @@ def render_recent_transactions(container, rows, empty_text):
 
 
 def center_window(window, width, height, parent=None):
+    # Center a popup over its parent window or the screen.
     window.update_idletasks()
     if parent and parent.winfo_exists():
         x_pos = parent.winfo_rootx() + (parent.winfo_width() // 2) - (width // 2)
@@ -186,134 +200,8 @@ def center_window(window, width, height, parent=None):
     window.geometry(f"{width}x{height}+{max(x_pos, 0)}+{max(y_pos, 0)}")
 
 
-def render_help_dashboard(parent):
-    intro = tk.Frame(parent, bg=BG_CARD, highlightthickness=1, highlightbackground="black")
-    intro.pack(fill="x", pady=(0, 14))
-    tk.Label(
-        intro,
-        text="How to Use the System",
-        bg=PRIMARY,
-        fg="white",
-        font=("Arial", 18, "bold"),
-    ).pack(fill="x", anchor="w", ipady=10)
-    tk.Label(
-        intro,
-        text="Use this guide as a quick reference for the main JASP workflows.",
-        bg=BG_CARD,
-        fg=TEXT_PRIMARY,
-        font=("Arial", 13, "bold"),
-        anchor="w",
-        justify="left",
-        wraplength=900,
-    ).pack(fill="x", padx=18, pady=14)
-
-    shell = tk.Frame(parent, bg=parent["bg"])
-    shell.pack(fill="both", expand=True)
-
-    canvas = tk.Canvas(shell, bg=parent["bg"], highlightthickness=0)
-    scrollbar = ttk.Scrollbar(shell, orient="vertical", command=canvas.yview)
-    content = tk.Frame(canvas, bg=parent["bg"])
-    content_id = canvas.create_window((0, 0), window=content, anchor="nw")
-    canvas.configure(yscrollcommand=scrollbar.set)
-    canvas.pack(side="left", fill="both", expand=True)
-    scrollbar.pack(side="right", fill="y")
-
-    def sync_scroll_region(_event=None):
-        canvas.configure(scrollregion=canvas.bbox("all"))
-
-    def sync_content_width(event):
-        canvas.itemconfigure(content_id, width=event.width)
-
-    content.bind("<Configure>", sync_scroll_region)
-    canvas.bind("<Configure>", sync_content_width)
-
-    def on_mousewheel(event):
-        if event.num == 4:
-            canvas.yview_scroll(-1, "units")
-        elif event.num == 5:
-            canvas.yview_scroll(1, "units")
-        else:
-            canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
-
-    def bind_mousewheel(_event=None):
-        canvas.bind_all("<MouseWheel>", on_mousewheel)
-        canvas.bind_all("<Button-4>", on_mousewheel)
-        canvas.bind_all("<Button-5>", on_mousewheel)
-
-    def unbind_mousewheel(_event=None):
-        canvas.unbind_all("<MouseWheel>")
-        canvas.unbind_all("<Button-4>")
-        canvas.unbind_all("<Button-5>")
-
-    canvas.bind("<Enter>", bind_mousewheel)
-    canvas.bind("<Leave>", unbind_mousewheel)
-    content.bind("<Enter>", bind_mousewheel)
-    content.bind("<Leave>", unbind_mousewheel)
-
-    sections = [
-        (
-            "Point of Sale (POS)",
-            [
-                "Open Point of Sale from the left menu.",
-                "Search or browse the inventory list, then click Add on the item you want to sell.",
-                "Enter the quantity, review the cart, then click Pay / Checkout to finish the sale.",
-                "Use Clear Cart if you need to restart before checkout.",
-            ],
-        ),
-        (
-            "Inventory Management",
-            [
-                "Open Inventory Management to add, update, delete, or search items.",
-                "Fill in the item details such as name, quantity, cost, price, and unit before saving.",
-                "Select an item from the table to update or delete it.",
-                "Use Summary to review inventory records for a selected day, week, or month.",
-            ],
-        ),
-        (
-            "CHB and Delivery Production",
-            [
-                "Open CHB and Delivery Production to record CHB block production.",
-                "Enter production details, worker count, materials used, and date, then save the record.",
-                "Use Adjust CHB Stock for manual corrections when stock needs to be fixed.",
-                "Open Delivery Section to record delivered CHB blocks or other delivered items.",
-            ],
-        ),
-        (
-            "Reports & Analytics",
-            [
-                "Open Reports & Analytics to generate sales, profit, CHB production, and inventory reports.",
-                "Choose the report type and date range, then generate the report.",
-                "Review the totals and breakdowns shown on screen.",
-                "Use PDF options when you need a printable or downloadable copy.",
-            ],
-        ),
-    ]
-
-    for title, steps in sections:
-        card = tk.Frame(content, bg=BG_CARD, highlightthickness=1, highlightbackground="black")
-        card.pack(fill="x", pady=(0, 14))
-        tk.Label(
-            card,
-            text=title,
-            bg=PRIMARY,
-            fg="white",
-            font=("Arial", 15, "bold"),
-        ).pack(fill="x", anchor="w", padx=0, pady=0, ipady=10)
-        for index, step in enumerate(steps, start=1):
-            tk.Label(
-                card,
-                text=f"{index}. {step}",
-                bg=BG_CARD,
-                fg=TEXT_PRIMARY,
-                font=("Arial", 13),
-                anchor="w",
-                justify="left",
-                wraplength=900,
-            ).pack(fill="x", padx=16, pady=(8 if index == 1 else 4, 4))
-        tk.Frame(card, height=8, bg=BG_CARD).pack(fill="x")
-
-
 def parse_dashboard_date(date_text):
+    # Parse a YYYY-MM-DD dashboard date and fall back to today.
     try:
         return datetime.strptime((date_text or "").strip(), "%Y-%m-%d")
     except ValueError:
@@ -321,6 +209,7 @@ def parse_dashboard_date(date_text):
 
 
 def open_date_calendar(parent, date_var, on_select=None):
+    # Open a small or large dashboard calendar popup.
     selected_date = parse_dashboard_date(date_var.get())
     large_calendar = bool(getattr(parent, "_large_calendar", False))
     day_width = 7 if large_calendar else 5
@@ -347,12 +236,14 @@ def open_date_calendar(parent, date_var, on_select=None):
     grid.pack(padx=10, pady=(0, 10))
 
     def select_date(day):
+        # Apply the selected date and run the optional callback.
         date_var.set(f"{year_var.get():04d}-{month_var.get():02d}-{day:02d}")
         if callable(on_select):
             on_select()
         cal_win.destroy()
 
     def change_month(delta):
+        # Move the calendar view backward or forward by one month.
         month = month_var.get() + delta
         year = year_var.get()
         if month < 1:
@@ -366,6 +257,7 @@ def open_date_calendar(parent, date_var, on_select=None):
         render_calendar()
 
     def render_calendar():
+        # Redraw the calendar grid for the selected month and year.
         for child in grid.winfo_children():
             child.destroy()
         title_var.set(f"{calendar.month_name[month_var.get()]} {year_var.get()}")
@@ -401,6 +293,7 @@ def open_date_calendar(parent, date_var, on_select=None):
     tk.Button(header, text=">", command=lambda: change_month(1), bg=ACCENT,
               fg=TEXT_PRIMARY, relief="flat", width=nav_width, font=nav_font).pack(side="left")
 
+    # Position the calendar near the center of the parent window.
     render_calendar()
     cal_win.update_idletasks()
     cal_width = 540 if large_calendar else 380
@@ -411,6 +304,7 @@ def open_date_calendar(parent, date_var, on_select=None):
 
 
 def compute_summary_range(period, date_text):
+    # Convert a selected period and date into start/end datetimes.
     selected = parse_dashboard_date(date_text)
     if period == "Week":
         start = selected - timedelta(days=selected.weekday())
