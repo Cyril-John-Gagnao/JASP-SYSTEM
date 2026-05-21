@@ -149,7 +149,7 @@ def open_pos_summary(parent):
             show_pos_warning(summary_win, "Receipt Not Downloaded", "This receipt PDF has not been downloaded yet.")
             return
         if not os.path.exists(path):
-            messagebox.showwarning("Receipt Missing", f"The receipt file was not found:\n{path}", parent=summary_win)
+            show_pos_warning(summary_win, "Receipt Missing", f"The receipt file was not found:\n{path}")
             return
         try:
             os.startfile(path)

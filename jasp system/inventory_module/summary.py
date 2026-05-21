@@ -270,9 +270,10 @@ def open_date_calendar(parent, date_var, on_select=None):
                     command=lambda d=day: select_date(d)
                 ).grid(row=row_index, column=col_index, padx=2, pady=2)
 
+    tk.Button(header, text="Close", command=cal_win.destroy, bg="#dc2626", fg="white", activebackground="#b91c1c", activeforeground="white", relief="solid", bd=1, font=("Arial", 12, "bold"), padx=10, pady=4).pack(side="right", padx=(8, 0))
+    tk.Button(header, text=">", command=lambda: change_month(1), bg="#e0f2fe", relief="solid", bd=1, width=5, font=("Arial", 13, "bold")).pack(side="right")
     tk.Button(header, text="<", command=lambda: change_month(-1), bg="#e0f2fe", relief="solid", bd=1, width=5, font=("Arial", 13, "bold")).pack(side="left")
     tk.Label(header, textvariable=title_var, bg="#ffffff", fg="#1e293b", font=("Arial", 15, "bold"), width=20).pack(side="left", padx=10)
-    tk.Button(header, text=">", command=lambda: change_month(1), bg="#e0f2fe", relief="solid", bd=1, width=5, font=("Arial", 13, "bold")).pack(side="left")
 
     render_calendar()
     center_window(cal_win, 470, 390, parent=parent)

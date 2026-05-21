@@ -93,10 +93,13 @@ def _open_date_picker(anchor_widget, date_var):
 
     popup = tk.Toplevel(anchor_widget.winfo_toplevel())
     _ACTIVE_DATE_PICKER = popup
+    # Keep the shared centered-window hook from overriding this calendar's final placement.
+    if hasattr(popup, "_centered_once"):
+        popup._centered_once = True
     popup.title("Select Date")
     popup.transient(anchor_widget.winfo_toplevel())
     popup.resizable(False, False)
-    popup.configure(bg=BG_CARD)
+    popup.configure(bg="#ffffff")
 
     state = {"view_date": _parse_picker_date(date_var.get())}
     today = datetime.now().date()
@@ -117,20 +120,20 @@ def _open_date_picker(anchor_widget, date_var):
         for widget in popup.winfo_children():
             widget.destroy()
 
-        shell = tk.Frame(popup, bg=BG_CARD, padx=8, pady=8)
+        shell = tk.Frame(popup, bg="#ffffff", padx=10, pady=10)
         shell.pack(fill="both", expand=True)
 
-        header = tk.Frame(shell, bg=BG_CARD)
-        header.pack(fill="x", pady=(0, 5))
+        header = tk.Frame(shell, bg="#ffffff")
+        header.pack(fill="x", padx=10, pady=(10, 4))
 
         nav_options = {
-            "font": ("Arial", 9, "bold"),
-            "bg": ACCENT,
+            "font": ("Arial", 13, "bold"),
+            "bg": "#e0f2fe",
             "fg": TEXT_PRIMARY,
-            "activebackground": SUMMARY_BG,
-            "relief": "flat",
-            "bd": 0,
-            "width": 3,
+            "activebackground": "#bfdbfe",
+            "relief": "solid",
+            "bd": 1,
+            "width": 5,
         }
         tk.Button(
             header,
@@ -141,10 +144,25 @@ def _open_date_picker(anchor_widget, date_var):
         tk.Label(
             header,
             text=state["view_date"].strftime("%B %Y"),
-            bg=BG_CARD,
-            fg=TEXT_PRIMARY,
-            font=("Arial", 10, "bold"),
-        ).pack(side="left", expand=True)
+            bg="#ffffff",
+            fg="#1e293b",
+            font=("Arial", 15, "bold"),
+            width=20,
+        ).pack(side="left", padx=10)
+        tk.Button(
+            header,
+            text="Close",
+            command=close_popup,
+            font=("Arial", 12, "bold"),
+            bg="#dc2626",
+            fg="white",
+            activebackground="#b91c1c",
+            activeforeground="white",
+            relief="solid",
+            bd=1,
+            padx=10,
+            pady=4,
+        ).pack(side="right", padx=(8, 0))
         tk.Button(
             header,
             text=">",
@@ -152,18 +170,18 @@ def _open_date_picker(anchor_widget, date_var):
             **nav_options,
         ).pack(side="right")
 
-        grid = tk.Frame(shell, bg=BG_CARD)
-        grid.pack()
+        grid = tk.Frame(shell, bg="#ffffff")
+        grid.pack(padx=10, pady=(0, 10))
 
         for col, day_name in enumerate(("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")):
             tk.Label(
                 grid,
                 text=day_name,
-                bg=BG_CARD,
-                fg=TEXT_MUTED,
-                font=("Arial", 8, "bold"),
-                width=4,
-            ).grid(row=0, column=col, padx=1, pady=(0, 3))
+                bg="#ffffff",
+                fg="#1e293b",
+                font=("Arial", 12, "bold"),
+                width=6,
+            ).grid(row=0, column=col, padx=2, pady=3)
 
         selected_date = _parse_picker_date(date_var.get()).date()
         month_days = calendar.monthcalendar(state["view_date"].year, state["view_date"].month)
@@ -171,16 +189,17 @@ def _open_date_picker(anchor_widget, date_var):
         for row_index, week in enumerate(month_days, start=1):
             for col_index, day in enumerate(week):
                 if not day:
-                    tk.Label(grid, text="", bg=BG_CARD, width=4).grid(row=row_index, column=col_index, padx=1, pady=1)
+                    tk.Label(grid, text="", bg="#ffffff", width=6).grid(row=row_index, column=col_index, padx=2, pady=2)
                     continue
 
-                button_bg = BG_CARD
-                button_fg = TEXT_PRIMARY
+                button_bg = "#f8fafc"
+                button_fg = "#1e293b"
                 if (state["view_date"].year, state["view_date"].month, day) == (selected_date.year, selected_date.month, selected_date.day):
                     button_bg = ACTION_BG
                     button_fg = "#ffffff"
                 elif (state["view_date"].year, state["view_date"].month, day) == (today.year, today.month, today.day):
-                    button_bg = ACCENT
+                    button_bg = "#2563eb"
+                    button_fg = "#ffffff"
 
                 tk.Button(
                     grid,
@@ -188,49 +207,29 @@ def _open_date_picker(anchor_widget, date_var):
                     command=lambda selected_day=day: choose_date(selected_day),
                     bg=button_bg,
                     fg=button_fg,
-                    activebackground=ACTION_ACTIVE if button_bg == ACTION_BG else ACCENT,
-                    activeforeground="#ffffff" if button_bg == ACTION_BG else TEXT_PRIMARY,
-                    relief="flat",
-                    bd=0,
-                    width=4,
-                    font=("Arial", 8),
+                    activebackground=ACTION_ACTIVE if button_bg in (ACTION_BG, "#2563eb") else "#e0f2fe",
+                    activeforeground="#ffffff" if button_fg == "#ffffff" else "#1e293b",
+                    relief="solid",
+                    bd=1,
+                    width=6,
+                    font=("Arial", 12, "bold"),
                     cursor="hand2",
-                ).grid(row=row_index, column=col_index, padx=1, pady=1)
-
-        footer = tk.Frame(shell, bg=BG_CARD)
-        footer.pack(fill="x", pady=(6, 0))
-        tk.Button(
-            footer,
-            text="Today",
-            command=lambda: (date_var.set(datetime.now().strftime("%Y-%m-%d")), close_popup()),
-            font=("Arial", 8, "bold"),
-            bg=ACCENT,
-            fg=TEXT_PRIMARY,
-            relief="flat",
-            bd=0,
-            padx=8,
-            pady=3,
-        ).pack(side="left")
-        tk.Button(
-            footer,
-            text="Close",
-            command=close_popup,
-            font=("Arial", 8),
-            bg=BG_CARD,
-            fg=TEXT_MUTED,
-            relief="flat",
-            bd=0,
-            padx=6,
-            pady=3,
-        ).pack(side="right")
+                ).grid(row=row_index, column=col_index, padx=2, pady=2)
 
     popup.protocol("WM_DELETE_WINDOW", close_popup)
     popup.bind("<Escape>", lambda _event: close_popup())
     render_calendar()
-    popup.update_idletasks()
-    x_pos = anchor_widget.winfo_rootx()
-    y_pos = anchor_widget.winfo_rooty() + anchor_widget.winfo_height() + 4
-    popup.geometry(f"+{x_pos}+{y_pos}")
+
+    def center_reports_calendar():
+        # Center the reports calendar on the screen after its layout is ready.
+        popup.update_idletasks()
+        width, height = 470, 390
+        x_pos = (popup.winfo_screenwidth() // 2) - (width // 2)
+        y_pos = (popup.winfo_screenheight() // 2) - (height // 2)
+        popup.geometry(f"{width}x{height}+{max(x_pos, 0)}+{max(y_pos, 0)}")
+
+    center_reports_calendar()
+    popup.after_idle(center_reports_calendar)
     popup.lift()
     popup.focus_force()
 
@@ -829,7 +828,7 @@ def open_reports(parent=None):
         padx=12,
         pady=4,
     ).pack(side="left")
-    create_hamburger_menu(header, reports_window, parent, lambda: close_window_and_focus_parent(reports_window, parent), pack_side=tk.LEFT, pack_padx=(14, 6))
+    create_hamburger_menu(title_frame, reports_window, parent, lambda: close_window_and_focus_parent(reports_window, parent), pack_side=tk.LEFT, pack_padx=(14, 6))
     tk.Label(
         title_frame,
         text="Financials | Sales | Production | Inventory | Delivery",

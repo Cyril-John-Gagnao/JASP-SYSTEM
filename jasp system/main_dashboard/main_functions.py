@@ -286,12 +286,15 @@ def open_date_calendar(parent, date_var, on_select=None):
                     command=lambda d=day: select_date(d),
                 ).grid(row=row_index, column=col_index, padx=3, pady=3)
 
+    tk.Button(header, text="Close", command=cal_win.destroy, bg="#dc2626",
+              fg="white", activebackground="#b91c1c", activeforeground="white",
+              relief="solid", bd=1, font=("Arial", 12, "bold"), padx=10, pady=4).pack(side="right", padx=(8, 0))
+    tk.Button(header, text=">", command=lambda: change_month(1), bg=ACCENT,
+              fg=TEXT_PRIMARY, relief="flat", width=nav_width, font=nav_font).pack(side="right")
     tk.Button(header, text="<", command=lambda: change_month(-1), bg=ACCENT,
               fg=TEXT_PRIMARY, relief="flat", width=nav_width, font=nav_font).pack(side="left")
     tk.Label(header, textvariable=title_var, bg=BG_CARD, fg=TEXT_PRIMARY,
              font=title_font, width=title_width).pack(side="left", padx=10)
-    tk.Button(header, text=">", command=lambda: change_month(1), bg=ACCENT,
-              fg=TEXT_PRIMARY, relief="flat", width=nav_width, font=nav_font).pack(side="left")
 
     # Position the calendar near the center of the parent window.
     render_calendar()
