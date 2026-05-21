@@ -5,6 +5,7 @@ from datetime import datetime
 
 from .delivery_database import init_delivery_db, open_delivery_connection
 from . import delivery_functions
+from main_dashboard.navigation_menu import create_hamburger_menu
 from jasp_theme import (
     DASHBOARD_CONTENT_BG,
     DASHBOARD_HEADER_BG,
@@ -66,6 +67,7 @@ def open_delivery_window(parent_win, bg_main, card_bg, primary):
         bg=DASHBOARD_HEADER_BG,
         fg=DASHBOARD_HEADER_FG
     ).pack(side="left")
+    create_hamburger_menu(title_frame, delivery_win, parent_win, lambda: delivery_functions.on_closing(conn, delivery_win), pack_side=tk.LEFT, pack_padx=(14, 6))
 
     # Place the refresh and back buttons on the right side of the header.
     btn_container = tk.Frame(header_frame, bg=DASHBOARD_HEADER_BG)

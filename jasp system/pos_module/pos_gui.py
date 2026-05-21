@@ -5,6 +5,7 @@ from pos_module import pos_functions
 from pos_module.pos_database import initialize_pos_database
 from pos_module.pos_summary import open_pos_summary
 from window_utils import close_window_and_focus_parent, enable_centered_toplevels
+from main_dashboard.navigation_menu import create_hamburger_menu
 from jasp_theme import (
     DASHBOARD_CONTENT_BG,
     DASHBOARD_HEADER_BG,
@@ -101,12 +102,12 @@ def open_pos(parent=None):
         fg=DASHBOARD_HEADER_FG,
         font=("Arial", 22, "bold"),
     ).pack(side=tk.LEFT)
+    create_hamburger_menu(header_frame, root, parent, close_pos_window, pack_side=tk.LEFT, pack_padx=(14, 6))
 
     tk.Button(header_frame, text="← Back", bg="#2563eb", fg="white", activebackground="#1d4ed8", activeforeground="white", font=("Arial", 13, "bold"),
               command=close_pos_window, padx=12, pady=8, **BUTTON_BORDER).pack(side=tk.RIGHT, padx=6)
     tk.Button(header_frame, text="🔄 Refresh", bg="#16a34a", fg="white", font=("Arial", 13, "bold"),
               command=lambda: pos_functions.load_inventory(ctx, search_entry.get()), padx=12, pady=8, **BUTTON_BORDER).pack(side=tk.RIGHT, padx=6)
-
     # ====== Main Frame ======
     # Create the main two-panel layout for cart and inventory.
     main_frame = tk.Frame(root, bg=DASHBOARD_CONTENT_BG)

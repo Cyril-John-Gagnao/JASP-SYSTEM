@@ -39,6 +39,7 @@ from jasp_theme import (
     DASHBOARD_HEADER_SUBTLE_FG,
     add_header_logo,
 )
+from main_dashboard.navigation_menu import create_hamburger_menu
 from window_utils import close_window_and_focus_parent
 
 _ACTIVE_DATE_PICKER = None
@@ -828,6 +829,7 @@ def open_reports(parent=None):
         padx=12,
         pady=4,
     ).pack(side="left")
+    create_hamburger_menu(header, reports_window, parent, lambda: close_window_and_focus_parent(reports_window, parent), pack_side=tk.LEFT, pack_padx=(14, 6))
     tk.Label(
         title_frame,
         text="Financials | Sales | Production | Inventory | Delivery",

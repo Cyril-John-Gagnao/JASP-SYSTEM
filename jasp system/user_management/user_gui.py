@@ -3,6 +3,7 @@ from tkinter import ttk
 
 from . import user_database
 from . import user_functions
+from main_dashboard.navigation_menu import create_hamburger_menu
 from jasp_theme import (
     DASHBOARD_CONTENT_BG,
     DASHBOARD_HEADER_BG,
@@ -89,6 +90,17 @@ def open_user_management(root):
         bg=HEADER_BG,
         fg=DASHBOARD_HEADER_FG
     ).pack(side="left")
+
+    def return_to_dashboard():
+        # Render the main dashboard from this root-embedded page.
+        try:
+            conn.close()
+        except Exception:
+            pass
+        from main_dashboard.main_gui import open_main
+        open_main(root)
+
+    create_hamburger_menu(title_frame, root, root, dashboard_callback=return_to_dashboard, pack_side=tk.LEFT, pack_padx=(14, 6))
 
     header_buttons = tk.Frame(header, bg=HEADER_BG)
     header_buttons.grid(row=0, column=1, sticky="e")

@@ -5,6 +5,7 @@ from tkinter import ttk
 from .inventory_database import open_inventory_connection, setup_inventory_database, ensure_chb_item, ensure_chb_material_items, normalize_predefined_units
 from . import inventory_functions
 from .summary import open_inventory_summary
+from main_dashboard.navigation_menu import create_hamburger_menu
 from jasp_theme import (
     DASHBOARD_CONTENT_BG,
     DASHBOARD_HEADER_BG,
@@ -63,6 +64,7 @@ def open_inventory(parent=None):
         padx=12,
         pady=4
     ).pack(side="left")
+    create_hamburger_menu(header_frame, inventory_window, parent, lambda: close_inventory_window(), pack_side=tk.LEFT, pack_padx=(14, 6))
 
     # Reuse header button styling for Back and Refresh.
     header_button_options = {

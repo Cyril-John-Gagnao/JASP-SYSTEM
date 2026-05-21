@@ -5,6 +5,7 @@ import sqlite3
 from datetime import datetime
 from delivery_section import open_delivery_window
 from window_utils import close_window_and_focus_parent
+from main_dashboard.navigation_menu import create_hamburger_menu
 from jasp_theme import (
     DASHBOARD_CONTENT_BG,
     DASHBOARD_HEADER_BG,
@@ -88,6 +89,7 @@ def open_chb_dashboard(parent=None):
         bg=DASHBOARD_HEADER_BG,
         fg=DASHBOARD_HEADER_FG
     ).pack(side="left")
+    create_hamburger_menu(title_frame, win, parent, lambda: close_window_and_focus_parent(win, parent), pack_side=tk.LEFT, pack_padx=(14, 6))
 
     # Place the refresh and back buttons on the right side of the header.
     btn_container = tk.Frame(header_frame, bg=DASHBOARD_HEADER_BG)

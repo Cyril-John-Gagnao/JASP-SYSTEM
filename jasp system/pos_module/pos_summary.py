@@ -21,6 +21,7 @@ from main_dashboard.main_functions import (
     open_date_calendar,
 )
 from pos_module.pos_database import DB_NAME
+from pos_module.pos_functions import show_pos_warning
 
 
 # Reuse the dashboard background color for the receipt summary window.
@@ -145,7 +146,7 @@ def open_pos_summary(parent):
     def open_receipt_location(path):
         # Open the downloaded receipt PDF when the file path is available.
         if not path or path == "Not downloaded":
-            messagebox.showinfo("Receipt Location", "This receipt has not been downloaded yet.", parent=summary_win)
+            show_pos_warning(summary_win, "Receipt Not Downloaded", "This receipt PDF has not been downloaded yet.")
             return
         if not os.path.exists(path):
             messagebox.showwarning("Receipt Missing", f"The receipt file was not found:\n{path}", parent=summary_win)
