@@ -369,7 +369,7 @@ def open_inventory_summary(parent, anchor_parent=None):
         )
 
         # Build the PDF table with header and alternating row colors.
-        table_data = [["Item Name", "Unit", "Quantity Added", "Date Added", "Status", "User"]]
+        table_data = [["Item Name", "Unit", "Quantity", "Date/Time", "Action", "User"]]
         table_data.extend(rows if rows else [[NO_INVENTORY_ACTIVITY_TEXT, "", "", "", "", ""]])
 
         table = Table(table_data, colWidths=[1.55*inch, 1.0*inch, 1.05*inch, 1.55*inch, 0.9*inch, 0.95*inch])
@@ -412,7 +412,7 @@ def open_inventory_summary(parent, anchor_parent=None):
         preview_frame.pack(fill="both", expand=True, padx=16, pady=8)
 
         # Build the preview table and scrollbar.
-        cols = ("Item Name", "Unit", "Quantity Added", "Date Added", "Status", "User")
+        cols = ("Item Name", "Unit", "Quantity", "Date/Time", "Action", "User")
         preview_tree = ttk.Treeview(preview_frame, columns=cols, show="headings")
         preview_style = ttk.Style()
         preview_style.configure("InventorySummaryPreview.Treeview", font=("Arial", 13), rowheight=36)
@@ -422,7 +422,7 @@ def open_inventory_summary(parent, anchor_parent=None):
         scroll = ttk.Scrollbar(preview_frame, orient="vertical", command=preview_tree.yview)
         scroll.pack(side="right", fill="y")
         preview_tree.configure(yscrollcommand=scroll.set)
-        for col, width in (("Item Name", 200), ("Unit", 120), ("Quantity Added", 130), ("Date Added", 170), ("Status", 100), ("User", 130)):
+        for col, width in (("Item Name", 200), ("Unit", 120), ("Quantity", 130), ("Date/Time", 170), ("Action", 140), ("User", 130)):
             preview_tree.heading(col, text=col)
             preview_tree.column(col, width=width, anchor="center")
         preview_tree.tag_configure("blue_row", background="#dbeafe", foreground="#000000")
@@ -512,7 +512,7 @@ def open_inventory_summary(parent, anchor_parent=None):
     table_frame.pack(fill="both", expand=True, padx=16, pady=(0, 14))
 
     # Configure the inventory summary table columns and style.
-    columns = ("Item Name", "Unit", "Quantity Added", "Date Added", "Status", "User")
+    columns = ("Item Name", "Unit", "Quantity", "Date/Time", "Action", "User")
     summary_tree = ttk.Treeview(table_frame, columns=columns, show="headings")
     style = ttk.Style()
     style.configure("InventorySummary.Treeview", font=("Arial", 13), rowheight=36)
@@ -523,7 +523,7 @@ def open_inventory_summary(parent, anchor_parent=None):
     table_scroll.pack(side="right", fill="y")
     summary_tree.configure(yscrollcommand=table_scroll.set)
 
-    for col, width in (("Item Name", 220), ("Unit", 130), ("Quantity Added", 140), ("Date Added", 180), ("Status", 110), ("User", 140)):
+    for col, width in (("Item Name", 220), ("Unit", 130), ("Quantity", 140), ("Date/Time", 180), ("Action", 150), ("User", 140)):
         summary_tree.heading(col, text=col)
         summary_tree.column(col, width=width, anchor="center")
     summary_tree.tag_configure("blue_row", background="#93c5fd", foreground="#000000")
@@ -536,17 +536,17 @@ def open_inventory_summary(parent, anchor_parent=None):
         max_widths = {
             "Item Name": 360,
             "Unit": 220,
-            "Quantity Added": 190,
-            "Date Added": 240,
-            "Status": 360,
+            "Quantity": 190,
+            "Date/Time": 240,
+            "Action": 360,
             "User": 240,
         }
         min_widths = {
             "Item Name": 180,
             "Unit": 100,
-            "Quantity Added": 130,
-            "Date Added": 170,
-            "Status": 110,
+            "Quantity": 130,
+            "Date/Time": 170,
+            "Action": 110,
             "User": 120,
         }
         column_ids = list(summary_tree["columns"])
