@@ -4,7 +4,7 @@ import tkinter as tk
 from datetime import datetime, timedelta
 from tkinter import messagebox, ttk
 
-from .constants import (
+from .reports_constants import (
     ACCENT,
     BG_CARD,
     BG_PAGE,
@@ -21,8 +21,8 @@ from .constants import (
     TEXT_MUTED,
     TEXT_PRIMARY,
 )
-from .database import init_database
-from .functions import (
+from .reports_database import init_database
+from .reports_functions import (
     export_to_pdf,
     generate_chb_production,
     generate_financial_summary,

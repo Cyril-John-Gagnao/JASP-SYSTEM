@@ -29,7 +29,7 @@ enable_centered_toplevels()
 # Define login page colors and shared UI state references.
 BG_BLUE = "#1950a3"
 LOGIN_HEADER_BG = "#072a4e"
-LOGIN_PAGE_BG = "#fff3e6"
+LOGIN_PAGE_BG = "#E2D0C5"
 CARD_BG = "#ffffff"
 TEXT_DARK = "#1f2933"
 TEXT_MUTED = "#6b7280"
@@ -735,22 +735,22 @@ def on_leave(e):
 
 def load_login_logo(size=82):
     # Load the transparent login logo image when available.
-    logo_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "images", "logo1.png"))
+    logo_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "images", "login_logo.png"))
     try:
         from PIL import Image, ImageTk
 
         source = Image.open(logo_path).convert("RGBA")
+        bbox = source.getchannel("A").getbbox()
+        if bbox:
+            source = source.crop(bbox)
         source.thumbnail((size, size), Image.LANCZOS)
-        logo = Image.new("RGBA", (size, size), (0, 0, 0, 0))
-        x_pos = (size - source.width) // 2
-        y_pos = (size - source.height) // 2
-        logo.paste(source, (x_pos, y_pos), source)
-        return ImageTk.PhotoImage(logo)
+        return ImageTk.PhotoImage(source)
     except (ImportError, OSError, AttributeError, tk.TclError):
         # Fall back to Tk PhotoImage if Pillow is unavailable.
         try:
             image = tk.PhotoImage(file=logo_path)
-            image = image.subsample(max(1, image.width() // size), max(1, image.height() // size))
+            scale = max(1, max(image.width(), image.height()) // size)
+            image = image.subsample(scale, scale)
             return image
         except tk.TclError:
             return None
@@ -780,7 +780,7 @@ def show_login_screen():
 
     header_left = tk.Frame(header, bg=LOGIN_HEADER_BG)
     header_left.pack(side="left", padx=24, pady=12)
-    logo_image = load_login_logo(86)
+    logo_image = load_login_logo(56)
     if logo_image:
         header.logo_image = logo_image
         tk.Label(header_left, image=logo_image, bg=LOGIN_HEADER_BG).pack(side="left", padx=(0, 16))
